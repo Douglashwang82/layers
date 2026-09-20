@@ -15,6 +15,27 @@
       "when": 1789590840168,
       "tag": "0001_brainy_jamie_braddock",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1789934049594,
+      "tag": "0002_gifted_gideon",
+      "breakpoints": true
+    },
+    {
+      "idx": 3,
+      "version": "7",
+      "when": 1789934374991,
+      "tag": "0003_thankful_maestro",
+      "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "7",
+      "when": 1789934829455,
+      "tag": "0004_square_tempest",
+      "breakpoints": true
     }
   ]
 }

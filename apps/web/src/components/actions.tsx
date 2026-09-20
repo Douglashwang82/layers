@@ -21,6 +21,7 @@ export function DetailActions({
   state,
   t,
   full = false,
+  unavailable = false,
 }: {
   kind: Kind;
   id: string;
@@ -33,6 +34,7 @@ export function DetailActions({
   };
   t: Copy;
   full?: boolean;
+  unavailable?: boolean;
 }) {
   const router = useRouter();
   const pathname = usePathname();
@@ -76,11 +78,17 @@ export function DetailActions({
         {kind === "events" && (
           <button
             className={`button ${state.going ? "active" : ""}`}
-            disabled={busy || (full && !state.going)}
+            disabled={busy || ((full || unavailable) && !state.going)}
             onClick={() => perform("rsvp", state.going ? "DELETE" : "POST")}
           >
             <Check size={15} />
-            {state.going ? t.cancelRsvp : full ? t.full : t.rsvp}
+            {state.going
+              ? t.cancelRsvp
+              : unavailable
+                ? "Unavailable / 暫停報名"
+                : full
+                  ? t.full
+                  : t.rsvp}
           </button>
         )}
         {kind === "organizations" && (

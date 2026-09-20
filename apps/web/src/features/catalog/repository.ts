@@ -36,6 +36,7 @@ export type Content = {
   organizerName?: string;
   startTime?: string;
   endTime?: string;
+  eventStatus?: "scheduled" | "postponed" | "cancelled";
   capacity?: number;
   venue?: string;
   hours?: string;
@@ -51,6 +52,7 @@ export type Content = {
   facebook?: string;
   verificationStatus: string;
   lastVerifiedAt?: string;
+  sourceLinks?: { label: string; url: string }[];
 };
 function camel(row: Record<string, unknown>) {
   return Object.fromEntries(
@@ -108,6 +110,7 @@ export async function listContent(kind: Kind, input: ListInput) {
     where.push(`p.neighborhood=${bind(input.neighborhood)}`);
   if (kind === "events") {
     where.push("p.end_time > now()");
+    where.push("p.event_status='scheduled'");
     if (input.organization)
       where.push(`p.organizer_id=${bind(input.organization)}`);
     const zone = `(SELECT timezone FROM city WHERE id=p.city_id)`;
@@ -161,7 +164,13 @@ export async function getContent(
   );
   if (!result.rows[0])
     throw new AppError(404, "NOT_FOUND", "This item is unavailable.");
-  return content(result.rows[0]);
+  const item = content(result.rows[0]);
+  const sources = await pool.query<{ label: string; url: string }>(
+    "SELECT COALESCE(NULLIF(s.attribution,''),s.name) AS label,r.source_url AS url FROM entity_source es JOIN source_record r ON r.id=es.source_record_id JOIN content_source s ON s.id=r.source_id WHERE es.kind=$1 AND es.entity_id=$2 ORDER BY s.name LIMIT 20",
+    [kind, item.id],
+  );
+  item.sourceLinks = sources.rows;
+  return item;
 }
 export async function getSightings(productId?: string, city = "houston") {
   return (
@@ -275,7 +284,7 @@ export async function getHomeFeed(city: string, userId?: string) {
   const followedOrganizationEvents = userId
     ? (
         await pool.query<Record<string, unknown>>(
-          `SELECT e.* FROM event e JOIN organization_follow f ON f.organization_id=e.organizer_id JOIN city c ON c.id=e.city_id WHERE f.user_id=$1 AND c.slug=$2 AND e.status='approved' AND e.end_time>now() ORDER BY e.start_time LIMIT 6`,
+          `SELECT e.* FROM event e JOIN organization_follow f ON f.organization_id=e.organizer_id JOIN city c ON c.id=e.city_id WHERE f.user_id=$1 AND c.slug=$2 AND e.status='approved' AND e.event_status='scheduled' AND e.end_time>now() ORDER BY e.start_time LIMIT 6`,
           [userId, city],
         )
       ).rows.map(content)

@@ -92,4 +92,5 @@ Target Vercel plus Neon PostgreSQL with PostGIS enabled; any compatible PostgreS
 - [HTTP API](docs/api.md)
 - [Deployment and launch checklist](docs/deployment.md)
 - [Future roadmap](docs/future-roadmap.md)
+- [Daily content collection and source onboarding](docs/daily-content-ingestion.md)
 - [Implementation checkpoints](docs/checkpoints.md)

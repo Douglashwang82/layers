@@ -179,6 +179,11 @@ export const event = pgTable(
     endTime: timestamp("end_time", { withTimezone: true }).notNull(),
     capacity: integer("capacity"),
     externalUrl: text("external_url"),
+    eventStatus: text("event_status", {
+      enum: ["scheduled", "postponed", "cancelled"],
+    })
+      .default("scheduled")
+      .notNull(),
     featured: boolean("featured").default(false).notNull(),
     submittedBy: uuid("submitted_by").references(() => user.id),
   },
@@ -363,3 +368,103 @@ export const authRateLimit = pgTable("auth_rate_limit", {
   count: integer("count").notNull(),
   lastRequest: doublePrecision("last_request").notNull(),
 });
+// Collection evidence is separate from public catalog and community submissions.
+export const contentSource = pgTable("content_source", {
+  id: id(),
+  name: text("name").notNull(),
+  url: text("url").unique().notNull(),
+  owner: text("owner"),
+  permissionNote: text("permission_note"),
+  attribution: text("attribution"),
+  kind: text("kind", {
+    enum: ["places", "events", "products", "organizations"],
+  }).notNull(),
+  cityId: uuid("city_id").references(() => city.id),
+  enabled: boolean("enabled").default(false).notNull(),
+  allowAutoUpdate: boolean("allow_auto_update").default(false).notNull(),
+  intervalHours: integer("interval_hours").default(24).notNull(),
+  lastAttemptAt: timestamp("last_attempt_at", { withTimezone: true }),
+  lastSuccessAt: timestamp("last_success_at", { withTimezone: true }),
+  consecutiveFailures: integer("consecutive_failures").default(0).notNull(),
+  ...timestamps(),
+});
+export const ingestionRun = pgTable("ingestion_run", {
+  id: id(),
+  startedAt: timestamp("started_at", { withTimezone: true })
+    .defaultNow()
+    .notNull(),
+  finishedAt: timestamp("finished_at", { withTimezone: true }),
+  status: text("status").default("running").notNull(),
+  summary: jsonb("summary")
+    .$type<Record<string, unknown>>()
+    .default({})
+    .notNull(),
+});
+export const sourceRecord = pgTable(
+  "source_record",
+  {
+    id: id(),
+    sourceId: uuid("source_id")
+      .notNull()
+      .references(() => contentSource.id),
+    externalId: text("external_id").notNull(),
+    sourceUrl: text("source_url").notNull(),
+    contentHash: text("content_hash").notNull(),
+    lastSeenAt: timestamp("last_seen_at", { withTimezone: true })
+      .defaultNow()
+      .notNull(),
+    entityId: uuid("entity_id"),
+    ...timestamps(),
+  },
+  (t) => [uniqueIndex("source_record_identity").on(t.sourceId, t.externalId)],
+);
+export const contentCandidate = pgTable("content_candidate", {
+  id: id(),
+  sourceRecordId: uuid("source_record_id")
+    .notNull()
+    .references(() => sourceRecord.id),
+  runId: uuid("run_id")
+    .notNull()
+    .references(() => ingestionRun.id),
+  kind: text("kind", {
+    enum: ["places", "events", "products", "organizations"],
+  }).notNull(),
+  status: text("status").default("needs_review").notNull(),
+  proposed: jsonb("proposed").$type<Record<string, unknown>>().notNull(),
+  baseUpdatedAt: timestamp("base_updated_at", { withTimezone: true }),
+  issues: jsonb("issues").$type<string[]>().default([]).notNull(),
+  decidedBy: uuid("decided_by").references(() => user.id),
+  decidedAt: timestamp("decided_at", { withTimezone: true }),
+  ...timestamps(),
+});
+export const entitySource = pgTable("entity_source", {
+  sourceRecordId: uuid("source_record_id")
+    .primaryKey()
+    .references(() => sourceRecord.id),
+  kind: text("kind").notNull(),
+  entityId: uuid("entity_id").notNull(),
+  ...timestamps(),
+});
+export const contentRevision = pgTable("content_revision", {
+  id: id(),
+  candidateId: uuid("candidate_id").references(() => contentCandidate.id),
+  kind: text("kind").notNull(),
+  entityId: uuid("entity_id").notNull(),
+  before: jsonb("before").$type<Record<string, unknown>>().notNull(),
+  after: jsonb("after").$type<Record<string, unknown>>().notNull(),
+  actorId: uuid("actor_id").references(() => user.id),
+  ...timestamps(),
+});
+export const contentFieldLock = pgTable(
+  "content_field_lock",
+  {
+    kind: text("kind").notNull(),
+    entityId: uuid("entity_id").notNull(),
+    field: text("field").notNull(),
+    actorId: uuid("actor_id")
+      .notNull()
+      .references(() => user.id),
+    ...timestamps(),
+  },
+  (t) => [primaryKey({ columns: [t.kind, t.entityId, t.field] })],
+);

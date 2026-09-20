@@ -5,7 +5,12 @@ import { currentActor } from "@/lib/session";
 import { getCopy } from "@/lib/i18n";
 import { isModerator, kinds, type Kind } from "@taiwanhub/shared";
 import { getContent, tables } from "@/features/catalog/repository";
-import { ModerateControls, EditContentForm } from "@/components/admin-controls";
+import {
+  ModerateControls,
+  EditContentForm,
+  IngestionControls,
+  RevisionControls,
+} from "@/components/admin-controls";
 export default async function Admin({
   params,
 }: {
@@ -18,6 +23,59 @@ export default async function Admin({
   const { section } = await params;
   const kind = section?.[0];
   const admin = actor.role === "ADMIN";
+  const ingestion =
+    kind === "ingestion"
+      ? await Promise.all(
+          (
+            await pool.query<{
+              id: string;
+              kind: string;
+              proposed: Record<string, unknown>;
+              issues: string[];
+              source_name: string;
+              source_url: string;
+              base_updated_at: Date | null;
+              entity_id: string | null;
+            }>(
+              `SELECT c.id,c.kind,c.proposed,c.issues,c.base_updated_at,r.entity_id,s.name AS source_name,r.source_url FROM content_candidate c JOIN source_record r ON r.id=c.source_record_id JOIN content_source s ON s.id=r.source_id WHERE c.status='needs_review' ORDER BY c.created_at LIMIT 100`,
+            )
+          ).rows.map(async (candidate) => ({
+            ...candidate,
+            current: candidate.entity_id
+              ? await getContent(
+                  candidate.kind as Kind,
+                  candidate.entity_id,
+                  true,
+                ).catch(() => null)
+              : null,
+          })),
+        )
+      : [];
+  const ingestionCount =
+    kind === "ingestion"
+      ? ingestion.length
+      : Number(
+          (
+            await pool.query<{ count: string }>(
+              "SELECT count(*) AS count FROM content_candidate WHERE status='needs_review'",
+            )
+          ).rows[0].count,
+        );
+  const revisions =
+    kind === "ingestion"
+      ? (
+          await pool.query<{
+            id: string;
+            kind: string;
+            entity_id: string;
+            before: Record<string, unknown>;
+            after: Record<string, unknown>;
+            created_at: Date;
+          }>(
+            "SELECT id,kind,entity_id,before,after,created_at FROM content_revision ORDER BY created_at DESC LIMIT 20",
+          )
+        ).rows
+      : [];
   const pending = (
     await pool.query<{
       id: string;
@@ -51,40 +109,121 @@ export default async function Admin({
         <Link href="/admin">
           {t.pendingQueue} ({pending.length})
         </Link>
+        <Link href="/admin/ingestion">
+          Collected content ({ingestionCount})
+        </Link>
         {kinds.map((k) => (
           <Link key={k} href={"/admin/" + k}>
             {t[k]}
           </Link>
         ))}
       </nav>
-      {items.length
-        ? items.map((item) => (
-            <article className="admin-item" key={item.id}>
-              <h3>{item.name}</h3>
-              <p>{item.description}</p>
-              <span className="status">{item.status}</span>
-              <EditContentForm {...{ item, t }} kind={kind!} />
-              <ModerateControls
-                entityType={kind!}
-                entityId={item.id}
-                {...{ t, admin }}
-              />
-            </article>
-          ))
-        : pending.map((s) => (
-            <article className="admin-item" key={s.id}>
-              <span className="eyebrow">{s.entity_type}</span>
-              <h3>{s.preview}</h3>
-              <p>{s.detail}</p>
-              <p>{s.reason ?? t.pending}</p>
-              <small>{s.entity_id}</small>
-              <ModerateControls
-                entityType={s.entity_type}
-                entityId={s.entity_id}
-                {...{ t, admin }}
+      {kind === "ingestion" ? (
+        <>
+          {ingestion.map((candidate) => (
+            <article className="admin-item" key={candidate.id}>
+              <span className="eyebrow">
+                {candidate.kind} · {candidate.source_name}
+              </span>
+              <h3>{String(candidate.proposed.name ?? "Unnamed candidate")}</h3>
+              <p>
+                <a
+                  href={candidate.source_url}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                >
+                  Source evidence
+                </a>
+              </p>
+              {candidate.base_updated_at && (
+                <p>Proposed update to an existing record</p>
+              )}
+              {candidate.issues.length > 0 && (
+                <p role="alert">{candidate.issues.join("; ")}</p>
+              )}
+              <div style={{ overflowX: "auto" }}>
+                <table>
+                  <thead>
+                    <tr>
+                      <th>Field</th>
+                      <th>Current</th>
+                      <th>Proposed</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {Object.entries(candidate.proposed).map(
+                      ([field, value]) => (
+                        <tr key={field}>
+                          <th>{field}</th>
+                          <td>
+                            {candidate.current
+                              ? String(
+                                  (
+                                    candidate.current as unknown as Record<
+                                      string,
+                                      unknown
+                                    >
+                                  )[field] ?? "",
+                                )
+                              : "—"}
+                          </td>
+                          <td>{String(value ?? "")}</td>
+                        </tr>
+                      ),
+                    )}
+                  </tbody>
+                </table>
+              </div>
+              <IngestionControls
+                id={candidate.id}
+                disabled={candidate.issues.length > 0}
               />
             </article>
           ))}
+          <h2>Recent changes</h2>
+          {revisions.map((revision) => (
+            <article className="admin-item" key={revision.id}>
+              <h3>{String(revision.after.name ?? revision.entity_id)}</h3>
+              <p>
+                {revision.kind} · {revision.created_at.toLocaleString()}
+              </p>
+              <small>{revision.entity_id}</small>
+              {admin && Boolean(revision.before.id) && (
+                <RevisionControls id={revision.id} />
+              )}
+            </article>
+          ))}
+        </>
+      ) : items.length ? (
+        items.map((item) => (
+          <article className="admin-item" key={item.id}>
+            <h3>{item.name}</h3>
+            <p>{item.description}</p>
+            <span className="status">{item.status}</span>
+            <EditContentForm {...{ item, t }} kind={kind!} />
+            <ModerateControls
+              entityType={kind!}
+              entityId={item.id}
+              {...{ t, admin }}
+            />
+          </article>
+        ))
+      ) : (
+        pending.map((s) => (
+          <article className="admin-item" key={s.id}>
+            <span className="eyebrow">{s.entity_type}</span>
+            <h3>{s.preview}</h3>
+            <p>{s.detail}</p>
+            <p>{s.reason ?? t.pending}</p>
+            <small>{s.entity_id}</small>
+            <ModerateControls
+              entityType={s.entity_type}
+              entityId={s.entity_id}
+              {...{ t, admin }}
+            />
+          </article>
+        ))
+      )}
     </div>
   );
 }

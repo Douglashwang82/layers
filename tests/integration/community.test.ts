@@ -34,6 +34,14 @@ beforeAll(async () => {
 afterAll(async () => {
   const ids = [member.id, other.id, admin.id];
   await pool.query(
+    "DELETE FROM content_field_lock WHERE actor_id=ANY($1::uuid[])",
+    [ids],
+  );
+  await pool.query(
+    "DELETE FROM content_revision WHERE actor_id=ANY($1::uuid[])",
+    [ids],
+  );
+  await pool.query(
     "DELETE FROM moderation_action WHERE actor_id=ANY($1::uuid[])",
     [ids],
   );

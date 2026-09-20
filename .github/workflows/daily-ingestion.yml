@@ -1,0 +1,30 @@
+name: Daily content collection
+on:
+  schedule:
+    - cron: "17 12 * * *"
+  workflow_dispatch:
+concurrency:
+  group: taiwanhub-content-ingestion
+  cancel-in-progress: false
+jobs:
+  collect:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    env:
+      DATABASE_URL: ${{ secrets.INGEST_DATABASE_URL }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10.15.0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - name: Collect approved sources
+        if: env.DATABASE_URL != ''
+        run: pnpm ingest run
+      - name: Require database configuration
+        if: env.DATABASE_URL == ''
+        run: exit 1
