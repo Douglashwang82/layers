@@ -109,6 +109,12 @@ export async function rsvp(actor: Actor | null, id: string, active: boolean) {
     }
     if (new Date(e.end_time as string) <= new Date())
       throw new AppError(409, "EVENT_ENDED", "This event has ended.");
+    if (e.event_status !== "scheduled")
+      throw new AppError(
+        409,
+        "EVENT_UNAVAILABLE",
+        "This event is not accepting RSVPs.",
+      );
     const existing = await tx.query(
       "SELECT 1 FROM event_rsvp WHERE event_id=$1 AND user_id=$2",
       [id, a.id],
@@ -392,6 +398,29 @@ export async function editContent(
       "INSERT INTO moderation_action(actor_id,entity_type,entity_id,action,reason) VALUES($1,$2,$3,'edit','Edited content fields')",
       [a.id, kind, id],
     );
+    const after = (
+      await tx.query<Record<string, unknown>>(
+        `SELECT * FROM ${tables[kind]} WHERE id=$1`,
+        [id],
+      )
+    ).rows[0];
+    await tx.query(
+      "INSERT INTO content_revision(kind,entity_id,before,after,actor_id) VALUES($1,$2,$3,$4,$5)",
+      [kind, id, JSON.stringify(current), JSON.stringify(after), a.id],
+    );
+    for (const field of [
+      "name",
+      "nameChinese",
+      "description",
+      "image",
+      "category",
+      ...extra.map(([key]) => key),
+    ]) {
+      await tx.query(
+        "INSERT INTO content_field_lock(kind,entity_id,field,actor_id) VALUES($1,$2,$3,$4) ON CONFLICT(kind,entity_id,field) DO UPDATE SET actor_id=$4,updated_at=now()",
+        [kind, id, field, a.id],
+      );
+    }
     return { id };
   });
 }

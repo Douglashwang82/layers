@@ -4,6 +4,78 @@ import { useRouter } from "next/navigation";
 import type { Copy } from "@/lib/i18n";
 import type { Content } from "@/features/catalog/repository";
 import { api } from "./actions";
+export function IngestionControls({
+  id,
+  disabled,
+}: {
+  id: string;
+  disabled: boolean;
+}) {
+  const router = useRouter();
+  const [message, setMessage] = useState("");
+  const [busy, setBusy] = useState(false);
+  async function decide(decision: "approve" | "reject") {
+    setBusy(true);
+    try {
+      await api(`admin/ingestion/${id}`, "POST", { decision });
+      router.refresh();
+      setMessage(decision === "approve" ? "Published" : "Rejected");
+    } catch (error) {
+      setMessage((error as Error).message);
+    } finally {
+      setBusy(false);
+    }
+  }
+  return (
+    <div>
+      <div className="actions">
+        <button
+          className="button small"
+          disabled={busy || disabled}
+          onClick={() => decide("approve")}
+        >
+          Approve and publish
+        </button>
+        <button
+          className="button secondary small"
+          disabled={busy}
+          onClick={() => decide("reject")}
+        >
+          Reject
+        </button>
+      </div>
+      <p role="status">{message}</p>
+    </div>
+  );
+}
+export function RevisionControls({ id }: { id: string }) {
+  const router = useRouter();
+  const [message, setMessage] = useState("");
+  const [busy, setBusy] = useState(false);
+  return (
+    <div>
+      <button
+        className="button secondary small"
+        disabled={busy}
+        onClick={async () => {
+          setBusy(true);
+          try {
+            await api(`admin/revisions/${id}`, "POST");
+            router.refresh();
+            setMessage("Reverted");
+          } catch (error) {
+            setMessage((error as Error).message);
+          } finally {
+            setBusy(false);
+          }
+        }}
+      >
+        Revert this update
+      </button>
+      <p role="status">{message}</p>
+    </div>
+  );
+}
 export function ModerateControls({
   entityType,
   entityId,

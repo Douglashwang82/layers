@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
-import { pool } from "@taiwanhub/database";
+import { pool, decideCandidate, revertRevision } from "@taiwanhub/database";
 import {
   AppError,
   kinds,
@@ -107,6 +107,38 @@ async function handler(
       if (raw.length > 16384)
         throw new AppError(413, "TOO_LARGE", "Request is too large.");
       const body: unknown = JSON.parse(raw);
+      if (
+        resource === "admin" &&
+        id === "ingestion" &&
+        action &&
+        method === "POST"
+      ) {
+        requireModerator(a);
+        z.uuid().parse(action);
+        const decision = z
+          .object({ decision: z.enum(["approve", "reject"]) })
+          .parse(body).decision;
+        try {
+          return ok(await decideCandidate(action, a.id, decision));
+        } catch (error) {
+          throw new AppError(409, "INGESTION_CONFLICT", String(error));
+        }
+      }
+      if (
+        resource === "admin" &&
+        id === "revisions" &&
+        action &&
+        method === "POST"
+      ) {
+        if (a.role !== "ADMIN")
+          throw new AppError(403, "FORBIDDEN", "Administrator required.");
+        z.uuid().parse(action);
+        try {
+          return ok(await revertRevision(action, a.id));
+        } catch (error) {
+          throw new AppError(409, "REVISION_CONFLICT", String(error));
+        }
+      }
       if (resource === "admin" && method === "POST")
         return ok(await moderate(a, body));
       if (

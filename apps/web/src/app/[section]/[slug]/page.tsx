@@ -96,12 +96,20 @@ export default async function DetailPage({ params }: Props) {
             {item.category} {item.neighborhood && ` / ${item.neighborhood}`}
           </span>
           <h1>{localized(item, locale)}</h1>
+          {kind === "events" && item.eventStatus !== "scheduled" && (
+            <div className="notice" role="status">
+              {item.eventStatus === "cancelled"
+                ? "This event has been cancelled. / 活動已取消。"
+                : "This event has been postponed. / 活動已延期。"}
+            </div>
+          )}
           {kind === "places" && <TaiwaneseScore item={item} t={t} />}
           <DetailActions
             {...{ kind, t, state }}
             id={item.id}
             authenticated={!!actor}
             full={item.capacity != null && item.attending >= item.capacity}
+            unavailable={kind === "events" && item.eventStatus !== "scheduled"}
           />
           <h2>
             {kind === "organizations"
@@ -190,6 +198,15 @@ export default async function DetailPage({ params }: Props) {
             {item.verificationStatus === "UNVERIFIED"
               ? t.unverified
               : item.verificationStatus}
+            {item.sourceLinks?.map((source) => (
+              <span key={source.url}>
+                {" "}
+                ·{" "}
+                <a href={source.url} target="_blank" rel="noopener noreferrer">
+                  {source.label}
+                </a>
+              </span>
+            ))}
           </div>
           <ReportButton kind={kind} id={item.id} t={t} />
         </div>

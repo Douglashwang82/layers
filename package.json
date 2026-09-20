@@ -16,7 +16,8 @@
     "db:generate": "drizzle-kit generate",
     "db:migrate": "tsx packages/database/src/migrate.ts",
     "db:seed": "tsx packages/database/src/seed.ts",
-    "admin:grant": "tsx packages/database/src/grant-admin.ts"
+    "admin:grant": "tsx packages/database/src/grant-admin.ts",
+    "ingest": "tsx packages/database/src/ingestion-cli.ts"
   },
   "dependencies": {
     "@aws-sdk/client-s3": "^3.1134.0",

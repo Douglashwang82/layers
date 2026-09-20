@@ -1,0 +1,1 @@
+ALTER TABLE "event" ADD COLUMN "event_status" text DEFAULT 'scheduled' NOT NULL;
