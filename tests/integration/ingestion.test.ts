@@ -12,6 +12,10 @@ const actor = crypto.randomUUID(),
   record = crypto.randomUUID(),
   candidate = crypto.randomUUID();
 const update = crypto.randomUUID();
+const demoSource = crypto.randomUUID(),
+  demoRecord = crypto.randomUUID(),
+  demoCandidate = crypto.randomUUID();
+let demoEntityId: string;
 const city = "00000000-0000-4000-8000-000000001001";
 const proposed = {
   name: "Integration Organization",
@@ -39,8 +43,37 @@ beforeAll(async () => {
     "INSERT INTO content_candidate(id,source_record_id,run_id,kind,proposed) VALUES($1,$2,$3,'organizations',$4)",
     [candidate, record, run, JSON.stringify(proposed)],
   );
+  await pool.query(
+    "INSERT INTO content_source(id,name,url,kind,city_id,enabled,is_demo) VALUES($1,'Demo source',$2,'organizations',$3,false,true)",
+    [demoSource, `https://example.org/${demoSource}.json`, city],
+  );
+  await pool.query(
+    "INSERT INTO source_record(id,source_id,external_id,source_url,content_hash) VALUES($1,$2,'demo-group',$3,'demo-hash')",
+    [demoRecord, demoSource, "https://example.org/demo-group"],
+  );
+  await pool.query(
+    "INSERT INTO content_candidate(id,source_record_id,run_id,kind,proposed) VALUES($1,$2,$3,'organizations',$4)",
+    [
+      demoCandidate,
+      demoRecord,
+      run,
+      JSON.stringify({ ...proposed, name: "Demo Integration Organization" }),
+    ],
+  );
 });
 afterAll(async () => {
+  await pool.query("DELETE FROM entity_source WHERE source_record_id=$1", [
+    demoRecord,
+  ]);
+  await pool.query("DELETE FROM content_revision WHERE entity_id=$1", [
+    demoEntityId,
+  ]);
+  await pool.query("DELETE FROM content_candidate WHERE source_record_id=$1", [
+    demoRecord,
+  ]);
+  await pool.query("DELETE FROM source_record WHERE id=$1", [demoRecord]);
+  await pool.query("DELETE FROM content_source WHERE id=$1", [demoSource]);
+  await pool.query("DELETE FROM organization WHERE id=$1", [demoEntityId]);
   await pool.query("DELETE FROM content_field_lock WHERE entity_id=$1", [
     entityId,
   ]);
@@ -90,6 +123,20 @@ describe("ingestion publishing", () => {
     await expect(decideCandidate(candidate, actor, "approve")).rejects.toThrow(
       "no longer available",
     );
+  });
+  it("marks a listing from a demo source as demo", async () => {
+    demoEntityId = (
+      (await decideCandidate(demoCandidate, actor, "approve")) as {
+        entityId: string;
+      }
+    ).entityId;
+    expect(
+      (
+        await pool.query("SELECT is_demo FROM organization WHERE id=$1", [
+          demoEntityId,
+        ])
+      ).rows[0].is_demo,
+    ).toBe(true);
   });
   it("blocks a moderator-locked field", async () => {
     const base = (

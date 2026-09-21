@@ -7,7 +7,7 @@ No third-party source is pre-enabled. An operator must verify permission to stor
 ## Deploy
 
 1. Apply `pnpm db:migrate` using the normal release migration account. Do not run `db:seed` in production.
-2. In the repository's GitHub Actions secrets, set `INGEST_DATABASE_URL` to a TLS PostgreSQL connection with access to the ingestion and catalog tables. Keep migration credentials separate.
+2. In the repository's GitHub Actions secrets, set `INGEST_DATABASE_URL` to a TLS PostgreSQL connection with access to the ingestion and catalog tables. Keep migration credentials separate. Remote connections verify the server certificate against the Supabase root CA inlined in `packages/database/src/supabase-ca.ts`; on another provider, set `DATABASE_CA_CERT` to its CA in PEM form. Only `localhost` and `127.0.0.1` connect without TLS.
 3. Approve and add at least one source, then run `pnpm ingest run --dry-run` with a local or staging database connection. This checks feed access and validation without writing content.
 4. Enable the source, run `pnpm ingest run SOURCE_ID` against staging, inspect `/admin/ingestion`, approve a sample record, and verify its public page.
 5. Deploy the web app and migration, enable the source in production, and run the GitHub workflow manually once. The workflow is also scheduled at 12:17 UTC daily. GitHub schedule is best effort; use a managed scheduler if a precise publishing deadline becomes necessary.
@@ -27,10 +27,11 @@ pnpm ingest enable-source SOURCE_ID
 pnpm ingest interval SOURCE_ID 24
 pnpm ingest run SOURCE_ID
 pnpm ingest auto-update SOURCE_ID on
+pnpm ingest demo-source SOURCE_ID on
 pnpm ingest disable-source SOURCE_ID
 ```
 
-`add-source` creates a disabled source. Use `global` as the city slug only for products. Review the feed, its owner's terms, reuse rights, image rights, and attribution before enabling it. Enable `auto-update` only after a supervised pilot. Even then, only changes to Chinese name, descriptions, aliases, website, phone, hours, online URL, Instagram, and Facebook can publish automatically. New records, event times and cancellations, addresses, coordinates, and conflicting or invalid records go to review.
+`add-source` creates a disabled source. Pass `--demo` (or set `demo-source ID on`) when a source carries illustrative rather than real content: its listings publish with `is_demo` set, so the interface labels them as demo and they never match or overwrite real records. `pnpm db:sync-demo-flags` reports rows whose demo status has drifted from their source and repairs them with `--apply`. Use `global` as the city slug only for products. Review the feed, its owner's terms, reuse rights, image rights, and attribution before enabling it. Enable `auto-update` only after a supervised pilot. Even then, only changes to Chinese name, descriptions, aliases, website, phone, hours, online URL, Instagram, and Facebook can publish automatically. New records, event times and cancellations, addresses, coordinates, and conflicting or invalid records go to review.
 
 The admin interface at `/admin/ingestion` lists up to 100 pending proposals and their evidence URLs. It shows recent revisions. Moderators can approve or reject proposals; administrators can revert a previous update if the record has not since changed. Use the existing moderation controls to hide an incorrect new listing. Manual catalog edits lock the fields they change against future imports.
 
@@ -77,6 +78,17 @@ Required fields by source type:
 | Products      | `name`, `description`, `image`, `category`, `brand`                                            |
 
 Use only the place and event categories supported by the product. Product feeds describe products and optional online URLs; they do not produce store sightings. A feed adapter can map a permitted API, RSS calendar, or owner export into this contract. The adapter should preserve source IDs and evidence URLs; the ingestion worker does not interpret free-form webpages with AI.
+
+### AI extraction adapter
+
+`pnpm agent:run SLUG SOURCE-URL organizations "Label"` is an optional adapter that runs _outside_ the worker: it fetches one page, has a model extract only facts stated on that page, validates them against this contract, and stores the result in `generated_feed` for `/api/feeds/SLUG` to serve. The worker still sees nothing but ordinary JSON, and every record it produces goes to moderator review.
+
+It is a pilot, not finished infrastructure. Current limits:
+
+- **Organizations only.** Places, events, and products need their own field extraction and validation before the adapter can serve them.
+- **One item per page.** It does not follow links or paginate.
+- **Not a permission check.** A model reading a page says nothing about the right to store or republish it. Review the owner's terms and record `source-policy` exactly as with a hand-built feed.
+- **The only wired source is a fictional fixture** (`/fixtures/demo-houston-org.html`) registered as a demo source, kept so the scheduled workflow exercises the path end to end. Connect real, permitted source URLs before treating daily output as real content.
 
 ## How publishing works
 

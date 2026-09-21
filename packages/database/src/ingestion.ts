@@ -287,6 +287,7 @@ type Source = {
   kind: IngestionKind;
   city_id: string | null;
   allow_auto_update: boolean;
+  is_demo: boolean;
 };
 type Match = { id: string; updated_at: Date } | "ambiguous" | null;
 async function fetchSource(source: Source) {
@@ -328,29 +329,29 @@ async function transaction<T>(fn: (tx: PoolClient) => Promise<T>) {
 
 async function matchExisting(
   tx: PoolClient,
-  source: Pick<Source, "kind" | "city_id">,
+  source: Pick<Source, "kind" | "city_id" | "is_demo">,
   fields: Record<string, string | number>,
 ): Promise<Match> {
   if (!fields.name) return null;
   const table = tables[source.kind];
   if (source.kind === "places" && fields.address && source.city_id) {
     const r = await tx.query<{ id: string; updated_at: Date }>(
-      `SELECT id,updated_at FROM ${table} WHERE city_id=$1 AND lower(name)=lower($2) AND lower(address)=lower($3) AND is_demo=false AND status NOT IN ('hidden','deleted','rejected') LIMIT 2`,
-      [source.city_id, fields.name, fields.address],
+      `SELECT id,updated_at FROM ${table} WHERE city_id=$1 AND lower(name)=lower($2) AND lower(address)=lower($3) AND is_demo=$4 AND status NOT IN ('hidden','deleted','rejected') LIMIT 2`,
+      [source.city_id, fields.name, fields.address, source.is_demo],
     );
     return r.rowCount === 1 ? r.rows[0] : r.rowCount ? "ambiguous" : null;
   }
   if (source.kind === "organizations" && source.city_id && fields.website) {
     const r = await tx.query<{ id: string; updated_at: Date }>(
-      `SELECT id,updated_at FROM ${table} WHERE city_id=$1 AND website=$2 AND is_demo=false AND status NOT IN ('hidden','deleted','rejected') LIMIT 2`,
-      [source.city_id, fields.website],
+      `SELECT id,updated_at FROM ${table} WHERE city_id=$1 AND website=$2 AND is_demo=$3 AND status NOT IN ('hidden','deleted','rejected') LIMIT 2`,
+      [source.city_id, fields.website, source.is_demo],
     );
     return r.rowCount === 1 ? r.rows[0] : r.rowCount ? "ambiguous" : null;
   }
   if (source.kind === "products" && fields.brand) {
     const r = await tx.query<{ id: string; updated_at: Date }>(
-      `SELECT id,updated_at FROM ${table} WHERE lower(name)=lower($1) AND lower(brand)=lower($2) AND is_demo=false AND status NOT IN ('hidden','deleted','rejected') LIMIT 2`,
-      [fields.name, fields.brand],
+      `SELECT id,updated_at FROM ${table} WHERE lower(name)=lower($1) AND lower(brand)=lower($2) AND is_demo=$3 AND status NOT IN ('hidden','deleted','rejected') LIMIT 2`,
+      [fields.name, fields.brand, source.is_demo],
     );
     return r.rowCount === 1 ? r.rows[0] : r.rowCount ? "ambiguous" : null;
   }
@@ -361,8 +362,8 @@ async function matchExisting(
     fields.startTime
   ) {
     const r = await tx.query<{ id: string; updated_at: Date }>(
-      `SELECT id,updated_at FROM ${table} WHERE city_id=$1 AND external_url=$2 AND start_time=$3 AND is_demo=false AND status NOT IN ('hidden','deleted','rejected') LIMIT 2`,
-      [source.city_id, fields.externalUrl, fields.startTime],
+      `SELECT id,updated_at FROM ${table} WHERE city_id=$1 AND external_url=$2 AND start_time=$3 AND is_demo=$4 AND status NOT IN ('hidden','deleted','rejected') LIMIT 2`,
+      [source.city_id, fields.externalUrl, fields.startTime, source.is_demo],
     );
     return r.rowCount === 1 ? r.rows[0] : r.rowCount ? "ambiguous" : null;
   }
@@ -398,8 +399,8 @@ async function collectOne(
   let entity = record?.entity_id
     ? (
         await tx.query<{ id: string; updated_at: Date }>(
-          `SELECT id,updated_at FROM ${tables[source.kind]} WHERE id=$1 AND is_demo=false AND status NOT IN ('hidden','deleted','rejected')`,
-          [record.entity_id],
+          `SELECT id,updated_at FROM ${tables[source.kind]} WHERE id=$1 AND is_demo=$2 AND status NOT IN ('hidden','deleted','rejected')`,
+          [record.entity_id, source.is_demo],
         )
       ).rows[0]
     : null;
@@ -481,7 +482,7 @@ export async function runCollection(
   if (options.dryRun) {
     const sources = (
       await pool.query<Source>(
-        "SELECT id,name,url,kind,city_id,allow_auto_update FROM content_source WHERE ($1::uuid IS NULL AND enabled=true) OR id=$1 ORDER BY id",
+        "SELECT id,name,url,kind,city_id,allow_auto_update,is_demo FROM content_source WHERE ($1::uuid IS NULL AND enabled=true) OR id=$1 ORDER BY id",
         [options.sourceId ?? null],
       )
     ).rows;
@@ -523,7 +524,7 @@ export async function runCollection(
     await pool.query("INSERT INTO ingestion_run(id) VALUES($1)", [runId]);
     const sources = (
       await pool.query<Source>(
-        `SELECT id,name,url,kind,city_id,allow_auto_update FROM content_source WHERE enabled=true AND ($1::uuid IS NULL OR id=$1) AND ($1::uuid IS NOT NULL OR last_attempt_at IS NULL OR last_attempt_at < now()-interval_hours * interval '1 hour') ORDER BY CASE kind WHEN 'organizations' THEN 0 WHEN 'events' THEN 1 WHEN 'places' THEN 2 ELSE 3 END, id`,
+        `SELECT id,name,url,kind,city_id,allow_auto_update,is_demo FROM content_source WHERE enabled=true AND ($1::uuid IS NULL OR id=$1) AND ($1::uuid IS NOT NULL OR last_attempt_at IS NULL OR last_attempt_at < now()-interval_hours * interval '1 hour') ORDER BY CASE kind WHEN 'organizations' THEN 0 WHEN 'events' THEN 1 WHEN 'places' THEN 2 ELSE 3 END, id`,
         [options.sourceId ?? null],
       )
     ).rows;
@@ -618,8 +619,9 @@ export async function publishCandidate(
       entity_id: string | null;
       city_id: string | null;
       source_url: string;
+      source_is_demo: boolean;
     }>(
-      `SELECT c.*,r.entity_id,s.city_id,r.source_url FROM content_candidate c JOIN source_record r ON r.id=c.source_record_id JOIN content_source s ON s.id=r.source_id WHERE c.id=$1 FOR UPDATE OF c`,
+      `SELECT c.*,r.entity_id,s.city_id,r.source_url,s.is_demo AS source_is_demo FROM content_candidate c JOIN source_record r ON r.id=c.source_record_id JOIN content_source s ON s.id=r.source_id WHERE c.id=$1 FOR UPDATE OF c`,
       [id],
     )
   ).rows[0];
@@ -641,7 +643,7 @@ export async function publishCandidate(
   if (
     entityId &&
     (!before ||
-      before.is_demo ||
+      Boolean(before.is_demo) !== candidate.source_is_demo ||
       ["hidden", "deleted", "rejected"].includes(String(before.status)))
   )
     throw new Error("Linked content is unavailable.");
@@ -677,7 +679,11 @@ export async function publishCandidate(
     if (
       await matchExisting(
         tx,
-        { kind: candidate.kind, city_id: candidate.city_id },
+        {
+          kind: candidate.kind,
+          city_id: candidate.city_id,
+          is_demo: candidate.source_is_demo,
+        },
         fields,
       )
     )
@@ -693,6 +699,7 @@ export async function publishCandidate(
       slug: safeSlug(String(fields.name), entityId),
       source: candidate.source_url,
       status: "approved",
+      is_demo: candidate.source_is_demo,
     };
     for (const key of ["name_chinese", "description_chinese", "aliases"])
       values[key] ??= "";

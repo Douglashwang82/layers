@@ -381,6 +381,7 @@ export const contentSource = pgTable("content_source", {
   }).notNull(),
   cityId: uuid("city_id").references(() => city.id),
   enabled: boolean("enabled").default(false).notNull(),
+  isDemo: boolean("is_demo").default(false).notNull(),
   allowAutoUpdate: boolean("allow_auto_update").default(false).notNull(),
   intervalHours: integer("interval_hours").default(24).notNull(),
   lastAttemptAt: timestamp("last_attempt_at", { withTimezone: true }),

@@ -16,8 +16,10 @@
     "db:generate": "drizzle-kit generate",
     "db:migrate": "tsx packages/database/src/migrate.ts",
     "db:seed": "tsx packages/database/src/seed.ts",
+    "db:seed:reference": "tsx packages/database/src/seed-reference.ts",
     "admin:grant": "tsx packages/database/src/grant-admin.ts",
     "ingest": "tsx packages/database/src/ingestion-cli.ts",
+    "db:sync-demo-flags": "tsx packages/database/src/sync-demo-flags.ts",
     "agent:run": "tsx packages/database/src/feed-agent.ts"
   },
   "dependencies": {

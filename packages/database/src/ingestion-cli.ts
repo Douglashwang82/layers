@@ -19,7 +19,7 @@ async function main() {
     console.table(
       (
         await pool.query(
-          "SELECT id,name,kind,url,owner,permission_note,attribution,enabled,allow_auto_update,interval_hours,last_success_at,consecutive_failures FROM content_source ORDER BY name",
+          "SELECT id,name,kind,url,owner,permission_note,attribution,enabled,is_demo,allow_auto_update,interval_hours,last_success_at,consecutive_failures FROM content_source ORDER BY name",
         )
       ).rows,
     );
@@ -43,7 +43,10 @@ async function main() {
     return;
   }
   if (command === "add-source") {
-    const [kindRaw, citySlug, urlRaw, ...nameParts] = args;
+    const demo = args.includes("--demo");
+    const [kindRaw, citySlug, urlRaw, ...nameParts] = args.filter(
+      (a) => a !== "--demo",
+    );
     const kind = z.enum(ingestionKinds).parse(kindRaw);
     const url = (
       await validateSourceUrl(z.url({ protocol: /^https$/ }).parse(urlRaw))
@@ -64,12 +67,23 @@ async function main() {
     if (kind !== "products" && !city)
       throw new Error("A local content source needs a city.");
     const result = await pool.query<{ id: string }>(
-      "INSERT INTO content_source(name,url,kind,city_id) VALUES($1,$2,$3,$4) RETURNING id",
-      [name, url, kind, city],
+      "INSERT INTO content_source(name,url,kind,city_id,is_demo) VALUES($1,$2,$3,$4,$5) RETURNING id",
+      [name, url, kind, city, demo],
     );
     console.log(
-      `Added disabled source ${result.rows[0].id}. Review its permission and feed before enabling.`,
+      `Added disabled${demo ? " demo" : ""} source ${result.rows[0].id}. Review its permission and feed before enabling.`,
     );
+    return;
+  }
+  if (command === "demo-source") {
+    const id = z.uuid().parse(args[0]);
+    const value = z.enum(["on", "off"]).parse(args[1]) === "on";
+    const result = await pool.query(
+      "UPDATE content_source SET is_demo=$1,updated_at=now() WHERE id=$2",
+      [value, id],
+    );
+    if (!result.rowCount) throw new Error("Source not found.");
+    console.log(`Set is_demo=${value} for ${id}.`);
     return;
   }
   if (command === "enable-source" || command === "disable-source") {
@@ -113,7 +127,7 @@ async function main() {
     return;
   }
   throw new Error(
-    "Usage: pnpm ingest <run [source-id] [--dry-run] | sources | add-source KIND CITY-SLUG HTTPS-URL NAME | source-policy ID OWNER NOTE [ATTRIBUTION] | enable-source ID | disable-source ID | auto-update ID on|off | interval ID HOURS>",
+    "Usage: pnpm ingest <run [source-id] [--dry-run] | sources | add-source KIND CITY-SLUG HTTPS-URL NAME [--demo] | source-policy ID OWNER NOTE [ATTRIBUTION] | enable-source ID | disable-source ID | demo-source ID on|off | auto-update ID on|off | interval ID HOURS>",
   );
 }
 main()

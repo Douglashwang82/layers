@@ -12,9 +12,12 @@ export async function GET(
     .where(eq(schema.generatedFeed.slug, slug))
     .limit(1);
   if (!row)
-    return NextResponse.json({ error: { message: "Unknown feed." } }, {
-      status: 404,
-    });
+    return NextResponse.json(
+      { error: { message: "Unknown feed." } },
+      {
+        status: 404,
+      },
+    );
   return NextResponse.json(row.payload, {
     headers: { "Content-Type": "application/json; charset=utf-8" },
   });
