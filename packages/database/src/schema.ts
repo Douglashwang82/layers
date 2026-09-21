@@ -468,3 +468,12 @@ export const contentFieldLock = pgTable(
   },
   (t) => [primaryKey({ columns: [t.kind, t.entityId, t.field] })],
 );
+export const generatedFeed = pgTable("generated_feed", {
+  slug: text("slug").primaryKey(),
+  kind: text("kind", {
+    enum: ["places", "events", "products", "organizations"],
+  }).notNull(),
+  sourceLabel: text("source_label").notNull(),
+  payload: jsonb("payload").$type<Record<string, unknown>>().notNull(),
+  ...timestamps(),
+});

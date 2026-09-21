@@ -12,6 +12,7 @@ jobs:
     timeout-minutes: 25
     env:
       DATABASE_URL: ${{ secrets.INGEST_DATABASE_URL }}
+      ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
     steps:
       - uses: actions/checkout@v4
       - uses: pnpm/action-setup@v4
@@ -22,6 +23,9 @@ jobs:
           node-version: 22
           cache: pnpm
       - run: pnpm install --frozen-lockfile
+      - name: Refresh AI-generated demo feed
+        if: env.DATABASE_URL != '' && env.ANTHROPIC_API_KEY != ''
+        run: pnpm agent:run demo-houston-organizations https://taiwanhub-web.vercel.app/fixtures/demo-houston-org.html organizations "Demo pipeline test (placeholder org)"
       - name: Collect approved sources
         if: env.DATABASE_URL != ''
         run: pnpm ingest run

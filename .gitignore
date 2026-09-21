@@ -7,3 +7,7 @@ coverage/
 playwright-report/
 test-results/
 apps/web/public/uploads/
+
+.vercel
+.env*
+supabase/.temp

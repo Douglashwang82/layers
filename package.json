@@ -17,9 +17,11 @@
     "db:migrate": "tsx packages/database/src/migrate.ts",
     "db:seed": "tsx packages/database/src/seed.ts",
     "admin:grant": "tsx packages/database/src/grant-admin.ts",
-    "ingest": "tsx packages/database/src/ingestion-cli.ts"
+    "ingest": "tsx packages/database/src/ingestion-cli.ts",
+    "agent:run": "tsx packages/database/src/feed-agent.ts"
   },
   "dependencies": {
+    "@anthropic-ai/sdk": "^0.127.0",
     "@aws-sdk/client-s3": "^3.1134.0",
     "@hookform/resolvers": "^5.2.2",
     "@taiwanhub/database": "workspace:*",
