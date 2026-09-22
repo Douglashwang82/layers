@@ -86,7 +86,7 @@ export default async function Admin({
       preview: string;
       detail: string;
     }>(
-      `SELECT s.*,COALESCE(p.name,e.name,n.body,pr.name,'Community content') AS preview,COALESCE(p.description,e.description,n.body,concat_ws(' · ',store.name,ps.observed_at::text,ps.price::text)) AS detail FROM submission s LEFT JOIN place p ON s.entity_type='places' AND p.id=s.entity_id LEFT JOIN event e ON s.entity_type='events' AND e.id=s.entity_id LEFT JOIN place_note n ON s.entity_type='notes' AND n.id=s.entity_id LEFT JOIN product_sighting ps ON s.entity_type='sightings' AND ps.id=s.entity_id LEFT JOIN product pr ON pr.id=ps.product_id LEFT JOIN place store ON store.id=ps.place_id WHERE s.status='pending' ORDER BY s.created_at LIMIT 100`,
+      `SELECT s.*,COALESCE(p.name,e.name,n.body,pr.name,cp.title,ly.title,'Community content') AS preview,COALESCE(p.description,e.description,n.body,concat_ws(' · ',store.name,ps.observed_at::text,ps.price::text),cp.body,concat_ws(' · ',ly.description,ly.audience,ly.review_status)) AS detail FROM submission s LEFT JOIN place p ON s.entity_type='places' AND p.id=s.entity_id LEFT JOIN event e ON s.entity_type='events' AND e.id=s.entity_id LEFT JOIN place_note n ON s.entity_type='notes' AND n.id=s.entity_id LEFT JOIN product_sighting ps ON s.entity_type='sightings' AND ps.id=s.entity_id LEFT JOIN product pr ON pr.id=ps.product_id LEFT JOIN place store ON store.id=ps.place_id LEFT JOIN content_post cp ON s.entity_type='content' AND cp.id=s.entity_id LEFT JOIN layer ly ON s.entity_type='layers' AND ly.id=s.entity_id WHERE s.status='pending' ORDER BY s.created_at LIMIT 100`,
     )
   ).rows;
   const items =

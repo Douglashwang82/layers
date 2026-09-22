@@ -17,6 +17,8 @@ const typeKey: Record<string, keyof Copy> = {
   notes: "notesLabel",
   sightings: "sightingsLabel",
   recommendations: "recommendationsLabel",
+  content: "contentLabel",
+  layers: "layerWord",
 };
 export default async function Contributions() {
   const actor = await currentActor();

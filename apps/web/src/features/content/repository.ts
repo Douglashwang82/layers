@@ -128,3 +128,11 @@ export async function listContentPosts(input: {
   );
   return result.rows.map((r) => contentPost(r));
 }
+/** Saved content for the Saved page; a separate persistence path from catalog saves. */
+export async function listSavedContent(userId: string) {
+  const result = await pool.query<Record<string, unknown>>(
+    `${select} JOIN saved_content sc ON sc.content_id=c.id AND sc.user_id=$1 WHERE c.status='approved' ORDER BY sc.created_at DESC LIMIT 100`,
+    [userId],
+  );
+  return result.rows.map((r) => contentPost(r, true));
+}

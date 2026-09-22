@@ -95,6 +95,15 @@ export async function getCities() {
     )
   ).rows;
 }
+/** Approved names for pickers; the catalog list is paginated and unsuitable for selects. */
+export async function listNames(kind: "places" | "events", city: string) {
+  return (
+    await pool.query<{ id: string; name: string }>(
+      `SELECT p.id,p.name FROM ${tables[kind]} p JOIN city c ON c.id=p.city_id WHERE p.status='approved' AND c.slug=$1 ${kind === "events" ? "AND p.end_time > now()" : ""} ORDER BY p.name LIMIT 300`,
+      [city],
+    )
+  ).rows;
+}
 export async function listContent(kind: Kind, input: ListInput) {
   const values: unknown[] = [];
   const bind = (v: unknown) => {

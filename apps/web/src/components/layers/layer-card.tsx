@@ -1,11 +1,7 @@
 import Link from "next/link";
 import type { LayerWithAccess } from "@/features/layers/repository";
 import { type Copy, type Locale, format, dateLabel } from "@/lib/dictionary";
-import {
-  layerTitle,
-  ownerLabel,
-  scheduleLabel,
-} from "@/lib/layer-labels";
+import { layerTitle, ownerLabel, scheduleLabel } from "@/lib/layer-labels";
 import { ApplyLayerButton } from "./layer-actions";
 export function audienceLabel(layer: LayerWithAccess["layer"], t: Copy) {
   if (layer.ownerKind === "system") return t.audiencePublic;

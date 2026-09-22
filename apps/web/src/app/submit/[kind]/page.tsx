@@ -1,9 +1,15 @@
 import { notFound, redirect } from "next/navigation";
 import { getCopy } from "@/lib/i18n";
 import { currentActor } from "@/lib/session";
-import { getCities, listContent } from "@/features/catalog/repository";
+import {
+  getCities,
+  listContent,
+  listNames,
+} from "@/features/catalog/repository";
 import { listInput } from "@taiwanhub/shared";
 import { SubmissionForm } from "@/components/submission-form";
+import { ContentForm } from "@/components/content/content-form";
+import { getActiveCity } from "@/lib/city";
 import { flags } from "@/lib/config";
 export default async function SubmitPage({
   params,
@@ -14,9 +20,10 @@ export default async function SubmitPage({
 }) {
   const { kind } = await params;
   if (
-    !["place", "event", "product-sighting"].includes(kind) ||
+    !["place", "event", "product-sighting", "content"].includes(kind) ||
     !flags.submissions ||
-    (kind === "product-sighting" && !flags.products)
+    (kind === "product-sighting" && !flags.products) ||
+    (kind === "content" && !flags.content)
   )
     notFound();
   const query = await searchParams;
@@ -29,6 +36,23 @@ export default async function SubmitPage({
             (query.product ? "?product=" + query.product : ""),
         ),
     );
+  if (kind === "content") {
+    const [t, { city }] = await Promise.all([getCopy(), getActiveCity()]);
+    const [places, events] = await Promise.all([
+      listNames("places", city.slug),
+      listNames("events", city.slug),
+    ]);
+    return (
+      <div className="container">
+        <div className="form-panel">
+          <span className="eyebrow">{t.submissions}</span>
+          <h1>{t.shareTip}</h1>
+          <p>{t.contentIntro}</p>
+          <ContentForm t={t} city={city} places={places} events={events} />
+        </div>
+      </div>
+    );
+  }
   const [t, cities, orgs, products, stores] = await Promise.all([
     getCopy(),
     getCities(),

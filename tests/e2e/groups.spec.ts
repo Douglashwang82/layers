@@ -12,6 +12,23 @@ async function createAccount(page: Page, name: string, email: string) {
   await page
     .getByRole("button", { name: "Create account", exact: true })
     .click();
+  // Better Auth allows three sign-ups per 10 seconds per IP; this spec creates several.
+  const limited = page
+    .getByRole("alert", { name: "" })
+    .filter({ hasText: "Too many requests" });
+  await Promise.race([
+    page.waitForURL("/", { timeout: 15000 }).catch(() => {}),
+    limited
+      .first()
+      .waitFor({ timeout: 15000 })
+      .catch(() => {}),
+  ]);
+  if (await limited.count()) {
+    await page.waitForTimeout(11000);
+    await page
+      .getByRole("button", { name: "Create account", exact: true })
+      .click();
+  }
   await expect(page).toHaveURL("/");
 }
 test("group creation, email-bound invitation, restricted layer and revocation", async ({

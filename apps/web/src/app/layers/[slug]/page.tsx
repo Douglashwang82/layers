@@ -15,11 +15,7 @@ import {
   ShareLayerButton,
 } from "@/components/layers/layer-actions";
 import { LayerContentsList } from "@/components/layers/layer-contents";
-import {
-  layerTitle,
-  ownerLabel,
-  scheduleLabel,
-} from "@/lib/layer-labels";
+import { layerTitle, ownerLabel, scheduleLabel } from "@/lib/layer-labels";
 import { trackEvent } from "@/lib/analytics";
 type Props = { params: Promise<{ slug: string }> };
 export async function generateMetadata({ params }: Props): Promise<Metadata> {

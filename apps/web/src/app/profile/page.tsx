@@ -39,6 +39,12 @@ export default async function Profile() {
           <Link className="settings-row" href="/saved">
             {t.saved} <span aria-hidden="true">→</span>
           </Link>
+          <Link className="settings-row" href="/layers?tab=mine">
+            {t.layers} <span aria-hidden="true">→</span>
+          </Link>
+          <Link className="settings-row" href="/layers?tab=groups">
+            {t.groups} <span aria-hidden="true">→</span>
+          </Link>
           <Link className="settings-row" href="/profile/contributions">
             {t.contributions} <span aria-hidden="true">→</span>
           </Link>
@@ -50,6 +56,11 @@ export default async function Profile() {
               <Link className="settings-row" href="/submit/event">
                 {t.submitEvent} <span aria-hidden="true">→</span>
               </Link>
+              {flags.content && (
+                <Link className="settings-row" href="/submit/content">
+                  {t.shareTip} <span aria-hidden="true">→</span>
+                </Link>
+              )}
             </>
           )}
           {isModerator(actor.role) && (

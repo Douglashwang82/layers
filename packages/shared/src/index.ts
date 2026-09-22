@@ -581,6 +581,55 @@ export const layerItemInput = z.object({
   key: z.string().regex(itemKeyPattern),
   note: z.string().trim().max(300).default(""),
 });
+const httpsUrl = z.union([z.literal(""), z.url({ protocol: /^https?$/ })]);
+/**
+ * General content v1: short text, optional image, optional source link and an
+ * optional linked place/event. The location status is explicit; a point is
+ * only accepted for an exact location without a linked place.
+ */
+export const contentInput = z
+  .object({
+    title: plainText(120),
+    titleChinese: z.string().trim().max(120).default(""),
+    body: plainText(2000),
+    image: z.preprocess(optionalString, imageUrl.optional()),
+    sourceUrl: httpsUrl.default(""),
+    placeId: z.preprocess(optionalString, z.uuid().optional()),
+    eventId: z.preprocess(optionalString, z.uuid().optional()),
+    locationStatus: z.enum(locationStatuses).default("unspecified"),
+    neighborhood: z.string().trim().max(80).default(""),
+    latitude: z.preprocess(
+      optionalString,
+      z.coerce.number().min(-90).max(90).optional(),
+    ),
+    longitude: z.preprocess(
+      optionalString,
+      z.coerce.number().min(-180).max(180).optional(),
+    ),
+    validFrom: z.preprocess(optionalString, z.iso.datetime().optional()),
+    validUntil: z.preprocess(optionalString, z.iso.datetime().optional()),
+    city: z.string().regex(slugPattern),
+  })
+  .refine(
+    (v) => !(v.placeId && v.eventId),
+    "Link a place or an event, not both.",
+  )
+  .refine(
+    (v) =>
+      v.locationStatus !== "exact" ||
+      v.placeId ||
+      v.eventId ||
+      (v.latitude != null && v.longitude != null),
+    "An exact location needs a linked place, event or coordinates.",
+  )
+  .refine(
+    (v) =>
+      !v.validFrom ||
+      !v.validUntil ||
+      new Date(v.validUntil) > new Date(v.validFrom),
+    "The validity window must end after it starts.",
+  );
+export type ContentInput = z.infer<typeof contentInput>;
 export const groupInput = z.object({
   name: plainText(80),
   nameChinese: z.string().trim().max(80).default(""),

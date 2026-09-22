@@ -34,6 +34,11 @@ import {
   publishLayer,
 } from "@/features/layers/service";
 import {
+  getContentPost,
+  listContentPosts,
+} from "@/features/content/repository";
+import { createContent, saveContent } from "@/features/content/service";
+import {
   getGroup,
   listInvites,
   listMembers,
@@ -127,6 +132,18 @@ async function handler(
           city,
           String(query.q ?? "").slice(0, 100),
         ),
+      );
+    }
+    if (method === "GET" && resource === "content") {
+      if (!flags.content)
+        throw new AppError(404, "DISABLED", "Feature unavailable.");
+      if (id) return ok(await getContentPost(id, actor));
+      const { city } = await getActiveCity(query.city);
+      return ok(
+        await listContentPosts({
+          city: city.slug,
+          q: String(query.q ?? "").slice(0, 100),
+        }),
       );
     }
     if (method === "GET" && resource === "groups") {
@@ -289,6 +306,16 @@ async function handler(
           [v.name, v.bio, v.preferredLanguage, v.homeCityId, a.id],
         );
         return ok({ updated: true });
+      }
+      if (resource === "content") {
+        if (!id && method === "POST")
+          return ok(await createContent(a, body), 201);
+        if (
+          id &&
+          action === "save" &&
+          (method === "POST" || method === "DELETE")
+        )
+          return ok(await saveContent(a, id, method === "POST"));
       }
       if (resource === "groups") {
         if (!id && method === "POST")

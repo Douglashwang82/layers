@@ -1012,3 +1012,21 @@
   font-size: 13px;
   padding: 8px 0;
 }
+/* Content */
+.content-body {
+  white-space: pre-line;
+  font-size: 17px;
+  line-height: 1.6;
+}
+.radio-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 40px;
+  font-size: 15px;
+}
+.radio-row input {
+  width: 20px;
+  height: 20px;
+  accent-color: var(--th-brand-text);
+}
