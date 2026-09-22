@@ -1,0 +1,254 @@
+/* TaiwanHub bright UI reference, 2026-09-21.
+ * DOCUMENTATION ASSET: not imported by the running app.
+ * Integrate tokens and component rules into existing owning stylesheets.
+ * The optional html[data-ui="bright"] scope supports a controlled migration.
+ * Do not copy the recipes without auditing pages.css/responsive.css overrides.
+ */
+html[data-ui="bright"] {
+  color-scheme: light;
+  --th-canvas: #f7fcf8;
+  --th-surface: #ffffff;
+  --th-surface-soft: #eff8f1;
+  --th-text: #14261f;
+  --th-muted: #53665c;
+  --th-primary: #c7f464;
+  --th-primary-hover: #b8e653;
+  --th-primary-pressed: #aad744;
+  --th-mint: #27d8a1;
+  --th-coral: #ff846b;
+  --th-sun: #ffd76a;
+  --th-brand-text: #006a51;
+  --th-divider: #dde9e0;
+  --th-control-border: #7b8f83;
+  --th-focus: #2855d9;
+  --th-success: #116b40;
+  --th-success-bg: #e7f8ed;
+  --th-warning: #805600;
+  --th-warning-bg: #fff5d6;
+  --th-error: #b4233a;
+  --th-error-bg: #fff0f2;
+  --th-font:
+    system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang TC",
+    "Microsoft JhengHei", sans-serif;
+  --th-space-1: 4px;
+  --th-space-2: 8px;
+  --th-space-3: 12px;
+  --th-space-4: 16px;
+  --th-space-6: 24px;
+  --th-space-8: 32px;
+  --th-space-12: 48px;
+  --th-space-16: 64px;
+  --th-radius-input: 10px;
+  --th-radius-card: 14px;
+  --th-radius-sheet: 20px;
+  --th-radius-pill: 999px;
+  --th-control-height: 48px;
+  --th-bottom-nav-height: 72px;
+  --th-page-width: 1280px;
+  --th-fast: 120ms;
+  --th-normal: 180ms;
+  --th-overlay: 240ms;
+  --th-ease: cubic-bezier(0.2, 0.8, 0.2, 1);
+
+  /* Transitional aliases. Old coral/jade are also used for text;
+     bright fills must get explicit dark foregrounds component-by-component. */
+  --ink: var(--th-text);
+  --muted: var(--th-muted);
+  --paper: var(--th-canvas);
+  --line: var(--th-divider);
+  --coral: var(--th-brand-text);
+  --jade: var(--th-brand-text);
+}
+
+html[data-ui="bright"] body {
+  background: var(--th-canvas);
+  color: var(--th-text);
+  font-family: var(--th-font);
+  font-size: 1rem;
+  line-height: 1.5;
+}
+
+html[data-ui="bright"] :is(button, a, input, select, textarea):focus-visible {
+  outline: 2px solid var(--th-focus);
+  outline-offset: 3px;
+}
+
+html[data-ui="bright"] .hero-search:focus-within {
+  outline: 2px solid var(--th-focus);
+  outline-offset: 3px;
+}
+
+html[data-ui="bright"] .button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  min-height: var(--th-control-height);
+  padding: 12px 24px;
+  border: 1px solid transparent;
+  border-radius: var(--th-radius-pill);
+  background: var(--th-primary);
+  color: var(--th-text);
+  font: 600 0.9375rem/1.4 var(--th-font);
+  text-align: center;
+  text-decoration: none;
+  transition:
+    background-color var(--th-fast) var(--th-ease),
+    border-color var(--th-fast) var(--th-ease);
+}
+
+html[data-ui="bright"] .button:hover:not(:disabled) {
+  background: var(--th-primary-hover);
+}
+
+html[data-ui="bright"] .button:active:not(:disabled) {
+  background: var(--th-primary-pressed);
+}
+
+/* Existing .dark is an explicit neutral emphasis, not a jade token shortcut. */
+html[data-ui="bright"] .button.dark {
+  background: var(--th-text);
+  color: var(--th-surface);
+}
+
+html[data-ui="bright"] .button.dark:hover:not(:disabled) {
+  background: #294438;
+}
+
+html[data-ui="bright"] .button.secondary {
+  background: var(--th-surface);
+  color: var(--th-text);
+  border-color: var(--th-control-border);
+}
+
+html[data-ui="bright"] .button.secondary:hover:not(:disabled) {
+  background: var(--th-surface-soft);
+}
+
+html[data-ui="bright"] .button.active {
+  background: var(--th-success-bg);
+  color: var(--th-success);
+  border-color: var(--th-success);
+}
+
+html[data-ui="bright"] .button.active:hover:not(:disabled) {
+  background: #d8f0e2;
+}
+
+html[data-ui="bright"] .button:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
+html[data-ui="bright"] .button[aria-busy="true"] {
+  cursor: progress;
+}
+
+/* Pair every field with a visible label, description and associated error ID. */
+html[data-ui="bright"]
+  :is(.form-stack, .filters, .recommend-box)
+  :where(
+    input:not([type="checkbox"]):not([type="radio"]):not([type="file"]),
+    select,
+    textarea
+  ) {
+  min-height: var(--th-control-height);
+  padding: 12px 14px;
+  border: 1px solid var(--th-control-border);
+  border-radius: var(--th-radius-input);
+  background: var(--th-surface);
+  color: var(--th-text);
+  font-size: 1rem;
+  line-height: 1.5;
+}
+
+html[data-ui="bright"] :is(.form-stack, .filters) label {
+  color: var(--th-text);
+  font-size: 0.9375rem;
+  line-height: 1.5;
+}
+
+html[data-ui="bright"] [aria-invalid="true"] {
+  border-color: var(--th-error);
+}
+
+html[data-ui="bright"] .error-message {
+  color: var(--th-error);
+}
+
+html[data-ui="bright"] .card {
+  background: var(--th-surface);
+  border: 1px solid var(--th-divider);
+  border-radius: var(--th-radius-card);
+  box-shadow: none;
+}
+
+html[data-ui="bright"] .card-kicker,
+html[data-ui="bright"] .card-location,
+html[data-ui="bright"] .card-meta,
+html[data-ui="bright"] .score > span,
+html[data-ui="bright"] .score small {
+  font-size: 0.8125rem;
+  line-height: 1.5;
+}
+
+html[data-ui="bright"] .score > span {
+  color: var(--th-brand-text);
+}
+
+html[data-ui="bright"] .date-badge {
+  background: var(--th-sun);
+  color: var(--th-text);
+}
+
+html[data-ui="bright"] .recommend-box {
+  background: var(--th-surface-soft);
+}
+
+html[data-ui="bright"] .th-tabular {
+  font-variant-numeric: tabular-nums;
+}
+
+html[data-ui="bright"][lang="zh-TW"] :is(h1, h2, h3) {
+  letter-spacing: normal;
+  word-break: normal;
+}
+
+@media (max-width: 800px) {
+  html[data-ui="bright"] body {
+    padding-bottom: calc(
+      var(--th-bottom-nav-height) + env(safe-area-inset-bottom)
+    );
+  }
+
+  html[data-ui="bright"] .bottom-nav {
+    background: var(--th-surface);
+    min-height: calc(var(--th-bottom-nav-height) + env(safe-area-inset-bottom));
+    padding: 8px 4px calc(8px + env(safe-area-inset-bottom));
+  }
+
+  html[data-ui="bright"] .bottom-nav a {
+    flex: 1;
+    min-width: 0;
+    min-height: 48px;
+    justify-content: center;
+    border-radius: 12px;
+    color: var(--th-muted);
+    font-size: 0.75rem;
+    line-height: 1.35;
+  }
+
+  html[data-ui="bright"] .bottom-nav [aria-current="page"] {
+    background: var(--th-surface-soft);
+    color: var(--th-brand-text);
+    font-weight: 600;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  html[data-ui="bright"] {
+    --th-fast: 0ms;
+    --th-normal: 0ms;
+    --th-overlay: 0ms;
+  }
+}

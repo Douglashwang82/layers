@@ -1,0 +1,23 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="320" viewBox="0 0 1200 320" role="img" aria-labelledby="title desc">
+  <title id="title">TaiwanHub bright palette</title>
+  <desc id="desc">Light canvas with dark ink. Lime C7F464 for primary actions, mint 27D8A1 for community accents, coral FF846B for editorial accents, yellow FFD76A for discovery accents, and ink 14261F for readable text.</desc>
+  <rect width="1200" height="320" rx="20" fill="#F7FCF8"/>
+  <g font-family="Arial, sans-serif" fill="#14261F">
+    <text x="36" y="47" font-size="25" font-weight="600">TaiwanHub · A brighter direction</text>
+    <text x="36" y="77" font-size="20" fill="#53665C">Clear hierarchy. Light surfaces. Purposeful color.</text>
+    <rect x="36" y="108" width="216" height="126" rx="14" fill="#C7F464"/>
+    <rect x="264" y="108" width="216" height="126" rx="14" fill="#27D8A1"/>
+    <rect x="492" y="108" width="216" height="126" rx="14" fill="#FF846B"/>
+    <rect x="720" y="108" width="216" height="126" rx="14" fill="#FFD76A"/>
+    <rect x="948" y="108" width="216" height="126" rx="14" fill="#14261F"/>
+    <g font-size="23" font-weight="600">
+      <text x="54" y="155">Lime</text><text x="282" y="155">Mint</text><text x="510" y="155">Coral</text><text x="738" y="155">Sun</text><text x="966" y="155" fill="#FFFFFF">Ink</text>
+    </g>
+    <g font-size="20">
+      <text x="54" y="208">#C7F464</text><text x="282" y="208">#27D8A1</text><text x="510" y="208">#FF846B</text><text x="738" y="208">#FFD76A</text><text x="966" y="208" fill="#FFFFFF">#14261F</text>
+    </g>
+    <g font-size="20" fill="#53665C">
+      <text x="36" y="270">Primary action</text><text x="264" y="270">Community accent</text><text x="492" y="270">Editorial accent</text><text x="720" y="270">Discovery accent</text><text x="948" y="270">Text on bright fills</text>
+    </g>
+  </g>
+</svg>
