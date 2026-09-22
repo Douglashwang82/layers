@@ -1,7 +1,7 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import { Navigation } from "@/components/navigation";
-import { getCities } from "@/features/catalog/repository";
+import { getActiveCity } from "@/lib/city";
 import { getCopy, getLocale } from "@/lib/i18n";
 import { appUrl } from "@/lib/config";
 import "./globals.css";
@@ -24,30 +24,28 @@ export default async function RootLayout({
 }: {
   children: React.ReactNode;
 }) {
-  const [t, locale, cities] = await Promise.all([
+  const [t, locale, { cities, city }] = await Promise.all([
     getCopy(),
     getLocale(),
-    getCities(),
+    getActiveCity(),
   ]);
   return (
     <html lang={locale}>
       <body>
         <a className="skip-link" href="#main">
-          Skip to content
+          {t.skipLink}
         </a>
-        <Navigation {...{ t, locale, cities }} />
+        <Navigation {...{ t, locale, cities }} city={city.slug} />
         <main id="main">{children}</main>
         <footer>
           <Link className="brand" href="/">
-            Taiwan<span>Hub</span>・
+            Taiwan<span>Hub</span>
           </Link>
           <div>
             <p>{t.footer}</p>
             <small>{t.footerSmall}</small>
           </div>
-          <span>
-            Houston, Texas <span className="jade-dot" />
-          </span>
+          <span className="footer-city">{city.name}</span>
         </footer>
         <div className="demo-banner">{t.demo}</div>
       </body>
