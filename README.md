@@ -45,23 +45,24 @@ Seeds insert deterministic UUIDs and do not erase user data. Running again refre
 
 ## Features
 
-Guest browsing; accounts; English/繁體中文; Houston city selection; place and event filtering; bilingual unified search; place recommendation voting and moderated short notes; capacity-safe RSVP/cancellation; saves; organization follows; product sightings; place/event submissions; role-protected moderation with audit history; optional Mapbox; image upload abstraction; persisted analytics; public metadata and sitemap excluding demo listings.
+Map-first home with applied layers (system presets, personal and group collections, My saves projection), synchronized results/details and a full list fallback; layer library, creation, curation, follow and reviewed publication; groups with roles and email-bound invitations; local content with explicit location status; guest browsing; accounts; English/繁體中文; Houston city selection; place and event filtering; bilingual unified search; place recommendation voting and moderated short notes; capacity-safe RSVP/cancellation; saves; organization follows; product sightings; place/event submissions; role-protected moderation with audit history; optional Mapbox; image upload abstraction; persisted analytics; public metadata and sitemap excluding demo listings.
 
 ## Configuration
 
 See `.env.example` for the complete list.
 
-| Variable                                                           | Purpose                                                               |
-| ------------------------------------------------------------------ | --------------------------------------------------------------------- |
-| `DATABASE_URL`                                                     | PostgreSQL connection, PostGIS required                               |
-| `AUTH_SECRET`                                                      | Random secret, 32+ characters                                         |
-| `BETTER_AUTH_URL`, `NEXT_PUBLIC_APP_URL`                           | Exact public origin; localhost for development                        |
-| `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`                         | Optional Google OAuth; both required to enable                        |
-| `NEXT_PUBLIC_MAPBOX_TOKEN`                                         | Optional restricted public Mapbox token                               |
-| `IMAGE_STORAGE_PROVIDER`                                           | `local` for dev or `s3` for AWS S3/R2/S3-compatible storage           |
-| `IMAGE_STORAGE_*`                                                  | Bucket, public base URL, endpoint, region and server-only credentials |
-| `ANALYTICS_CONSOLE`                                                | Log event names/properties locally; DB events always persisted        |
-| `FEATURE_PRODUCTS`, `FEATURE_ORGANIZATIONS`, `FEATURE_SUBMISSIONS` | Set `false` to disable optional feature entry points                  |
+| Variable                                                           | Purpose                                                                                    |
+| ------------------------------------------------------------------ | ------------------------------------------------------------------------------------------ |
+| `DATABASE_URL`                                                     | PostgreSQL connection, PostGIS required                                                    |
+| `AUTH_SECRET`                                                      | Random secret, 32+ characters                                                              |
+| `BETTER_AUTH_URL`, `NEXT_PUBLIC_APP_URL`                           | Exact public origin; localhost for development                                             |
+| `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`                         | Optional Google OAuth; both required to enable                                             |
+| `NEXT_PUBLIC_MAPBOX_TOKEN`                                         | Optional restricted public Mapbox token                                                    |
+| `IMAGE_STORAGE_PROVIDER`                                           | `local` for dev or `s3` for AWS S3/R2/S3-compatible storage                                |
+| `IMAGE_STORAGE_*`                                                  | Bucket, public base URL, endpoint, region and server-only credentials                      |
+| `ANALYTICS_CONSOLE`                                                | Log event names/properties locally; DB events always persisted                             |
+| `FEATURE_PRODUCTS`, `FEATURE_ORGANIZATIONS`, `FEATURE_SUBMISSIONS` | Set `false` to disable optional feature entry points                                       |
+| `FEATURE_MAP_HOME`, `FEATURE_LAYER_WRITES`, `FEATURE_CONTENT`      | Map-first home (false restores the legacy entry screen), layer/group writes, local content |
 
 Mapbox/Google/S3 are optional for local startup. Missing Mapbox displays a clear fallback with external directions. Local uploads support JPEG, PNG and WebP up to 5 MB. Production must configure object storage to upload files; HTTPS image URLs can also be submitted. Untrusted image URLs are rendered directly, not fetched by the server image proxy.
 
@@ -88,6 +89,8 @@ Target Vercel plus Neon PostgreSQL with PostGIS enabled; any compatible PostgreS
 
 - [Product scope and assumptions](docs/product.md)
 - [Architecture and boundaries](docs/architecture.md)
+- [Bright UI/UX modernization guide](docs/ui-ux-modernization-guide.md)
+- [Map-first, layer-led UI/UX migration guide](docs/map-first-layer-experience-guide.md)
 - [Database and integrity](docs/database.md)
 - [HTTP API](docs/api.md)
 - [Deployment and launch checklist](docs/deployment.md)
