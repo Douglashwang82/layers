@@ -902,17 +902,16 @@
   .mapboxgl-ctrl-bottom-left {
     transition: bottom var(--th-normal) var(--th-ease);
   }
-  .sheet-half .map-controls,
-  .sheet-half .map-stage-body .mapboxgl-ctrl-bottom-right,
-  .sheet-half .map-stage-body .mapboxgl-ctrl-bottom-left {
-    bottom: calc(50% + 8px);
+  /* Controls and provider attribution clear the sheet at its measured height,
+     whatever mode it is in; a percentage guess leaves them covered. */
+  .view-map .map-controls,
+  .view-map .map-stage-body .mapboxgl-ctrl-bottom-right,
+  .view-map .map-stage-body .mapboxgl-ctrl-bottom-left {
+    bottom: calc(var(--th-sheet-height, 160px) + 8px);
   }
-  .sheet-peek .map-controls,
-  .sheet-peek .map-stage-body .mapboxgl-ctrl-bottom-right,
-  .sheet-peek .map-stage-body .mapboxgl-ctrl-bottom-left {
-    bottom: 156px;
-  }
-  .sheet-expanded .map-controls {
+  /* Expanded sheet: the map is a thin strip, so only attribution stays. */
+  .sheet-expanded .map-controls,
+  .sheet-expanded .map-stage-body .mapboxgl-ctrl-bottom-right {
     display: none;
   }
   .map-controls {

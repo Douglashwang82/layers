@@ -1,13 +1,13 @@
-import { test, expect } from "@playwright/test";
+import { test, expect, type Page } from "@playwright/test";
 const noodleHouse = "Little Taipei Noodle House";
-test("map home: default layer, selection with Back, filters, layer toggles and provider fallback", async ({
+/** Deterministic provider failure, whether or not a Mapbox token is configured. */
+async function blockMapProvider(page: Page) {
+  await page.route(/(\/\/|\.)mapbox\.com\//, (route) => route.abort());
+}
+test("map home: default layer, selection with Back, filters and layer toggles", async ({
   page,
 }) => {
   await page.goto("/");
-  // Without a provider token the list is the full experience.
-  await expect(
-    page.getByText("Map preview needs a Mapbox token"),
-  ).toBeVisible();
   await expect(page.getByRole("tab", { name: /Results/ })).toHaveAttribute(
     "aria-selected",
     "true",
@@ -211,4 +211,26 @@ test("sign-in return keeps the selected item; personal layer creation, add, appl
   await expect(
     page.getByRole("checkbox", { name: new RegExp(title) }),
   ).toBeChecked();
+});
+test("a failed map provider keeps results, selection and directions usable", async ({
+  page,
+}) => {
+  await blockMapProvider(page);
+  await page.goto("/?types=place");
+  // The workspace explains the failure and offers recovery, never a blank screen.
+  await expect(page.getByText("The map couldn’t load")).toBeVisible();
+  await expect(page.getByRole("button", { name: "Try again" })).toBeVisible();
+  // Every discovery and action flow still works from the semantic list.
+  const row = page.locator(".result-row", { hasText: noodleHouse });
+  await expect(row).toHaveCount(1);
+  await row.locator("a").first().click();
+  await expect(
+    page.getByRole("heading", { name: noodleHouse, level: 2 }),
+  ).toBeVisible();
+  await expect(
+    page.getByRole("link", { name: /Get directions/ }),
+  ).toHaveAttribute("href", /google\.com\/maps/);
+  await page.getByRole("button", { name: "List view" }).first().click();
+  await expect(page).toHaveURL(/view=list/);
+  await expect(page.locator(".result-row").first()).toBeVisible();
 });

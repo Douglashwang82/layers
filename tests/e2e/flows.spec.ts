@@ -120,6 +120,8 @@ test("route ownership, filter state, no-vote score, and map fallback", async ({
     }),
   ).toHaveAttribute("aria-current", "page");
   await page.setViewportSize({ width: 1440, height: 1000 });
+  // The catalog map falls back to the list when the provider is unavailable.
+  await page.route(/(\/\/|\.)mapbox\.com\//, (route) => route.abort());
   // Filter submission keeps city and view, resets the page, and Clear keeps both.
   await page.goto("/places?city=houston&view=map&page=2");
   await page.getByLabel("Category").selectOption("Bubble Tea");
