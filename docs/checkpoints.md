@@ -24,3 +24,15 @@ These are git-ready implementation boundaries in one initial repository creation
 - Local `.env` is ignored by Git. No cloud resources, remote repository or production deployment was created.
 
 External integrations remain unverified without credentials: Google OAuth, live Mapbox tiles and S3/R2 uploads. The local filesystem upload path is implemented; the public-beta mail delivery/verification/recovery configuration is documented but intentionally not configured without a provider.
+
+## Map-first layer migration — verified locally, September 22, 2026
+
+Implements [the map-first, layer-led guide](map-first-layer-experience-guide.md) in four product phases plus rollout switches:
+
+- [x] Phase 1: persistent map home with Discover/Today/This weekend/Food/Community system layers, mixed place/event pins with clustering, one query for pins, rows and counts, date/type/search/area controls, item preview with per-action pending state, URL restoration, full list fallback when the map provider is unavailable.
+- [x] Phase 2: personal layers (create, curate, reorder, archive, delete), Add to layer, follow, My saves projection, reviewed publication and audience-labelled share links, returning-user layer restore.
+- [x] Phase 3: groups with owner/editor/viewer roles, email-bound expiring invitations, restricted group layers, version-checked edits, revocation.
+- [x] Phase 4: local content with explicit location status, moderation, content saves, city-wide/online results without fabricated pins.
+- [x] Phase 5: `FEATURE_MAP_HOME`, `FEATURE_LAYER_WRITES`, `FEATURE_CONTENT` switches; legacy home retained; catalog routes keep a Map entry.
+
+Checks run: `pnpm lint`, `pnpm typecheck`, `pnpm test` (20), `pnpm test:integration` (28, real PostgreSQL), `pnpm test:e2e` (8 browser flows at 1440/768/375/320 px), `pnpm build`. Not verified: the Mapbox canvas in a real browser (no `NEXT_PUBLIC_MAPBOX_TOKEN` configured locally or in production); Google OAuth and object storage remain unverified as before.
