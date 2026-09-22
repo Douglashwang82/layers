@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { Photo as Image } from "@/components/photo";
 import { notFound } from "next/navigation";
+import { CalendarDays, Clock, MapPin, Users } from "lucide-react";
 import { AppError, kinds, listInput, type Kind } from "@taiwanhub/shared";
 import {
   getContent,
@@ -13,8 +14,12 @@ import {
 } from "@/features/catalog/repository";
 import { getCopy, getLocale, localized, dateLabel } from "@/lib/i18n";
 import { currentActor } from "@/lib/session";
-import { TaiwaneseScore, CardGrid } from "@/components/cards";
-import { DetailActions, ReportButton } from "@/components/actions";
+import { TaiwaneseScore, CardGrid, EmptyState } from "@/components/cards";
+import {
+  DetailActions,
+  ReportButton,
+  type EventState,
+} from "@/components/actions";
 import { MapView } from "@/components/map-view";
 import { flags } from "@/lib/config";
 import { trackEvent } from "@/lib/analytics";
@@ -49,6 +54,12 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
     ...(item.isDemo ? { robots: { index: false, follow: true } } : {}),
   };
 }
+const timeOf = (value: string, locale: string) =>
+  new Date(value).toLocaleTimeString(locale, {
+    hour: "numeric",
+    minute: "2-digit",
+    timeZone: "America/Chicago",
+  });
 export default async function DetailPage({ params }: Props) {
   const [{ kind, item }, t, locale, actor] = await Promise.all([
     load(params),
@@ -75,42 +86,146 @@ export default async function DetailPage({ params }: Props) {
       { entityId: item.id },
       actor?.id,
     );
+  const name = localized(item, locale);
+  const directions =
+    item.latitude != null && item.longitude != null
+      ? `https://www.google.com/maps/search/?api=1&query=${item.latitude},${item.longitude}`
+      : null;
+  // The server stays authoritative; this only drives labels and the disabled state.
+  const eventState: EventState =
+    kind !== "events"
+      ? "open"
+      : item.eventStatus === "cancelled"
+        ? "cancelled"
+        : item.eventStatus === "postponed"
+          ? "postponed"
+          : item.endTime && new Date(item.endTime) < new Date()
+            ? "ended"
+            : item.capacity != null && item.attending >= item.capacity
+              ? "full"
+              : "open";
+  const primary =
+    kind === "places" && directions ? (
+      <a className="button" target="_blank" rel="noreferrer" href={directions}>
+        <MapPin size={16} aria-hidden="true" />
+        {t.directions} ↗
+      </a>
+    ) : kind === "products" && flags.submissions ? (
+      <Link
+        className="button"
+        href={"/submit/product-sighting?product=" + item.id}
+      >
+        {t.found}
+      </Link>
+    ) : undefined;
   return (
     <div className="container">
-      <div className="breadcrumbs">
-        <Link href={"/" + kind}>← {t[kind]}</Link> / {localized(item, locale)}
-      </div>
-      <div className="detail-hero">
-        <Image
-          src={item.image}
-          alt={localized(item, locale)}
-          fill
-          priority
-          sizes="90vw"
-        />
-        {item.isDemo && <span className="demo-pill">{t.demoShort}</span>}
-      </div>
-      <div className="detail-layout">
-        <div className="detail-main">
-          <span className="eyebrow">
-            {item.category} {item.neighborhood && ` / ${item.neighborhood}`}
-          </span>
-          <h1>{localized(item, locale)}</h1>
-          {kind === "events" && item.eventStatus !== "scheduled" && (
-            <div className="notice" role="status">
-              {item.eventStatus === "cancelled"
-                ? "This event has been cancelled. / 活動已取消。"
-                : "This event has been postponed. / 活動已延期。"}
+      <nav className="breadcrumbs" aria-label={t.back}>
+        <Link href={"/" + kind}>← {t[kind]}</Link>
+      </nav>
+      <header className="detail-header">
+        <p className="eyebrow">
+          {item.category}
+          {item.neighborhood && ` · ${item.neighborhood}`}
+          {item.isDemo && ` · ${t.demoShort}`}
+        </p>
+        <h1>{name}</h1>
+        {kind === "places" && (
+          <>
+            <TaiwaneseScore item={item} t={t} presentation="detail" />
+            {(item.address || item.hours) && (
+              <dl className="key-facts">
+                {item.address && (
+                  <div>
+                    <dt>
+                      <MapPin size={16} aria-hidden="true" />
+                      {t.address}
+                    </dt>
+                    <dd>{item.address}</dd>
+                  </div>
+                )}
+                {item.hours && (
+                  <div>
+                    <dt>
+                      <Clock size={16} aria-hidden="true" />
+                      {t.hours}
+                    </dt>
+                    <dd>{item.hours}</dd>
+                  </div>
+                )}
+              </dl>
+            )}
+          </>
+        )}
+        {kind === "events" && item.startTime && (
+          <dl className="key-facts">
+            <div>
+              <dt>
+                <CalendarDays size={16} aria-hidden="true" />
+                {t.start}
+              </dt>
+              <dd>
+                {dateLabel(item.startTime, locale)} ·{" "}
+                {timeOf(item.startTime, locale)}
+              </dd>
+            </div>
+            {item.venue && (
+              <div>
+                <dt>
+                  <MapPin size={16} aria-hidden="true" />
+                  {t.venue}
+                </dt>
+                <dd>{item.venue}</dd>
+              </div>
+            )}
+            <div>
+              <dt>
+                <Users size={16} aria-hidden="true" />
+                {t.rsvp}
+              </dt>
+              <dd className="th-tabular">
+                {item.attending}
+                {item.capacity ? ` / ${item.capacity}` : ""} {t.attending}
+              </dd>
+            </div>
+          </dl>
+        )}
+        {kind === "products" && (
+          <p className="muted">
+            {item.brand}
+            {sightings[0] &&
+              ` · ${t.sightings}: ${sightings[0].place_name}, ${dateLabel(sightings[0].observed_at, locale)}`}
+          </p>
+        )}
+        {kind === "events" &&
+          eventState !== "open" &&
+          eventState !== "full" && (
+            <div className="notice notice-warning" role="status">
+              {eventState === "cancelled"
+                ? t.eventCancelled
+                : eventState === "postponed"
+                  ? t.eventPostponed
+                  : t.eventEnded}
             </div>
           )}
-          {kind === "places" && <TaiwaneseScore item={item} t={t} />}
-          <DetailActions
-            {...{ kind, t, state }}
-            id={item.id}
-            authenticated={!!actor}
-            full={item.capacity != null && item.attending >= item.capacity}
-            unavailable={kind === "events" && item.eventStatus !== "scheduled"}
-          />
+        <DetailActions
+          {...{ kind, t, state, eventState, primary }}
+          id={item.id}
+          authenticated={!!actor}
+        />
+      </header>
+      <figure className="detail-image">
+        <Image
+          src={item.image}
+          alt={name}
+          fill
+          priority
+          sizes="(max-width:1099px) 100vw, 1200px"
+        />
+        {item.isDemo && <span className="demo-pill">{t.demoShort}</span>}
+      </figure>
+      <div className="detail-layout">
+        <div className="detail-main">
           <h2>
             {kind === "organizations"
               ? t.orgProfile
@@ -123,19 +238,25 @@ export default async function DetailPage({ params }: Props) {
               ? item.descriptionChinese
               : item.description}
           </p>
-          {item.isDemo && <div className="notice">{t.demoDetail}</div>}
+          {item.isDemo && (
+            <div className="notice notice-warning">{t.demoDetail}</div>
+          )}
           {kind === "places" && (
             <>
               <h2>{t.recentRecommendations}</h2>
-              {recommendations.map((r) => (
-                <div className="note" key={r.id}>
-                  <p>
-                    {r.name} · {r.positive ? t.yes : t.no}
-                  </p>
-                  <small>{dateLabel(r.updated_at, locale)}</small>
-                  <ReportButton kind="recommendations" id={r.id} t={t} />
-                </div>
-              ))}
+              {recommendations.length ? (
+                recommendations.map((r) => (
+                  <div className="note" key={r.id}>
+                    <p>
+                      {r.name} · {r.positive ? t.yes : t.no}
+                    </p>
+                    <small>{dateLabel(r.updated_at, locale)}</small>
+                    <ReportButton kind="recommendations" id={r.id} t={t} />
+                  </div>
+                ))
+              ) : (
+                <p className="muted">{t.noVotes}</p>
+              )}
               <h2>{t.communityNotes}</h2>
               {notes.length ? (
                 notes.map((n) => (
@@ -148,10 +269,10 @@ export default async function DetailPage({ params }: Props) {
                   </div>
                 ))
               ) : (
-                <p className="muted">{t.noVotes}</p>
+                <p className="muted">{t.notesPending}</p>
               )}
-              <h2>{t.map}</h2>
-              <MapView items={[item]} t={t} />
+              <h2 id="map">{t.map}</h2>
+              <MapView items={[item]} {...{ t, locale }} />
             </>
           )}
           {kind === "products" && (
@@ -167,29 +288,30 @@ export default async function DetailPage({ params }: Props) {
                       </Link>
                       <p>
                         <small>
-                          {dateLabel(s.observed_at, locale)}{" "}
-                          {s.is_demo && `· ${t.demoShort}`}
+                          {dateLabel(s.observed_at, locale)}
+                          {s.is_demo && ` · ${t.demoShort}`}
                         </small>
                       </p>
                       <ReportButton kind="sightings" id={s.id} t={t} />
                     </div>
-                    <span>
+                    <span className="th-tabular">
                       {s.price != null ? `$${Number(s.price).toFixed(2)}` : ""}
                     </span>
                   </div>
                 ))
               ) : (
-                <p>{t.noSightings}</p>
+                <p className="muted">{t.noSightings}</p>
               )}
             </>
           )}
           {orgEvents && (
             <>
-              <h2>{t.upcoming}</h2>
+              <h2>{t.upcomingEvents}</h2>
               <CardGrid
                 items={orgEvents.items}
                 kind="events"
                 {...{ t, locale }}
+                empty={<EmptyState t={t} body={t.noEventsBody} />}
               />
             </>
           )}
@@ -210,134 +332,117 @@ export default async function DetailPage({ params }: Props) {
           </div>
           <ReportButton kind={kind} id={item.id} t={t} />
         </div>
-        <aside className="detail-sidebar">
-          <h3>{t.details}</h3>
+        <aside className="detail-rail" aria-labelledby="details-heading">
+          <h3 id="details-heading">{t.details}</h3>
           <dl>
             {item.address && (
-              <>
+              <div>
                 <dt>{t.address}</dt>
                 <dd>{item.address}</dd>
-              </>
+              </div>
             )}
             {item.hours && (
-              <>
+              <div>
                 <dt>{t.hours}</dt>
                 <dd>{item.hours}</dd>
-              </>
+              </div>
             )}
-            {item.startTime && (
+            {item.startTime && item.endTime && (
               <>
-                <dt>{t.start}</dt>
-                <dd>
-                  {dateLabel(item.startTime, locale)} ·{" "}
-                  {new Date(item.startTime).toLocaleTimeString(locale, {
-                    hour: "numeric",
-                    minute: "2-digit",
-                    timeZone: "America/Chicago",
-                  })}
-                </dd>
-                <dt>{t.end}</dt>
-                <dd>
-                  {dateLabel(item.endTime!, locale)} ·{" "}
-                  {new Date(item.endTime!).toLocaleTimeString(locale, {
-                    hour: "numeric",
-                    minute: "2-digit",
-                    timeZone: "America/Chicago",
-                  })}
-                </dd>
-                <dd className="fine-print">{t.timeNote}</dd>
-                <dt>{t.venue}</dt>
-                <dd>{item.venue}</dd>
-                <dt>{t.rsvp}</dt>
-                <dd>
-                  {item.attending}
-                  {item.capacity ? ` / ${item.capacity}` : ""} {t.attending}
-                </dd>
+                <div>
+                  <dt>{t.start}</dt>
+                  <dd>
+                    {dateLabel(item.startTime, locale)} ·{" "}
+                    {timeOf(item.startTime, locale)}
+                  </dd>
+                </div>
+                <div>
+                  <dt>{t.end}</dt>
+                  <dd>
+                    {dateLabel(item.endTime, locale)} ·{" "}
+                    {timeOf(item.endTime, locale)}
+                  </dd>
+                  <dd className="fine-print">{t.timeNote}</dd>
+                </div>
               </>
             )}
             {organizer && (
-              <>
+              <div>
                 <dt>{t.organizer}</dt>
                 <dd>
                   <Link href={"/organizations/" + organizer.slug}>
-                    {organizer.name} ↗
+                    {localized(organizer, locale)} ↗
                   </Link>
                 </dd>
-              </>
+              </div>
             )}
             {item.brand && (
-              <>
+              <div>
                 <dt>{t.brand}</dt>
                 <dd>{item.brand}</dd>
-              </>
+              </div>
             )}
             {item.phone && (
-              <>
+              <div>
                 <dt>{t.phone}</dt>
                 <dd>
                   <a href={"tel:" + item.phone}>{item.phone}</a>
                 </dd>
-              </>
+              </div>
             )}
           </dl>
-          {item.latitude && (
-            <a
-              className="button dark"
-              target="_blank"
-              rel="noreferrer"
-              href={`https://www.google.com/maps/search/?api=1&query=${item.latitude},${item.longitude}`}
-            >
-              {t.directions} ↗
-            </a>
-          )}
-          {item.website && (
-            <a
-              className="button secondary"
-              href={item.website}
-              target="_blank"
-              rel="noreferrer"
-            >
-              {t.website} ↗
-            </a>
-          )}
-          {kind === "products" && flags.submissions && (
-            <Link
-              className="button dark"
-              href={"/submit/product-sighting?product=" + item.id}
-            >
-              {t.found}
-            </Link>
-          )}
-          {item.instagram && (
-            <a
-              className="button secondary"
-              href={item.instagram}
-              target="_blank"
-              rel="noreferrer"
-            >
-              Instagram ↗
-            </a>
-          )}
-          {item.facebook && (
-            <a
-              className="button secondary"
-              href={item.facebook}
-              target="_blank"
-              rel="noreferrer"
-            >
-              Facebook ↗
-            </a>
-          )}
-          {item.onlineUrl && (
-            <a
-              className="button secondary"
-              href={item.onlineUrl}
-              target="_blank"
-              rel="noreferrer"
-            >
-              {t.online} ↗
-            </a>
-          )}
+          <div className="rail-actions">
+            {kind !== "places" && directions && (
+              <a
+                className="button secondary"
+                target="_blank"
+                rel="noreferrer"
+                href={directions}
+              >
+                {t.directions} ↗
+              </a>
+            )}
+            {item.website && (
+              <a
+                className="button secondary"
+                href={item.website}
+                target="_blank"
+                rel="noreferrer"
+              >
+                {t.website} ↗
+              </a>
+            )}
+            {item.instagram && (
+              <a
+                className="button secondary"
+                href={item.instagram}
+                target="_blank"
+                rel="noreferrer"
+              >
+                Instagram ↗
+              </a>
+            )}
+            {item.facebook && (
+              <a
+                className="button secondary"
+                href={item.facebook}
+                target="_blank"
+                rel="noreferrer"
+              >
+                Facebook ↗
+              </a>
+            )}
+            {item.onlineUrl && (
+              <a
+                className="button secondary"
+                href={item.onlineUrl}
+                target="_blank"
+                rel="noreferrer"
+              >
+                {t.online} ↗
+              </a>
+            )}
+          </div>
         </aside>
       </div>
     </div>
