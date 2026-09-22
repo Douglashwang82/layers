@@ -20,7 +20,7 @@ type Draft = {
   audience: "private" | "group";
   groupId: string;
 };
-function draftOf(layer?: LayerRecord): Draft {
+function draftOf(layer?: LayerRecord, groupId?: string): Draft {
   return {
     title: layer?.title ?? "",
     titleChinese: layer?.titleChinese ?? "",
@@ -31,8 +31,8 @@ function draftOf(layer?: LayerRecord): Draft {
         : "evergreen",
     startsOn: layer?.startsOn ?? "",
     endsOn: layer?.endsOn ?? "",
-    audience: layer?.audience === "group" ? "group" : "private",
-    groupId: layer?.ownerGroupId ?? "",
+    audience: layer?.audience === "group" || groupId ? "group" : "private",
+    groupId: layer?.ownerGroupId ?? groupId ?? "",
   };
 }
 /**
@@ -50,6 +50,7 @@ export function LayerEditor({
   locale,
   addKey,
   next,
+  groupId,
 }: {
   mode: "create" | "edit";
   layer?: LayerRecord;
@@ -60,9 +61,12 @@ export function LayerEditor({
   locale: Locale;
   addKey?: string;
   next?: string;
+  groupId?: string;
 }) {
   const router = useRouter();
-  const [draft, setDraft] = useState<Draft>(draftOf(layer));
+  const [draft, setDraft] = useState<Draft>(
+    draftOf(layer, groups.some((g) => g.id === groupId) ? groupId : undefined),
+  );
   const [dirty, setDirty] = useState(false);
   const [saving, setSaving] = useState(false);
   const [feedback, setFeedback] = useState<Feedback>(null);

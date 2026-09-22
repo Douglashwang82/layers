@@ -941,3 +941,74 @@
     display: none;
   }
 }
+/* Groups */
+.group-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 4px;
+}
+.group-list li {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  min-height: 48px;
+  padding: 8px 12px;
+  border: 1px solid var(--th-divider);
+  border-radius: var(--th-radius-card);
+  background: var(--th-surface);
+}
+.group-list a {
+  color: var(--th-brand-text);
+  font-weight: 600;
+}
+.group-members {
+  margin-top: var(--th-space-6);
+  max-width: none;
+}
+.group-members h3 {
+  margin-top: var(--th-space-4);
+}
+.member-list {
+  list-style: none;
+  margin: var(--th-space-3) 0;
+  padding: 0;
+  display: grid;
+  gap: 4px;
+}
+.member-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  flex-wrap: wrap;
+  padding: 8px 0;
+  border-bottom: 1px solid var(--th-divider);
+}
+.member-text {
+  display: grid;
+}
+.member-text small {
+  font-size: 13px;
+  color: var(--th-muted);
+}
+.member-actions {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
+.member-actions select {
+  min-height: 40px;
+  padding: 6px 10px;
+  border: 1px solid var(--th-control-border);
+  border-radius: var(--th-radius-input);
+  background: var(--th-surface);
+}
+.invite-url code {
+  display: block;
+  overflow-wrap: anywhere;
+  font-size: 13px;
+  padding: 8px 0;
+}

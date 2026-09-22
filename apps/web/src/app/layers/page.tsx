@@ -13,6 +13,8 @@ import {
 import { LayerCard } from "@/components/layers/layer-card";
 import { CreateLayerLink } from "@/components/layers/layer-actions";
 import { EmptyState } from "@/components/cards";
+import { listMyGroups } from "@/features/groups/repository";
+import { roleLabel } from "@/lib/layer-labels";
 export const metadata: Metadata = { title: "Layers" };
 const scopes: LibraryScope[] = ["discover", "following", "mine", "groups"];
 /** Discover is grouped by intent and finite; the other tabs are the user's own library. */
@@ -50,7 +52,10 @@ export default async function LayersPage({
     ? (query.tab as LibraryScope)
     : "discover";
   const q = (query.q ?? "").slice(0, 100);
-  const entries = await listLibrary(tab, actor, city, q);
+  const [entries, myGroups] = await Promise.all([
+    listLibrary(tab, actor, city, q),
+    tab === "groups" && actor ? listMyGroups(actor.id) : Promise.resolve([]),
+  ]);
   const labels: Record<LibraryScope, string> = {
     discover: t.libraryDiscover,
     following: t.libraryFollowing,
@@ -141,6 +146,44 @@ export default async function LayersPage({
             label: t.signIn,
           }}
         />
+      ) : tab === "groups" && actor ? (
+        <>
+          <section className="library-group" aria-labelledby="my-groups">
+            <div className="section-heading">
+              <div>
+                <h2 id="my-groups">{t.yourGroups}</h2>
+                <p>{t.groupIntro}</p>
+              </div>
+              {flags.layerWrites && (
+                <Link className="button secondary small" href="/groups/new">
+                  {t.createGroup}
+                </Link>
+              )}
+            </div>
+            {myGroups.length === 0 ? (
+              <p className="muted">{t.noGroups}</p>
+            ) : (
+              <ul className="group-list">
+                {myGroups.map((g) => (
+                  <li key={g.id}>
+                    <Link href={`/groups/${g.slug}`}>
+                      {locale === "zh-TW" && g.nameChinese
+                        ? g.nameChinese
+                        : g.name}
+                    </Link>
+                    <span className="layer-badge">{roleLabel(g.role, t)}</span>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </section>
+          {entries.length > 0 && (
+            <section className="library-group" aria-labelledby="group-layers">
+              <h2 id="group-layers">{t.groupLayers}</h2>
+              {cards(entries)}
+            </section>
+          )}
+        </>
       ) : entries.length === 0 ? (
         <EmptyState
           t={t}

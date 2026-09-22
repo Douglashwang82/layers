@@ -581,6 +581,19 @@ export const layerItemInput = z.object({
   key: z.string().regex(itemKeyPattern),
   note: z.string().trim().max(300).default(""),
 });
+export const groupInput = z.object({
+  name: plainText(80),
+  nameChinese: z.string().trim().max(80).default(""),
+  description: z.string().trim().max(500).default(""),
+  city: z.string().regex(slugPattern),
+});
+export const groupInviteInput = z.object({
+  email: z.email().max(254),
+  role: z.enum(["editor", "viewer"]).default("viewer"),
+});
+export const groupRoleInput = z.object({
+  role: z.enum(["owner", "editor", "viewer"]),
+});
 export const mapPreferenceInput = z.object({
   layers: z.array(z.string().regex(slugPattern)).max(maxAppliedLayers),
   view: z.enum(["map", "list"]).default("map"),

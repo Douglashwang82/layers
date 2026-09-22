@@ -37,3 +37,10 @@ export function ownerLabel(
   if (own) return t.ownerYou;
   return format(t.byOwner, { name: layer.ownerName });
 }
+export function roleLabel(role: "owner" | "editor" | "viewer", t: Copy) {
+  return role === "owner"
+    ? t.roleOwner
+    : role === "editor"
+      ? t.roleEditor
+      : t.roleViewer;
+}

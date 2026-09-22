@@ -34,6 +34,20 @@ import {
   publishLayer,
 } from "@/features/layers/service";
 import {
+  getGroup,
+  listInvites,
+  listMembers,
+  listMyGroups,
+} from "@/features/groups/repository";
+import {
+  acceptInvite,
+  createGroup,
+  inviteMember,
+  removeMember,
+  revokeInvite,
+  setMemberRole,
+} from "@/features/groups/service";
+import {
   getCities,
   getContent,
   listContent,
@@ -114,6 +128,28 @@ async function handler(
           String(query.q ?? "").slice(0, 100),
         ),
       );
+    }
+    if (method === "GET" && resource === "groups") {
+      if (!id) return ok(await listMyGroups(requireActor(actor).id));
+      const found = await getGroup(id, actor);
+      if (!found)
+        throw new AppError(404, "NOT_FOUND", "This group is unavailable.");
+      // Member lists and invitations never leave the group.
+      if (action === "members") {
+        if (!found.role)
+          throw new AppError(404, "NOT_FOUND", "This group is unavailable.");
+        return ok(await listMembers(found.group.id));
+      }
+      if (action === "invites") {
+        if (found.role !== "owner")
+          throw new AppError(
+            403,
+            "FORBIDDEN",
+            "Only a group owner can do this.",
+          );
+        return ok(await listInvites(found.group.id));
+      }
+      return ok(found);
     }
     if (method === "GET") {
       const input = listInput.parse(query);
@@ -254,6 +290,27 @@ async function handler(
         );
         return ok({ updated: true });
       }
+      if (resource === "groups") {
+        if (!id && method === "POST")
+          return ok(await createGroup(a, body), 201);
+        if (id && action === "invites" && method === "POST")
+          return ok(await inviteMember(a, id, body), 201);
+        if (id && action === "invites" && method === "DELETE")
+          return ok(await revokeInvite(a, id, String(query.invite ?? "")));
+        if (id && action === "members" && method === "PATCH")
+          return ok(
+            await setMemberRole(a, id, z.uuid().parse(query.user), body),
+          );
+        if (id && action === "members" && method === "DELETE")
+          return ok(await removeMember(a, id, z.uuid().parse(query.user)));
+      }
+      if (
+        resource === "invites" &&
+        id &&
+        action === "accept" &&
+        method === "POST"
+      )
+        return ok(await acceptInvite(a, id));
       if (resource === "map" && id === "preference" && method === "POST")
         return ok(await setMapPreference(a.id, mapPreferenceInput.parse(body)));
       if (resource === "layers") {

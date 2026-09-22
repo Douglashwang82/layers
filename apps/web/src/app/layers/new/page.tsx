@@ -13,7 +13,12 @@ export const metadata: Metadata = {
 export default async function NewLayerPage({
   searchParams,
 }: {
-  searchParams: Promise<{ add?: string; next?: string; city?: string }>;
+  searchParams: Promise<{
+    add?: string;
+    next?: string;
+    city?: string;
+    group?: string;
+  }>;
 }) {
   const [query, actor] = await Promise.all([searchParams, currentActor()]);
   if (!flags.layerWrites) redirect("/layers");
@@ -41,6 +46,7 @@ export default async function NewLayerPage({
         locale={locale}
         addKey={query.add}
         next={next}
+        groupId={query.group}
       />
     </div>
   );
