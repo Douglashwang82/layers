@@ -6,6 +6,8 @@ import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
 import type { Copy } from "@/lib/i18n";
+import { StatusMessage } from "./actions";
+import { Field, fieldProps } from "./ui/field";
 const client = createAuthClient();
 const input = z.object({
   email: z.email(),
@@ -36,6 +38,7 @@ export function AuthForm({
   return (
     <form
       className="form-stack"
+      noValidate
       onSubmit={handleSubmit(async (data) => {
         setMessage("");
         try {
@@ -58,39 +61,47 @@ export function AuthForm({
     >
       <h1>{signup ? t.signUp : t.signIn}</h1>
       {signup && (
-        <label>
-          {t.name}
-          <input autoComplete="name" {...register("name")} required />
-        </label>
+        <Field id="auth-name" label={t.name} error={errors.name?.message}>
+          <input
+            autoComplete="name"
+            {...register("name")}
+            {...fieldProps("auth-name", { error: errors.name?.message })}
+          />
+        </Field>
       )}
-      <label>
-        {t.email}
+      <Field id="auth-email" label={t.email} error={errors.email?.message}>
         <input
           type="email"
           autoComplete="email"
-          {...register("email")}
           required
+          {...register("email")}
+          {...fieldProps("auth-email", { error: errors.email?.message })}
         />
-      </label>
-      <label>
-        {t.password}
+      </Field>
+      <Field
+        id="auth-password"
+        label={t.password}
+        help={t.passwordHint}
+        error={errors.password?.message}
+      >
         <input
-          aria-label={t.password}
           type="password"
           autoComplete={signup ? "new-password" : "current-password"}
-          {...register("password")}
           required
           minLength={10}
+          {...register("password")}
+          {...fieldProps("auth-password", {
+            help: true,
+            error: errors.password?.message,
+          })}
         />
-        <small>{t.passwordHint}</small>
-      </label>
-      {Object.values(errors).map((e, i) => (
-        <p className="error-message" key={i}>
-          {e.message}
-        </p>
-      ))}
-      <button className="button" disabled={isSubmitting}>
-        {signup ? t.signUp : t.signIn}
+      </Field>
+      <button
+        className="button"
+        disabled={isSubmitting}
+        aria-busy={isSubmitting || undefined}
+      >
+        {isSubmitting ? t.submitting : signup ? t.signUp : t.signIn}
       </button>
       {google && (
         <button
@@ -106,9 +117,9 @@ export function AuthForm({
           {t.google}
         </button>
       )}
-      <p className="message error-message" role="alert">
-        {message}
-      </p>
+      <StatusMessage
+        feedback={message ? { tone: "error", text: message } : null}
+      />
       <p className="auth-links">
         {signup ? t.haveAccount : t.noAccount}{" "}
         <button
@@ -125,13 +136,22 @@ export function AuthForm({
 }
 export function SignOut({ label }: { label: string }) {
   const router = useRouter();
+  const [busy, setBusy] = useState(false);
   return (
     <button
+      type="button"
       className="button secondary"
+      disabled={busy}
+      aria-busy={busy || undefined}
       onClick={async () => {
-        await client.signOut();
-        router.push("/");
-        router.refresh();
+        setBusy(true);
+        try {
+          await client.signOut();
+          router.push("/");
+          router.refresh();
+        } finally {
+          setBusy(false);
+        }
       }}
     >
       {label}

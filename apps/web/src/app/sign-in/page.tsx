@@ -9,7 +9,9 @@ export default async function SignInPage({
   return (
     <div className="auth-page">
       <aside className="auth-aside">
-        <span className="eyebrow">TAIWANHUB / 台灣好鄰居</span>
+        <span className="brand-mark" aria-hidden="true">
+          台
+        </span>
         <h2>{t.authIntro}</h2>
         <p>{t.authBody}</p>
       </aside>

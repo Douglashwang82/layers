@@ -105,15 +105,22 @@ export default async function Admin({
         <h1>{t.admin}</h1>
         <p>{t.editHelp}</p>
       </div>
-      <nav className="tabs">
-        <Link href="/admin">
+      <nav className="tabs" aria-label={t.admin}>
+        <Link href="/admin" aria-current={!kind ? "page" : undefined}>
           {t.pendingQueue} ({pending.length})
         </Link>
-        <Link href="/admin/ingestion">
+        <Link
+          href="/admin/ingestion"
+          aria-current={kind === "ingestion" ? "page" : undefined}
+        >
           Collected content ({ingestionCount})
         </Link>
         {kinds.map((k) => (
-          <Link key={k} href={"/admin/" + k}>
+          <Link
+            key={k}
+            href={"/admin/" + k}
+            aria-current={kind === k ? "page" : undefined}
+          >
             {t[k]}
           </Link>
         ))}
@@ -199,7 +206,9 @@ export default async function Admin({
           <article className="admin-item" key={item.id}>
             <h3>{item.name}</h3>
             <p>{item.description}</p>
-            <span className="status">{item.status}</span>
+            <span className={`status status-${item.status}`}>
+              {item.status}
+            </span>
             <EditContentForm {...{ item, t }} kind={kind!} />
             <ModerateControls
               entityType={kind!}

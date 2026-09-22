@@ -105,3 +105,69 @@ test("create account, save, change recommendation, RSVP and report a product sig
     "Thanks! Your submission is pending community moderation.",
   );
 });
+test("route ownership, filter state, no-vote score, and map fallback", async ({
+  page,
+}) => {
+  // Explore owns /places/*, /products/* and /organizations/* in both layouts.
+  await page.goto("/places/demo-little-taipei-noodle-house");
+  await expect(
+    page.getByRole("navigation", { name: "Main" }).getByRole("link", {
+      name: "Explore",
+    }),
+  ).toHaveAttribute("aria-current", "page");
+  await page.setViewportSize({ width: 375, height: 812 });
+  await page.goto("/products/demo-i-mei-chocolate-puffs");
+  await expect(
+    page.getByRole("navigation", { name: "Mobile" }).getByRole("link", {
+      name: "Explore",
+    }),
+  ).toHaveAttribute("aria-current", "page");
+  await expect(
+    page.getByRole("navigation", { name: "Mobile" }).getByRole("link", {
+      name: "Events",
+    }),
+  ).not.toHaveAttribute("aria-current", "page");
+  await page.setViewportSize({ width: 1440, height: 1000 });
+  // Filter submission keeps city and view, resets the page, and Clear keeps both.
+  await page.goto("/places?city=houston&view=map&page=2");
+  await page.getByLabel("Category").selectOption("Bubble Tea");
+  await page
+    .getByRole("button", { name: "Search", exact: true })
+    .first()
+    .click();
+  await expect(page).toHaveURL(/city=houston/);
+  await expect(page).toHaveURL(/view=map/);
+  await expect(page).toHaveURL(/category=Bubble\+Tea/);
+  await expect(page).not.toHaveURL(/page=/);
+  await expect(
+    page.getByText("Map unavailable", { exact: false }),
+  ).toBeVisible();
+  await page.getByRole("link", { name: "Clear filters" }).click();
+  await expect(page).toHaveURL(/city=houston/);
+  await expect(page).toHaveURL(/view=map/);
+  await expect(page).not.toHaveURL(/category=/);
+  // Search carries the selected city into view-all links.
+  await page.goto("/search?q=tea&city=houston");
+  const viewAll = page.getByRole("link", { name: "View all" }).first();
+  if (await viewAll.count())
+    await expect(viewAll).toHaveAttribute("href", /city=houston/);
+  // A place with no votes shows the invitation, never a percentage.
+  const noVotes = page.locator(".score-empty").first();
+  await page.goto("/places?sort=score&page=2");
+  if (await noVotes.count()) {
+    await expect(noVotes).toHaveText("Be the first to recommend");
+    await expect(noVotes.locator("svg")).toHaveCount(0);
+  }
+  // 320px still reflows without page-wide horizontal overflow.
+  await page.setViewportSize({ width: 320, height: 700 });
+  for (const path of [
+    "/",
+    "/events",
+    "/places/demo-little-taipei-noodle-house",
+  ]) {
+    await page.goto(path);
+    expect(
+      await page.evaluate(() => document.documentElement.scrollWidth),
+    ).toBeLessThanOrEqual(320);
+  }
+});

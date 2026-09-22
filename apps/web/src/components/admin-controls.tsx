@@ -44,7 +44,11 @@ export function IngestionControls({
           Reject
         </button>
       </div>
-      <p role="status">{message}</p>
+      {message && (
+        <p className="message" role="status">
+          {message}
+        </p>
+      )}
     </div>
   );
 }
@@ -72,7 +76,11 @@ export function RevisionControls({ id }: { id: string }) {
       >
         Revert this update
       </button>
-      <p role="status">{message}</p>
+      {message && (
+        <p className="message" role="status">
+          {message}
+        </p>
+      )}
     </div>
   );
 }
@@ -143,9 +151,11 @@ export function ModerateControls({
           </button>
         ))}
       </div>
-      <p className="message" role="status">
-        {message}
-      </p>
+      {message && (
+        <p className="message" role="status">
+          {message}
+        </p>
+      )}
     </div>
   );
 }
@@ -163,7 +173,12 @@ export function EditContentForm({
   const router = useRouter();
   return (
     <>
-      <button className="text-button" onClick={() => setOpen(!open)}>
+      <button
+        type="button"
+        className="text-button"
+        aria-expanded={open}
+        onClick={() => setOpen(!open)}
+      >
         {t.edit}
       </button>
       {open && (
@@ -353,7 +368,11 @@ export function EditContentForm({
             </>
           )}
           <button className="button">{t.saveChanges}</button>
-          <p role="status">{message}</p>
+          {message && (
+            <p className="message error-message" role="alert">
+              {message}
+            </p>
+          )}
         </form>
       )}
     </>

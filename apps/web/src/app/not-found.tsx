@@ -1,12 +1,16 @@
 import Link from "next/link";
-export default function NotFound() {
+import { getCopy } from "@/lib/i18n";
+export default async function NotFound() {
+  const t = await getCopy();
   return (
-    <div className="empty">
-      <h1>This page is unavailable.</h1>
-      <p>此頁面不存在。</p>
-      <Link className="button" href="/">
-        Back to home / 返回首頁
-      </Link>
+    <div className="container">
+      <div className="empty">
+        <h1>{t.notFound}</h1>
+        <p>{t.emptyBody}</p>
+        <Link className="button" href="/">
+          {t.returnHome}
+        </Link>
+      </div>
     </div>
   );
 }

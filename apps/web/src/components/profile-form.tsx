@@ -1,6 +1,7 @@
 "use client";
 import { useState } from "react";
-import { api } from "./actions";
+import { api, StatusMessage } from "./actions";
+import { Field } from "./ui/field";
 import type { Copy } from "@/lib/i18n";
 export function ProfileForm({
   user,
@@ -16,54 +17,84 @@ export function ProfileForm({
   cities: { id: string; name: string }[];
   t: Copy;
 }) {
-  const [message, setMessage] = useState("");
+  const [feedback, setFeedback] = useState<{
+    tone: "success" | "error";
+    text: string;
+  } | null>(null);
+  const [saving, setSaving] = useState(false);
   return (
     <form
       className="form-stack"
       onSubmit={async (e) => {
         e.preventDefault();
         const data = Object.fromEntries(new FormData(e.currentTarget));
+        setSaving(true);
+        setFeedback(null);
         try {
           await api("profile", "PATCH", data);
           document.cookie = `locale=${data.preferredLanguage};path=/;SameSite=Lax;max-age=31536000`;
-          setMessage(t.profileSaved);
+          setFeedback({ tone: "success", text: t.profileSaved });
         } catch (e) {
-          setMessage((e as Error).message);
+          setFeedback({ tone: "error", text: (e as Error).message });
+        } finally {
+          setSaving(false);
         }
       }}
     >
-      <label>
-        {t.name}
-        <input name="name" defaultValue={user.name} required maxLength={80} />
-      </label>
-      <label>
-        {t.bio}
-        <textarea name="bio" defaultValue={user.bio ?? ""} maxLength={300} />
-      </label>
-      <label>
-        {t.language}
-        <select name="preferredLanguage" defaultValue={user.preferredLanguage}>
-          <option value="en">English</option>
-          <option value="zh-TW">繁體中文</option>
-        </select>
-      </label>
-      <label>
-        {t.homeCity}
-        <select
-          name="homeCityId"
-          defaultValue={user.homeCityId ?? cities[0]?.id}
+      <Field id="profile-name" label={t.name}>
+        <input
+          id="profile-name"
+          name="name"
+          defaultValue={user.name}
+          required
+          maxLength={80}
+          autoComplete="nickname"
+        />
+      </Field>
+      <Field id="profile-bio" label={t.bio}>
+        <textarea
+          id="profile-bio"
+          name="bio"
+          defaultValue={user.bio ?? ""}
+          maxLength={300}
+          rows={3}
+        />
+      </Field>
+      <div className="form-row">
+        <Field id="profile-language" label={t.language}>
+          <select
+            id="profile-language"
+            name="preferredLanguage"
+            defaultValue={user.preferredLanguage}
+          >
+            <option value="en">English</option>
+            <option value="zh-TW">繁體中文</option>
+          </select>
+        </Field>
+        <Field id="profile-city" label={t.homeCity}>
+          <select
+            id="profile-city"
+            name="homeCityId"
+            defaultValue={user.homeCityId ?? cities[0]?.id}
+          >
+            {cities.map((c) => (
+              <option key={c.id} value={c.id}>
+                {c.name}
+              </option>
+            ))}
+          </select>
+        </Field>
+      </div>
+      <div className="actions">
+        <button
+          className="button"
+          disabled={saving}
+          aria-busy={saving || undefined}
         >
-          {cities.map((c) => (
-            <option key={c.id} value={c.id}>
-              {c.name}
-            </option>
-          ))}
-        </select>
-      </label>
-      <button className="button">{t.saveChanges}</button>
-      <p className="message" role="status">
-        {message}
-      </p>
+          {saving ? t.saving : t.saveChanges}
+        </button>
+      </div>
+      <StatusMessage feedback={feedback} />
     </form>
   );
 }
