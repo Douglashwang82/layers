@@ -11,7 +11,10 @@ import {
   index,
   primaryKey,
   geometry,
+  check,
+  date,
 } from "drizzle-orm/pg-core";
+import { sql } from "drizzle-orm";
 const timestamps = () => ({
   createdAt: timestamp("created_at", { withTimezone: true })
     .defaultNow()
@@ -476,5 +479,253 @@ export const generatedFeed = pgTable("generated_feed", {
   }).notNull(),
   sourceLabel: text("source_label").notNull(),
   payload: jsonb("payload").$type<Record<string, unknown>>().notNull(),
+  ...timestamps(),
+});
+/* ---------------------------------------------------------------------------
+   Groups, local content and layers. A layer is a saved collection applied to
+   the map; ownership, audience and schedule are independent dimensions.
+   Membership rows reference exactly one canonical entity — nothing is copied
+   out of the catalog. Group roles belong to the group and inherit into layers.
+   --------------------------------------------------------------------------- */
+export const group = pgTable(
+  "group",
+  {
+    id: id(),
+    slug: text("slug").unique().notNull(),
+    name: text("name").notNull(),
+    nameChinese: text("name_chinese").default("").notNull(),
+    description: text("description").default("").notNull(),
+    cityId: uuid("city_id")
+      .notNull()
+      .references(() => city.id),
+    createdBy: uuid("created_by").references(() => user.id, {
+      onDelete: "set null",
+    }),
+    ...timestamps(),
+  },
+  (t) => [index("group_city_idx").on(t.cityId)],
+);
+export const groupMember = pgTable(
+  "group_member",
+  {
+    groupId: uuid("group_id")
+      .notNull()
+      .references(() => group.id, { onDelete: "cascade" }),
+    userId: uuid("user_id")
+      .notNull()
+      .references(() => user.id, { onDelete: "cascade" }),
+    role: text("role", { enum: ["owner", "editor", "viewer"] })
+      .default("viewer")
+      .notNull(),
+    ...timestamps(),
+  },
+  (t) => [
+    primaryKey({ columns: [t.groupId, t.userId] }),
+    index("group_member_user_idx").on(t.userId),
+  ],
+);
+export const groupInvite = pgTable(
+  "group_invite",
+  {
+    id: id(),
+    groupId: uuid("group_id")
+      .notNull()
+      .references(() => group.id, { onDelete: "cascade" }),
+    email: text("email").notNull(),
+    role: text("role", { enum: ["editor", "viewer"] })
+      .default("viewer")
+      .notNull(),
+    token: text("token").unique().notNull(),
+    expiresAt: timestamp("expires_at", { withTimezone: true }).notNull(),
+    acceptedAt: timestamp("accepted_at", { withTimezone: true }),
+    revokedAt: timestamp("revoked_at", { withTimezone: true }),
+    createdBy: uuid("created_by")
+      .notNull()
+      .references(() => user.id, { onDelete: "cascade" }),
+    ...timestamps(),
+  },
+  (t) => [index("group_invite_group_idx").on(t.groupId)],
+);
+export const contentPost = pgTable(
+  "content_post",
+  {
+    id: id(),
+    slug: text("slug").unique().notNull(),
+    authorId: uuid("author_id")
+      .notNull()
+      .references(() => user.id, { onDelete: "cascade" }),
+    cityId: uuid("city_id")
+      .notNull()
+      .references(() => city.id),
+    title: text("title").notNull(),
+    titleChinese: text("title_chinese").default("").notNull(),
+    body: text("body").notNull(),
+    image: text("image"),
+    sourceUrl: text("source_url"),
+    placeId: uuid("place_id").references(() => place.id, {
+      onDelete: "set null",
+    }),
+    eventId: uuid("event_id").references(() => event.id, {
+      onDelete: "set null",
+    }),
+    locationStatus: text("location_status", {
+      enum: ["exact", "approximate", "citywide", "online", "unspecified"],
+    })
+      .default("unspecified")
+      .notNull(),
+    neighborhood: text("neighborhood").default("").notNull(),
+    latitude: doublePrecision("latitude"),
+    longitude: doublePrecision("longitude"),
+    validFrom: timestamp("valid_from", { withTimezone: true }),
+    validUntil: timestamp("valid_until", { withTimezone: true }),
+    ...quality(),
+    ...timestamps(),
+  },
+  (t) => [
+    index("content_post_city_status_idx").on(t.cityId, t.status),
+    index("content_post_author_idx").on(t.authorId),
+  ],
+);
+export const savedContent = pgTable(
+  "saved_content",
+  {
+    userId: uuid("user_id")
+      .notNull()
+      .references(() => user.id, { onDelete: "cascade" }),
+    contentId: uuid("content_id")
+      .notNull()
+      .references(() => contentPost.id, { onDelete: "cascade" }),
+    ...timestamps(),
+  },
+  (t) => [primaryKey({ columns: [t.userId, t.contentId] })],
+);
+export const layer = pgTable(
+  "layer",
+  {
+    id: id(),
+    slug: text("slug").unique().notNull(),
+    title: text("title").notNull(),
+    titleChinese: text("title_chinese").default("").notNull(),
+    description: text("description").default("").notNull(),
+    descriptionChinese: text("description_chinese").default("").notNull(),
+    cityId: uuid("city_id")
+      .notNull()
+      .references(() => city.id),
+    ownerKind: text("owner_kind", {
+      enum: ["system", "user", "group"],
+    }).notNull(),
+    ownerUserId: uuid("owner_user_id").references(() => user.id, {
+      onDelete: "cascade",
+    }),
+    ownerGroupId: uuid("owner_group_id").references(() => group.id, {
+      onDelete: "cascade",
+    }),
+    audience: text("audience", { enum: ["public", "private", "group"] })
+      .default("private")
+      .notNull(),
+    schedule: text("schedule", {
+      enum: ["evergreen", "day", "range", "rolling_today"],
+    })
+      .default("evergreen")
+      .notNull(),
+    startsOn: date("starts_on"),
+    endsOn: date("ends_on"),
+    rule: jsonb("rule").$type<{ version: 1; kind: string }>(),
+    lifecycle: text("lifecycle", { enum: ["draft", "active", "archived"] })
+      .default("draft")
+      .notNull(),
+    reviewStatus: text("review_status", {
+      enum: ["unsubmitted", "pending", "approved", "rejected", "hidden"],
+    })
+      .default("unsubmitted")
+      .notNull(),
+    revision: integer("revision").default(1).notNull(),
+    coverImage: text("cover_image"),
+    createdBy: uuid("created_by").references(() => user.id, {
+      onDelete: "set null",
+    }),
+    updatedBy: uuid("updated_by").references(() => user.id, {
+      onDelete: "set null",
+    }),
+    ...timestamps(),
+  },
+  (t) => [
+    index("layer_city_owner_idx").on(t.cityId, t.ownerKind),
+    index("layer_owner_user_idx").on(t.ownerUserId),
+    index("layer_owner_group_idx").on(t.ownerGroupId),
+    check(
+      "layer_owner_check",
+      sql`(${t.ownerKind} = 'system' AND ${t.ownerUserId} IS NULL AND ${t.ownerGroupId} IS NULL) OR (${t.ownerKind} = 'user' AND ${t.ownerUserId} IS NOT NULL AND ${t.ownerGroupId} IS NULL) OR (${t.ownerKind} = 'group' AND ${t.ownerGroupId} IS NOT NULL AND ${t.ownerUserId} IS NULL)`,
+    ),
+    check(
+      "layer_schedule_check",
+      sql`(${t.schedule} IN ('evergreen','rolling_today')) OR (${t.schedule} = 'day' AND ${t.startsOn} IS NOT NULL) OR (${t.schedule} = 'range' AND ${t.startsOn} IS NOT NULL AND ${t.endsOn} IS NOT NULL AND ${t.startsOn} <= ${t.endsOn})`,
+    ),
+  ],
+);
+export const layerItem = pgTable(
+  "layer_item",
+  {
+    id: id(),
+    layerId: uuid("layer_id")
+      .notNull()
+      .references(() => layer.id, { onDelete: "cascade" }),
+    placeId: uuid("place_id").references(() => place.id, {
+      onDelete: "cascade",
+    }),
+    eventId: uuid("event_id").references(() => event.id, {
+      onDelete: "cascade",
+    }),
+    contentId: uuid("content_id").references(() => contentPost.id, {
+      onDelete: "cascade",
+    }),
+    note: text("note").default("").notNull(),
+    position: integer("position").default(0).notNull(),
+    validFrom: timestamp("valid_from", { withTimezone: true }),
+    validUntil: timestamp("valid_until", { withTimezone: true }),
+    addedBy: uuid("added_by").references(() => user.id, {
+      onDelete: "set null",
+    }),
+    ...timestamps(),
+  },
+  (t) => [
+    index("layer_item_layer_idx").on(t.layerId, t.position),
+    uniqueIndex("layer_item_place_unique")
+      .on(t.layerId, t.placeId)
+      .where(sql`${t.placeId} IS NOT NULL`),
+    uniqueIndex("layer_item_event_unique")
+      .on(t.layerId, t.eventId)
+      .where(sql`${t.eventId} IS NOT NULL`),
+    uniqueIndex("layer_item_content_unique")
+      .on(t.layerId, t.contentId)
+      .where(sql`${t.contentId} IS NOT NULL`),
+    check(
+      "layer_item_one_entity",
+      sql`num_nonnulls(${t.placeId}, ${t.eventId}, ${t.contentId}) = 1`,
+    ),
+  ],
+);
+export const layerFollow = pgTable(
+  "layer_follow",
+  {
+    userId: uuid("user_id")
+      .notNull()
+      .references(() => user.id, { onDelete: "cascade" }),
+    layerId: uuid("layer_id")
+      .notNull()
+      .references(() => layer.id, { onDelete: "cascade" }),
+    ...timestamps(),
+  },
+  (t) => [primaryKey({ columns: [t.userId, t.layerId] })],
+);
+/** Authorized active layers and view preference only; never a location trail. */
+export const userMapPreference = pgTable("user_map_preference", {
+  userId: uuid("user_id")
+    .primaryKey()
+    .references(() => user.id, { onDelete: "cascade" }),
+  activeLayers: jsonb("active_layers").$type<string[]>().default([]).notNull(),
+  view: text("view", { enum: ["map", "list"] })
+    .default("map")
+    .notNull(),
   ...timestamps(),
 });

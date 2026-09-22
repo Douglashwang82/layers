@@ -21,6 +21,11 @@ import {
   type EventState,
 } from "@/components/actions";
 import { MapView } from "@/components/map-view";
+import { AddToLayer } from "@/components/layers/add-to-layer";
+import { editableFor } from "@/features/map/detail";
+import { eventStateOf } from "@/features/catalog/event-state";
+import { getActiveCity } from "@/lib/city";
+import { itemKey, serializeMapQuery } from "@taiwanhub/shared";
 import { flags } from "@/lib/config";
 import { trackEvent } from "@/lib/analytics";
 type Props = { params: Promise<{ section: string; slug: string }> };
@@ -93,17 +98,28 @@ export default async function DetailPage({ params }: Props) {
       : null;
   // The server stays authoritative; this only drives labels and the disabled state.
   const eventState: EventState =
-    kind !== "events"
-      ? "open"
-      : item.eventStatus === "cancelled"
-        ? "cancelled"
-        : item.eventStatus === "postponed"
-          ? "postponed"
-          : item.endTime && new Date(item.endTime) < new Date()
-            ? "ended"
-            : item.capacity != null && item.attending >= item.capacity
-              ? "full"
-              : "open";
+    kind !== "events" ? "open" : eventStateOf(item);
+  // Map entry and Add to layer: the canonical page keeps every action the map preview offers.
+  const key =
+    kind === "places" || kind === "events"
+      ? itemKey(kind === "places" ? "place" : "event", item.id)
+      : null;
+  const { cities } = await getActiveCity();
+  const itemCity = cities.find((c) => c.id === item.cityId);
+  const editableLayers =
+    key && actor && flags.layerWrites ? await editableFor(actor, key) : [];
+  const mapHref =
+    key && itemCity && flags.mapHome
+      ? "/" +
+        serializeMapQuery(
+          {
+            city: itemCity.slug,
+            layers: [`discover-${itemCity.slug}`],
+            item: key,
+          },
+          { includeCity: true },
+        )
+      : null;
   const primary =
     kind === "places" && directions ? (
       <a className="button" target="_blank" rel="noreferrer" href={directions}>
@@ -213,6 +229,26 @@ export default async function DetailPage({ params }: Props) {
           id={item.id}
           authenticated={!!actor}
         />
+        {key && (
+          <div className="actions">
+            {flags.layerWrites && (
+              <AddToLayer
+                itemKey={key}
+                itemCity={itemCity?.slug ?? ""}
+                layers={editableLayers}
+                authenticated={!!actor}
+                t={t}
+                locale={locale}
+              />
+            )}
+            {mapHref && (
+              <Link className="button secondary" href={mapHref}>
+                <MapPin size={16} aria-hidden="true" />
+                {t.mapEntry}
+              </Link>
+            )}
+          </div>
+        )}
       </header>
       <figure className="detail-image">
         <Image

@@ -1,5 +1,6 @@
 import { db, pool, schema as s } from "./index";
 import { placeCategories } from "../../shared/src";
+import { ensureSystemLayers } from "./system-layers";
 const uid = (group: number, n: number) =>
   `00000000-0000-4000-8000-${String(group * 1000 + n).padStart(12, "0")}`;
 async function main() {
@@ -21,7 +22,14 @@ async function main() {
       .insert(s.placeCategory)
       .values({ id: uid(3, i), name })
       .onConflictDoNothing();
-  console.log("Seeded reference data: 1 city, place categories.");
+  await ensureSystemLayers(pool, {
+    id: uid(1, 1),
+    slug: "houston",
+    name: "Houston",
+  });
+  console.log(
+    "Seeded reference data: 1 city, place categories, system layers.",
+  );
 }
 main()
   .catch((e) => {

@@ -3,19 +3,21 @@ import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { useState } from "react";
 import {
-  Home,
-  Compass,
-  CalendarDays,
+  Map as MapIcon,
+  Layers,
   Bookmark,
   UserRound,
   MapPin,
 } from "lucide-react";
 import type { Copy, Locale } from "@/lib/i18n";
-/** Route families owned by each destination. Whole path segments only. */
+/**
+ * Route families owned by each destination. Whole path segments only.
+ * Standalone catalog/detail pages (/places, /events, /explore, /products,
+ * /organizations, /content) keep their own breadcrumb and highlight nothing.
+ */
 const routeFamilies: Record<string, string[]> = {
   "/": ["/"],
-  "/explore": ["/explore", "/places", "/products", "/organizations"],
-  "/events": ["/events"],
+  "/layers": ["/layers", "/groups"],
   "/saved": ["/saved"],
   "/profile": ["/profile"],
 };
@@ -42,9 +44,8 @@ export function Navigation({
   const router = useRouter();
   const [switching, setSwitching] = useState(false);
   const nav = [
-    ["/", t.home, Home],
-    ["/explore", t.explore, Compass],
-    ["/events", t.events, CalendarDays],
+    ["/", t.mapNav, MapIcon],
+    ["/layers", t.layers, Layers],
     ["/saved", t.saved, Bookmark],
     ["/profile", t.profile, UserRound],
   ] as const;
@@ -60,7 +61,7 @@ export function Navigation({
           Taiwan<span>Hub</span>
         </Link>
         <nav className="desktop-nav" aria-label={t.mainNav}>
-          {nav.slice(0, 4).map(([href, label]) => (
+          {nav.slice(0, 3).map(([href, label]) => (
             <Link key={href} href={href} aria-current={current(href)}>
               {label}
             </Link>
@@ -75,14 +76,17 @@ export function Navigation({
               disabled={switching}
               aria-busy={switching || undefined}
               onChange={async (e) => {
+                const slug = e.target.value;
                 setSwitching(true);
                 try {
                   await fetch("/api/v1/preferences", {
                     method: "POST",
                     headers: { "Content-Type": "application/json" },
-                    body: JSON.stringify({ city: e.target.value }),
+                    body: JSON.stringify({ city: slug }),
                   });
-                  router.refresh();
+                  // The map replaces city-specific defaults and clears incompatible state.
+                  if (pathname === "/") router.push(`/?city=${slug}`);
+                  else router.refresh();
                 } finally {
                   setSwitching(false);
                 }
@@ -125,6 +129,34 @@ export function Navigation({
           </Link>
         ))}
       </nav>
+    </>
+  );
+}
+/** Global footer and demo banner; the map shell carries its own compact notices. */
+export function SiteChrome({
+  t,
+  cityName,
+  mapHome,
+}: {
+  t: Copy;
+  cityName: string;
+  mapHome: boolean;
+}) {
+  const pathname = usePathname();
+  if (mapHome && pathname === "/") return null;
+  return (
+    <>
+      <footer>
+        <Link className="brand" href="/">
+          Taiwan<span>Hub</span>
+        </Link>
+        <div>
+          <p>{t.footer}</p>
+          <small>{t.footerSmall}</small>
+        </div>
+        <span className="footer-city">{cityName}</span>
+      </footer>
+      <div className="demo-banner">{t.demo}</div>
     </>
   );
 }

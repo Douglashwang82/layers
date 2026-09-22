@@ -19,6 +19,8 @@ const moderationTables = {
   notes: "place_note",
   sightings: "product_sighting",
   recommendations: "place_recommendation",
+  content: "content_post",
+  layers: "layer",
 };
 async function transaction<T>(fn: (tx: PoolClient) => Promise<T>) {
   const tx = await pool.connect();
@@ -296,10 +298,20 @@ export async function moderate(actor: Actor | null, body: unknown) {
       "Only administrators can delete content.",
     );
   return transaction(async (tx) => {
-    const result = await tx.query(
-      `UPDATE ${moderationTables[input.entityType]} SET status=$1,updated_at=now() WHERE id=$2 RETURNING id`,
-      [input.action, input.entityId],
-    );
+    // Layers separate publication review from lifecycle; a deleted decision hides the public copy.
+    const result =
+      input.entityType === "layers"
+        ? await tx.query(
+            `UPDATE layer SET review_status=$1,updated_by=NULL,updated_at=now() WHERE id=$2 AND owner_kind<>'system' RETURNING id`,
+            [
+              input.action === "deleted" ? "hidden" : input.action,
+              input.entityId,
+            ],
+          )
+        : await tx.query(
+            `UPDATE ${moderationTables[input.entityType]} SET status=$1,updated_at=now() WHERE id=$2 RETURNING id`,
+            [input.action, input.entityId],
+          );
     if (!result.rowCount)
       throw new AppError(404, "NOT_FOUND", "Content not found.");
     await tx.query(

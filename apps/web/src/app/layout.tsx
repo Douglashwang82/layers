@@ -1,11 +1,11 @@
 import type { Metadata } from "next";
-import Link from "next/link";
-import { Navigation } from "@/components/navigation";
+import { Navigation, SiteChrome } from "@/components/navigation";
 import { getActiveCity } from "@/lib/city";
 import { getCopy, getLocale } from "@/lib/i18n";
-import { appUrl } from "@/lib/config";
+import { appUrl, flags } from "@/lib/config";
 import "./globals.css";
 import "./pages.css";
+import "./map.css";
 import "./responsive.css";
 export const dynamic = "force-dynamic";
 export const metadata: Metadata = {
@@ -37,17 +37,7 @@ export default async function RootLayout({
         </a>
         <Navigation {...{ t, locale, cities }} city={city.slug} />
         <main id="main">{children}</main>
-        <footer>
-          <Link className="brand" href="/">
-            Taiwan<span>Hub</span>
-          </Link>
-          <div>
-            <p>{t.footer}</p>
-            <small>{t.footerSmall}</small>
-          </div>
-          <span className="footer-city">{city.name}</span>
-        </footer>
-        <div className="demo-banner">{t.demo}</div>
+        <SiteChrome t={t} cityName={city.name} mapHome={flags.mapHome} />
       </body>
     </html>
   );

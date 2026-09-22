@@ -8,9 +8,31 @@ import {
   requireActor,
   requireModerator,
   plainText,
+  mapPageSize,
+  mapPreferenceInput,
+  moderationEntityTypes,
   type Kind,
 } from "@taiwanhub/shared";
 import { currentActor } from "@/lib/session";
+import { getActiveCity } from "@/lib/city";
+import { runMapQuery } from "@/features/map/query";
+import { resolveMapRequest } from "@/features/map/request";
+import { getMapItemDetail } from "@/features/map/detail";
+import {
+  getLayer,
+  listLibrary,
+  listLayerItemRefs,
+  setMapPreference,
+} from "@/features/layers/repository";
+import {
+  createLayer,
+  updateLayer,
+  deleteLayer,
+  addLayerItem,
+  removeLayerItem,
+  followLayer,
+  publishLayer,
+} from "@/features/layers/service";
 import {
   getCities,
   getContent,
@@ -32,6 +54,7 @@ import {
 } from "@/features/community/service";
 import { flags, appUrl } from "@/lib/config";
 import { trackEvent } from "@/lib/analytics";
+import { clientEventNames } from "@/lib/track";
 export const dynamic = "force-dynamic";
 async function handler(
   request: NextRequest,
@@ -48,10 +71,52 @@ async function handler(
     )
       throw new AppError(404, "DISABLED", "Feature unavailable.");
     const actor = await currentActor();
-    if (method === "GET") {
-      const input = listInput.parse(
-        Object.fromEntries(request.nextUrl.searchParams),
+    const query = Object.fromEntries(request.nextUrl.searchParams);
+    if (method === "GET" && resource === "map") {
+      if (id === "item")
+        return ok(await getMapItemDetail(String(query.key ?? ""), actor));
+      const { city, state } = await resolveMapRequest(query, actor);
+      const result = await runMapQuery(state, city, actor);
+      if (id === "results") {
+        const start = (state.page - 1) * mapPageSize;
+        return ok({
+          generatedAt: result.generatedAt,
+          items: result.items.slice(start, start + mapPageSize),
+          total: result.total,
+          mapped: result.mapped,
+          unmapped: result.unmapped,
+          page: state.page,
+          pageSize: mapPageSize,
+        });
+      }
+      if (id) throw new AppError(404, "NOT_FOUND", "Endpoint not found.");
+      return ok(result);
+    }
+    if (method === "GET" && resource === "layers") {
+      const { city } = await getActiveCity(query.city);
+      if (id) {
+        const found = await getLayer(id, actor, city);
+        if (!found)
+          throw new AppError(404, "NOT_FOUND", "This layer is unavailable.");
+        if (action === "items")
+          return ok({ items: await listLayerItemRefs(found.layer.id) });
+        return ok(found);
+      }
+      const scope = z
+        .enum(["discover", "following", "mine", "groups"])
+        .catch("discover")
+        .parse(query.scope);
+      return ok(
+        await listLibrary(
+          scope,
+          actor,
+          city,
+          String(query.q ?? "").slice(0, 100),
+        ),
       );
+    }
+    if (method === "GET") {
+      const input = listInput.parse(query);
       if (resource === "cities") return ok(await getCities());
       if (resource === "home")
         return ok(await getHomeFeed(input.city, actor?.id));
@@ -99,6 +164,26 @@ async function handler(
       const origin = request.headers.get("origin");
       if (origin && origin !== new URL(appUrl).origin)
         throw new AppError(403, "BAD_ORIGIN", "Request origin is not allowed.");
+      // Guest outcome events: allowlisted names, coarse string values, bounded size.
+      if (resource === "analytics" && method === "POST") {
+        const raw = await request.text();
+        if (raw.length > 2048)
+          throw new AppError(413, "TOO_LARGE", "Request is too large.");
+        const v = z
+          .object({
+            name: z.enum(clientEventNames),
+            properties: z
+              .record(
+                z.string().max(40),
+                z.union([z.string().max(80), z.number(), z.boolean()]),
+              )
+              .refine((p) => Object.keys(p).length <= 5)
+              .default({}),
+          })
+          .parse(JSON.parse(raw));
+        await trackEvent(v.name, v.properties, actor?.id);
+        return ok({ recorded: true }, 202);
+      }
       const a = requireActor(actor);
       await contributionLimit(a);
       if (Number(request.headers.get("content-length") ?? 0) > 16384)
@@ -169,18 +254,36 @@ async function handler(
         );
         return ok({ updated: true });
       }
+      if (resource === "map" && id === "preference" && method === "POST")
+        return ok(await setMapPreference(a.id, mapPreferenceInput.parse(body)));
+      if (resource === "layers") {
+        if (!id && method === "POST")
+          return ok(await createLayer(a, body), 201);
+        if (id && !action && method === "PATCH")
+          return ok(await updateLayer(a, id, body));
+        if (id && !action && method === "DELETE")
+          return ok(await deleteLayer(a, id));
+        if (id && action === "items" && method === "POST")
+          return ok(await addLayerItem(a, id, body), 201);
+        if (id && action === "items" && method === "DELETE")
+          return ok(await removeLayerItem(a, id, String(query.key ?? "")));
+        if (
+          id &&
+          action === "follow" &&
+          (method === "POST" || method === "DELETE")
+        )
+          return ok(await followLayer(a, id, method === "POST"));
+        if (
+          id &&
+          action === "publish" &&
+          (method === "POST" || method === "DELETE")
+        )
+          return ok(await publishLayer(a, id, method === "POST"));
+      }
       if (resource === "reports" && method === "POST") {
         const v = z
           .object({
-            entityType: z.enum([
-              "places",
-              "events",
-              "products",
-              "organizations",
-              "notes",
-              "sightings",
-              "recommendations",
-            ]),
+            entityType: z.enum(moderationEntityTypes),
             entityId: z.uuid(),
             reason: plainText(500),
           })

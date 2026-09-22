@@ -1,5 +1,6 @@
 import { redirect, notFound } from "next/navigation";
 import { getCities } from "@/features/catalog/repository";
+/** Validate the city, then open the map with that city selected. */
 export default async function CityPage({
   params,
 }: {
@@ -7,5 +8,5 @@ export default async function CityPage({
 }) {
   const { slug } = await params;
   if (!(await getCities()).some((c) => c.slug === slug)) notFound();
-  redirect("/places?city=" + slug);
+  redirect("/?city=" + slug);
 }

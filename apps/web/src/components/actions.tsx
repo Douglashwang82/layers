@@ -8,7 +8,9 @@ export async function api(path: string, method = "POST", body: unknown = {}) {
   const response = await fetch("/api/v1/" + path, {
     method,
     headers: { "Content-Type": "application/json" },
-    ...(method === "DELETE" ? {} : { body: JSON.stringify(body) }),
+    ...(method === "DELETE" || method === "GET"
+      ? {}
+      : { body: JSON.stringify(body) }),
   });
   const result = await response.json();
   if (!response.ok) throw new Error(result.error?.message ?? "Request failed");

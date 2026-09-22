@@ -1,5 +1,6 @@
 import { db, pool, schema as s } from "./index";
 import { placeCategories } from "../../shared/src";
+import { ensureSystemLayers } from "./system-layers";
 const uid = (group: number, n: number) =>
   `00000000-0000-4000-8000-${String(group * 1000 + n).padStart(12, "0")}`;
 const photos = [
@@ -301,6 +302,11 @@ async function main() {
       `/demo/product-${i}.svg`,
       uid(7, i),
     ]);
+  await ensureSystemLayers(pool, {
+    id: uid(1, 1),
+    slug: "houston",
+    name: "Houston",
+  });
   console.log(
     "Seeded Houston: 20 demo places, 10 events, 5 organizations, 10 products, 20 sightings, 15 users, 50 votes. Demo users cannot sign in.",
   );

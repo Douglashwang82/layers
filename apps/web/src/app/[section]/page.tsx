@@ -14,6 +14,7 @@ import { getActiveCity } from "@/lib/city";
 import { CardGrid, EmptyState } from "@/components/cards";
 import { MapView } from "@/components/map-view";
 import { flags } from "@/lib/config";
+import { serializeMapQuery } from "@taiwanhub/shared";
 const pageSize = 12;
 const neighborhoods = [
   "Bellaire",
@@ -50,6 +51,24 @@ export default async function CatalogPage({
     ? parsed.data
     : listInput.parse({ city: city.slug });
   const view = kind === "places" && query.view === "map" ? "map" : "list";
+  // Equivalent supported filters carry into the map workspace; unsupported ones stay on this page.
+  const mapHref =
+    kind === "places" || kind === "events"
+      ? "/" +
+        serializeMapQuery(
+          {
+            layers: [`discover-${city.slug}`],
+            types: [kind === "places" ? "place" : "event"],
+            q: input.q,
+            date:
+              kind === "events" &&
+              (input.period === "today" || input.period === "weekend")
+                ? input.period
+                : "upcoming",
+          },
+          { includeCity: !!query.city },
+        )
+      : null;
   const result = await listContent(kind, input);
   const orgs =
     kind === "events"
@@ -216,6 +235,11 @@ export default async function CatalogPage({
               href={link({ view: view === "map" ? undefined : "map" })}
             >
               {view === "map" ? t.list : t.map}
+            </Link>
+          )}
+          {mapHref && flags.mapHome && (
+            <Link className="button secondary" href={mapHref}>
+              {t.mapEntry}
             </Link>
           )}
         </div>

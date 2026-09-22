@@ -7,6 +7,8 @@ const fallbackCity: City = {
   slug: defaultCitySlug,
   name: "Houston",
   timezone: "America/Chicago",
+  latitude: 29.7604,
+  longitude: -95.3698,
 };
 /** First supported city among the candidates, otherwise the launch city. */
 export function pickCity(

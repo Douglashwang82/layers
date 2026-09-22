@@ -80,6 +80,7 @@ const extra = (kind: Kind) =>
     : kind === "events"
       ? `, (SELECT count(*)::int FROM event_rsvp r WHERE r.event_id=p.id) AS attending, (SELECT name FROM organization o WHERE o.id=p.organizer_id) AS organizer_name`
       : "";
+/** Includes the stored center so the map never has to center on the first result. */
 export async function getCities() {
   return (
     await pool.query<{
@@ -87,7 +88,11 @@ export async function getCities() {
       slug: string;
       name: string;
       timezone: string;
-    }>("SELECT id,slug,name,timezone FROM city ORDER BY name")
+      latitude: number;
+      longitude: number;
+    }>(
+      "SELECT id,slug,name,timezone,latitude,longitude FROM city ORDER BY name",
+    )
   ).rows;
 }
 export async function listContent(kind: Kind, input: ListInput) {
