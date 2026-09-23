@@ -1,6 +1,13 @@
 import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
-import { pool, decideCandidate, revertRevision } from "@taiwanhub/database";
+import {
+  pool,
+  decideCandidate,
+  revertRevision,
+  addExtractionPage,
+  removeExtractionPage,
+  setExtractionPageEnabled,
+} from "@taiwanhub/database";
 import {
   AppError,
   kinds,
@@ -260,6 +267,30 @@ async function handler(
           return ok(await decideCandidate(action, a.id, decision));
         } catch (error) {
           throw new AppError(409, "INGESTION_CONFLICT", String(error));
+        }
+      }
+      // Extraction source pages. Administrators only: adding one asserts a
+      // permission to read and republish that page.
+      if (resource === "admin" && id === "extraction") {
+        if (a.role !== "ADMIN")
+          throw new AppError(403, "FORBIDDEN", "Administrator required.");
+        try {
+          if (method === "POST" && !action)
+            return ok(await addExtractionPage(body, a.id), 201);
+          if (method === "POST" && action) {
+            z.uuid().parse(action);
+            const enabled = z
+              .object({ enabled: z.boolean() })
+              .parse(body).enabled;
+            return ok(await setExtractionPageEnabled(action, enabled));
+          }
+          if (method === "DELETE" && action) {
+            z.uuid().parse(action);
+            return ok(await removeExtractionPage(action));
+          }
+        } catch (error) {
+          if (error instanceof AppError) throw error;
+          throw new AppError(400, "EXTRACTION_INVALID", String(error));
         }
       }
       if (

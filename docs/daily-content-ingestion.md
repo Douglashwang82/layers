@@ -12,7 +12,7 @@ No third-party source is pre-enabled. An operator must verify permission to stor
 4. Enable the source, run `pnpm ingest run SOURCE_ID` against staging, inspect `/admin/ingestion`, approve a sample record, and verify its public page.
 5. Deploy the web app and migration, enable the source in production, and run the GitHub workflow manually once. The workflow is also scheduled at 12:17 UTC daily. GitHub schedule is best effort; use a managed scheduler if a precise publishing deadline becomes necessary.
 
-The worker reads sources in organization, event, place, then product order. Each source is fetched at most once per configured interval unless run with a specific source ID. The daily worker reports the number of unchanged, reviewed, and published records. Any source failure or invalid record makes the workflow fail and keeps the remaining sources running. Four consecutive fetch failures disable a source for investigation.
+The worker reads sources in organization, event, place, then product order. Each source is fetched at most once per configured interval unless run with a specific source ID. The due test allows a 30-minute grace window, because `last_attempt_at` records when a run started: a daily schedule drifts later each day, and without the grace a 24-hour interval falls due minutes after the next run fires, collecting the source only every other day. The daily worker reports the number of unchanged, reviewed, and published records, plus `skipped`, the enabled sources that were not yet due — a run that collects nothing because nothing was due is otherwise indistinguishable from a healthy one. Any source failure or invalid record makes the workflow fail and keeps the remaining sources running. Four consecutive fetch failures disable a source for investigation.
 
 ## Add and operate sources
 
@@ -70,25 +70,43 @@ The example is a format illustration, not a real event. Replace the organizer UU
 
 Required fields by source type:
 
-| Kind          | Required fields beyond the source ID and evidence URL                                          |
-| ------------- | ---------------------------------------------------------------------------------------------- |
-| Places        | `name`, `description`, `image`, `category`, `neighborhood`, `address`, `latitude`, `longitude` |
-| Events        | Place fields plus `venue`, `organizerId`, `startTime`, `endTime`                               |
-| Organizations | `name`, `description`, `image`, `category`                                                     |
-| Products      | `name`, `description`, `image`, `category`, `brand`                                            |
+| Kind          | Required fields beyond the source ID and evidence URL                                 |
+| ------------- | ------------------------------------------------------------------------------------- |
+| Places        | `name`, `description`, `category`, `neighborhood`, `address`, `latitude`, `longitude` |
+| Events        | Place fields plus `image`, `venue`, `organizerId`, `startTime`, `endTime`             |
+| Organizations | `name`, `description`, `image`, `category`                                            |
+| Products      | `name`, `description`, `image`, `category`, `brand`                                   |
+
+A place needs no `image`: most permitted sources publish an address and prose but no reusable photo, and the cards and map render without one. Supply it when the source grants image rights. Every other kind still requires one.
 
 Use only the place and event categories supported by the product. Product feeds describe products and optional online URLs; they do not produce store sightings. A feed adapter can map a permitted API, RSS calendar, or owner export into this contract. The adapter should preserve source IDs and evidence URLs; the ingestion worker does not interpret free-form webpages with AI.
 
 ### AI extraction adapter
 
-`pnpm agent:run SLUG SOURCE-URL organizations "Label"` is an optional adapter that runs _outside_ the worker: it fetches one page, has a model extract only facts stated on that page, validates them against this contract, and stores the result in `generated_feed` for `/api/feeds/SLUG` to serve. The worker still sees nothing but ordinary JSON, and every record it produces goes to moderator review.
+`pnpm agent:run [FEED-SLUG]` is an optional adapter that runs _outside_ the worker: it fetches each approved source page, has a model extract only facts stated on that page, resolves coordinates with a geocoder, validates every item against this contract, and stores the result in `generated_feed` for `/api/feeds/FEED-SLUG` to serve. With no argument it collects every feed that has enabled pages. The worker still sees nothing but ordinary JSON, and every record it produces goes to moderator review.
+
+Source pages live in the `extraction_page` table and are managed by an administrator at **`/admin/extraction`** — not in a checked-in file, so adding or pausing a page needs no deploy. Each row carries its feed slug, kind, source label, optional neighborhood, and a required permission note. Pages sharing a feed slug must agree on kind and label; they become one feed.
+
+Adding a page **is** the act of asserting permission for it, so the form requires a permission note of at least ten characters and the URL passes the same `validateSourceUrl` check as a feed URL: public HTTPS, no private or loopback host. A new page starts **paused** and is collected only after an administrator enables it.
+
+```sh
+pnpm agent:run                 # every feed with enabled pages
+pnpm agent:run houston-places  # one feed
+```
+
+Each run writes its outcome back to the page row, and `/admin/extraction` shows it under the URL, so a page that stopped geocoding or lost its address is visible without reading workflow logs. Item IDs are derived from the page URL, so they stay stable across runs whatever order the pages come back in. A page that fails extraction, geocoding, or contract validation is skipped and the run exits non-zero; the rest of the feed is still written. A feed whose every page failed is left at its previous contents rather than emptied.
+
+**The model never supplies coordinates.** It is told not to, and latitude and longitude are resolved from the extracted address by the US Census geocoder (keyless, public domain, US addresses, no restriction on storing results). A recalled coordinate looks plausible and puts the pin on the wrong block, and `validateFields` only range-checks it. Mapbox is an alternative but needs the permanent-geocoding endpoint and the matching plan before results may be kept.
 
 It is a pilot, not finished infrastructure. Current limits:
 
-- **Organizations only.** Places, events, and products need their own field extraction and validation before the adapter can serve them.
-- **One item per page.** It does not follow links or paginate.
-- **Not a permission check.** A model reading a page says nothing about the right to store or republish it. Review the owner's terms and record `source-policy` exactly as with a hand-built feed.
-- **The only wired source is a fictional fixture** (`/fixtures/demo-houston-org.html`) registered as a demo source, kept so the scheduled workflow exercises the path end to end. Connect real, permitted source URLs before treating daily output as real content.
+- **Organizations and places only.** Events and products need their own field extraction and validation before the adapter can serve them.
+- **One item per page.** It does not follow links or paginate; a feed of N places needs N pages.
+- **US addresses only**, because of the geocoder. Another city or country needs a different one.
+- **Not a permission check.** A model reading a page says nothing about the right to store or republish it. The permission note records your review; nothing verifies it for you.
+- **Extraction is not verification.** Every item still lands in `/admin/ingestion` with its evidence URL for a moderator to check against the page.
+
+The daily workflow runs `pnpm agent:run` unconditionally; with no enabled page it reports that there is nothing to collect and exits cleanly, so the pipeline stays dormant until an administrator has reviewed and enabled a real source.
 
 ## How publishing works
 

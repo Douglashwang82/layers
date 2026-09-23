@@ -23,12 +23,12 @@ jobs:
           node-version: 22
           cache: pnpm
       - run: pnpm install --frozen-lockfile
-      # Placeholder only: reads a fictional fixture page this repo serves, and
-      # publishes as a demo source. Replace with real, permitted source URLs
-      # (and extend the extractor beyond organizations) before relying on this.
-      - name: Refresh AI-generated demo feed (fixture, not a real source)
+      # Extraction adapter. Source pages come from the extraction_page table,
+      # managed at /admin/extraction; the command reports that it has nothing to
+      # do while no page is enabled.
+      - name: Refresh extracted feeds
         if: env.DATABASE_URL != '' && env.ANTHROPIC_API_KEY != ''
-        run: pnpm agent:run demo-houston-organizations https://taiwanhub-web.vercel.app/fixtures/demo-houston-org.html organizations "Demo pipeline test (placeholder org)"
+        run: pnpm agent:run
       - name: Collect approved sources
         if: env.DATABASE_URL != ''
         run: pnpm ingest run

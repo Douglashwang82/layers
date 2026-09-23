@@ -30,4 +30,13 @@ if (process.env.NODE_ENV !== "production") globalDb.taiwanhubPool = pool;
 export const db = drizzle(pool, { schema });
 export { schema };
 export { decideCandidate, revertRevision } from "./ingestion";
+export {
+  addExtractionPage,
+  extractionKinds,
+  extractionPageInput,
+  listExtractionPages,
+  removeExtractionPage,
+  setExtractionPageEnabled,
+  type ExtractionPage,
+} from "./extraction";
 export { ensureSystemLayers, systemLayerDefinitions } from "./system-layers";

@@ -105,10 +105,11 @@ const allowed: Record<IngestionKind, readonly string[]> = {
   ],
 };
 const required: Record<IngestionKind, readonly string[]> = {
+  // Places carry no required image: most permitted sources publish an address
+  // and prose but no reusable photo, and the map and cards render without one.
   places: [
     "name",
     "description",
-    "image",
     "category",
     "neighborhood",
     "address",
@@ -153,6 +154,12 @@ const urlFields = new Set([
 ]);
 const numericFields = new Set(["latitude", "longitude"]);
 const dateFields = new Set(["startTime", "endTime"]);
+/**
+ * How early a source may be collected again, absorbing the drift between a
+ * cron's nominal time and when the runner actually starts. A plain literal:
+ * it is interpolated into SQL, never taken from input.
+ */
+const dueGraceMinutes = 30;
 const safeAutoFields = new Set([
   "nameChinese",
   "description",
@@ -476,6 +483,22 @@ async function collectOne(
   return "review";
 }
 
+/**
+ * Sources a scheduled run should collect now. The due test allows a grace
+ * window: last_attempt_at is stamped when a run starts, so a daily schedule
+ * drifts a little later each day, and without the grace a 24-hour interval
+ * falls due minutes after the next run fires, skipping every other day.
+ * A named source is always due, which is how an operator forces a run.
+ */
+export async function dueSources(sourceId?: string) {
+  return (
+    await pool.query<Source>(
+      `SELECT id,name,url,kind,city_id,allow_auto_update,is_demo FROM content_source WHERE enabled=true AND ($1::uuid IS NULL OR id=$1) AND ($1::uuid IS NOT NULL OR last_attempt_at IS NULL OR last_attempt_at < now()-(interval_hours * interval '1 hour' - ${dueGraceMinutes} * interval '1 minute')) ORDER BY CASE kind WHEN 'organizations' THEN 0 WHEN 'events' THEN 1 WHEN 'places' THEN 2 ELSE 3 END, id`,
+      [sourceId ?? null],
+    )
+  ).rows;
+}
+
 export async function runCollection(
   options: { sourceId?: string; dryRun?: boolean } = {},
 ) {
@@ -514,6 +537,7 @@ export async function runCollection(
   const runId = randomUUID();
   const summary = {
     sources: 0,
+    skipped: 0,
     failed: 0,
     review: 0,
     published: 0,
@@ -522,24 +546,20 @@ export async function runCollection(
   };
   try {
     await pool.query("INSERT INTO ingestion_run(id) VALUES($1)", [runId]);
-    const sources = (
-      await pool.query<Source>(
-        `SELECT id,name,url,kind,city_id,allow_auto_update,is_demo FROM content_source WHERE enabled=true AND ($1::uuid IS NULL OR id=$1) AND ($1::uuid IS NOT NULL OR last_attempt_at IS NULL OR last_attempt_at < now()-interval_hours * interval '1 hour') ORDER BY CASE kind WHEN 'organizations' THEN 0 WHEN 'events' THEN 1 WHEN 'places' THEN 2 ELSE 3 END, id`,
-        [options.sourceId ?? null],
-      )
-    ).rows;
-    if (
-      !sources.length &&
-      !options.sourceId &&
-      Number(
+    const sources = await dueSources(options.sourceId);
+    if (!options.sourceId) {
+      const enabled = Number(
         (
           await pool.query<{ count: string }>(
             "SELECT count(*) AS count FROM content_source WHERE enabled=true",
           )
         ).rows[0].count,
-      ) === 0
-    )
-      summary.errors.push("No approved sources are enabled.");
+      );
+      if (!enabled) summary.errors.push("No approved sources are enabled.");
+      // Distinguishes "nothing was due yet" from "nothing is configured": both
+      // used to report sources: 0 with no errors and a green workflow.
+      else summary.skipped = enabled - sources.length;
+    }
     for (const source of sources) {
       summary.sources++;
       await pool.query(
@@ -701,7 +721,12 @@ export async function publishCandidate(
       status: "approved",
       is_demo: candidate.source_is_demo,
     };
-    for (const key of ["name_chinese", "description_chinese", "aliases"])
+    for (const key of [
+      "name_chinese",
+      "description_chinese",
+      "aliases",
+      "image",
+    ])
       values[key] ??= "";
     if (candidate.kind !== "products") values.city_id = candidate.city_id;
     const keys = Object.keys(values);

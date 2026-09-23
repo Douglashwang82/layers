@@ -40,6 +40,28 @@ describe("content collection boundaries", () => {
     expect(event.issues).toContain("Event end must follow start");
     expect(event.issues).toContain("Unknown field: fakeVote");
   });
+  it("accepts a place without a photo but still demands a location", () => {
+    const place = {
+      name: "Sample Bakery",
+      description: "A neighbourhood bakery.",
+      category: "Bakery",
+      neighborhood: "Chinatown",
+      address: "9889 Bellaire Blvd, Houston, TX",
+      latitude: 29.7,
+      longitude: -95.55,
+    };
+    expect(validateFields("places", place).issues).toEqual([]);
+    expect(validateFields("places", place).fields.image).toBeUndefined();
+    const noCoordinates: Record<string, unknown> = { ...place };
+    delete noCoordinates.latitude;
+    expect(validateFields("places", noCoordinates).issues).toEqual([
+      "Missing latitude",
+    ]);
+    // Organizations and events still require one; only places were relaxed.
+    expect(validateFields("organizations", { name: "Group" }).issues).toContain(
+      "Missing image",
+    );
+  });
   it("keeps source identity stable", () => {
     expect(stableHash(organization)).toBe(stableHash(organization));
     expect(safeSlug("臺灣社團", "12345678-1234-1234-1234-123456789abc")).toBe(

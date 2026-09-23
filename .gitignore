@@ -11,3 +11,9 @@ apps/web/public/uploads/
 .vercel
 .env*
 supabase/.temp
+
+# Claude Code local state. Shared config (.claude/settings.json, skills, agents)
+# stays tracked; these are per-developer or throwaway.
+.claude/settings.local.json
+.claude/scheduled_tasks.lock
+.claude/scratch/

@@ -677,6 +677,21 @@ textarea::placeholder {
   aspect-ratio: 4 / 3;
   background: var(--th-surface-soft);
 }
+/* Placeholder for collected places that carry no photo. */
+.card-image-empty {
+  position: absolute;
+  inset: 0;
+  background:
+    linear-gradient(
+      135deg,
+      transparent 45%,
+      var(--th-divider) 45%,
+      var(--th-divider) 55%,
+      transparent 55%
+    ),
+    var(--th-surface-soft);
+  opacity: 0.35;
+}
 .demo-pill {
   position: absolute;
   top: 12px;

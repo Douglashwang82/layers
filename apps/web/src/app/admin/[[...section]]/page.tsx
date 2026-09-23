@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { redirect, notFound } from "next/navigation";
-import { pool } from "@taiwanhub/database";
+import { pool, listExtractionPages } from "@taiwanhub/database";
 import { currentActor } from "@/lib/session";
 import { getCopy } from "@/lib/i18n";
 import { isModerator, kinds, type Kind } from "@taiwanhub/shared";
@@ -11,6 +11,10 @@ import {
   IngestionControls,
   RevisionControls,
 } from "@/components/admin-controls";
+import {
+  AddExtractionPage,
+  ExtractionPageControls,
+} from "@/components/extraction-controls";
 export default async function Admin({
   params,
 }: {
@@ -23,6 +27,9 @@ export default async function Admin({
   const { section } = await params;
   const kind = section?.[0];
   const admin = actor.role === "ADMIN";
+  // Source pages are an administrator concern: adding one asserts permission.
+  if (kind === "extraction" && !admin) notFound();
+  const extraction = kind === "extraction" ? await listExtractionPages() : [];
   const ingestion =
     kind === "ingestion"
       ? await Promise.all(
@@ -115,6 +122,14 @@ export default async function Admin({
         >
           Collected content ({ingestionCount})
         </Link>
+        {admin && (
+          <Link
+            href="/admin/extraction"
+            aria-current={kind === "extraction" ? "page" : undefined}
+          >
+            Source pages
+          </Link>
+        )}
         {kinds.map((k) => (
           <Link
             key={k}
@@ -125,7 +140,46 @@ export default async function Admin({
           </Link>
         ))}
       </nav>
-      {kind === "ingestion" ? (
+      {kind === "extraction" ? (
+        <>
+          <p className="muted">
+            Pages the extraction adapter reads. Adding one asserts that storing
+            and displaying its facts is permitted. New pages stay paused until
+            you enable them, and the daily run collects only enabled pages.
+          </p>
+          {extraction.map((page) => (
+            <article className="admin-item" key={page.id}>
+              <span className="eyebrow">
+                {page.feed_slug} · {page.kind} ·{" "}
+                {page.enabled ? "Enabled" : "Paused"}
+              </span>
+              <h3>{page.source_label}</h3>
+              <p>
+                <a href={page.url} target="_blank" rel="noopener noreferrer">
+                  {page.url}
+                </a>
+              </p>
+              {page.neighborhood && (
+                <p className="muted">Neighborhood: {page.neighborhood}</p>
+              )}
+              <p className="muted">{page.permission_note}</p>
+              {page.last_run_at && (
+                <p className="fine-print">
+                  Last run {page.last_run_at.toLocaleString()}:{" "}
+                  {page.last_status}
+                </p>
+              )}
+              <ExtractionPageControls page={page} />
+            </article>
+          ))}
+          {!extraction.length && (
+            <p>No source pages yet. The daily run collects nothing.</p>
+          )}
+          <AddExtractionPage
+            feeds={[...new Set(extraction.map((p) => p.feed_slug))]}
+          />
+        </>
+      ) : kind === "ingestion" ? (
         <>
           {ingestion.map((candidate) => (
             <article className="admin-item" key={candidate.id}>

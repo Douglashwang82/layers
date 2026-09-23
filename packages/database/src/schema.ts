@@ -481,6 +481,27 @@ export const generatedFeed = pgTable("generated_feed", {
   payload: jsonb("payload").$type<Record<string, unknown>>().notNull(),
   ...timestamps(),
 });
+/**
+ * Pages the extraction adapter reads, one row per page, grouped into a feed by
+ * feedSlug. Administrators manage these from /admin/extraction: adding a row is
+ * the act of asserting permission for that page, so permissionNote is required
+ * and a row starts disabled. lastStatus carries the previous run's outcome back
+ * to the interface.
+ */
+export const extractionPage = pgTable("extraction_page", {
+  id: id(),
+  feedSlug: text("feed_slug").notNull(),
+  kind: text("kind", { enum: ["places", "organizations"] }).notNull(),
+  sourceLabel: text("source_label").notNull(),
+  url: text("url").unique().notNull(),
+  neighborhood: text("neighborhood").default("").notNull(),
+  permissionNote: text("permission_note").notNull(),
+  enabled: boolean("enabled").default(false).notNull(),
+  lastRunAt: timestamp("last_run_at", { withTimezone: true }),
+  lastStatus: text("last_status").default("").notNull(),
+  addedBy: uuid("added_by").references(() => user.id),
+  ...timestamps(),
+});
 /* ---------------------------------------------------------------------------
    Groups, local content and layers. A layer is a saved collection applied to
    the map; ownership, audience and schedule are independent dimensions.

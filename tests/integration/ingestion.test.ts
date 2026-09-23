@@ -2,6 +2,7 @@ import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { pool } from "../../packages/database/src";
 import {
   decideCandidate,
+  dueSources,
   revertRevision,
 } from "../../packages/database/src/ingestion";
 import { getContent } from "../../apps/web/src/features/catalog/repository";
@@ -16,6 +17,12 @@ const demoSource = crypto.randomUUID(),
   demoRecord = crypto.randomUUID(),
   demoCandidate = crypto.randomUUID();
 let demoEntityId: string;
+const placeSource = crypto.randomUUID(),
+  placeRecord = crypto.randomUUID(),
+  placeCandidate = crypto.randomUUID();
+let placeEntityId: string;
+const nearlyDue = crypto.randomUUID(),
+  freshlyRun = crypto.randomUUID();
 const city = "00000000-0000-4000-8000-000000001001";
 const proposed = {
   name: "Integration Organization",
@@ -60,8 +67,58 @@ beforeAll(async () => {
       JSON.stringify({ ...proposed, name: "Demo Integration Organization" }),
     ],
   );
+  await pool.query(
+    "INSERT INTO content_source(id,name,url,kind,city_id,enabled) VALUES($1,'Test place source',$2,'places',$3,false)",
+    [placeSource, `https://example.org/${placeSource}.json`, city],
+  );
+  await pool.query(
+    "INSERT INTO source_record(id,source_id,external_id,source_url,content_hash) VALUES($1,$2,'place',$3,'place-hash')",
+    [placeRecord, placeSource, "https://example.org/place"],
+  );
+  await pool.query(
+    "INSERT INTO content_candidate(id,source_record_id,run_id,kind,proposed) VALUES($1,$2,$3,'places',$4)",
+    [
+      placeCandidate,
+      placeRecord,
+      run,
+      JSON.stringify({
+        name: "Integration Bakery",
+        description: "A Houston bakery.",
+        category: "Bakery",
+        neighborhood: "Chinatown",
+        address: "9889 Bellaire Blvd, Houston, TX",
+        latitude: 29.7,
+        longitude: -95.55,
+      }),
+    ],
+  );
+  // Two enabled daily sources: one attempted just under 24h ago (the case a
+  // drifting cron produces), one attempted minutes ago.
+  for (const [id, minutesAgo] of [
+    [nearlyDue, 23 * 60 + 50],
+    [freshlyRun, 10],
+  ] as const)
+    await pool.query(
+      `INSERT INTO content_source(id,name,url,kind,city_id,enabled,interval_hours,last_attempt_at) VALUES($1,'Schedule probe',$2,'places',$3,true,24,now()-$4 * interval '1 minute')`,
+      [id, `https://example.org/${id}.json`, city, minutesAgo],
+    );
 });
 afterAll(async () => {
+  await pool.query("DELETE FROM content_source WHERE id=ANY($1)", [
+    [nearlyDue, freshlyRun],
+  ]);
+  await pool.query("DELETE FROM entity_source WHERE source_record_id=$1", [
+    placeRecord,
+  ]);
+  await pool.query("DELETE FROM content_revision WHERE entity_id=$1", [
+    placeEntityId,
+  ]);
+  await pool.query("DELETE FROM content_candidate WHERE source_record_id=$1", [
+    placeRecord,
+  ]);
+  await pool.query("DELETE FROM source_record WHERE id=$1", [placeRecord]);
+  await pool.query("DELETE FROM content_source WHERE id=$1", [placeSource]);
+  await pool.query("DELETE FROM place WHERE id=$1", [placeEntityId]);
   await pool.query("DELETE FROM entity_source WHERE source_record_id=$1", [
     demoRecord,
   ]);
@@ -123,6 +180,32 @@ describe("ingestion publishing", () => {
     await expect(decideCandidate(candidate, actor, "approve")).rejects.toThrow(
       "no longer available",
     );
+  });
+  it("collects a daily source whose cron lands just early", async () => {
+    const due = (await dueSources()).map((source) => source.id);
+    // Without the grace window this is skipped, and a daily schedule that
+    // drifts later each run collects the source only every other day.
+    expect(due).toContain(nearlyDue);
+    expect(due).not.toContain(freshlyRun);
+    // A named source is always due, so an operator can still force a run.
+    expect((await dueSources(freshlyRun)).map((s) => s.id)).toEqual([
+      freshlyRun,
+    ]);
+  });
+  it("publishes a place that carries no photo and maps it", async () => {
+    placeEntityId = (
+      (await decideCandidate(placeCandidate, actor, "approve")) as {
+        entityId: string;
+      }
+    ).entityId;
+    const row = (
+      await pool.query(
+        "SELECT image,status,location IS NOT NULL AS located FROM place WHERE id=$1",
+        [placeEntityId],
+      )
+    ).rows[0];
+    // image is NOT NULL with no default, so an absent photo must land as "".
+    expect(row).toMatchObject({ image: "", status: "approved", located: true });
   });
   it("marks a listing from a demo source as demo", async () => {
     demoEntityId = (

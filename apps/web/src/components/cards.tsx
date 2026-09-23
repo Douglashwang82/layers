@@ -86,16 +86,21 @@ export function ContentCard({
     );
   const image = (
     <div className="card-image">
-      <Image
-        src={item.image}
-        alt={name}
-        fill
-        sizes={
-          variant === "compact"
-            ? "104px"
-            : "(max-width:599px) 100vw, (max-width:1099px) 50vw, 400px"
-        }
-      />
+      {/* Collected places may carry no photo; next/image rejects an empty src. */}
+      {item.image ? (
+        <Image
+          src={item.image}
+          alt={name}
+          fill
+          sizes={
+            variant === "compact"
+              ? "104px"
+              : "(max-width:599px) 100vw, (max-width:1099px) 50vw, 400px"
+          }
+        />
+      ) : (
+        <div className="card-image-empty" aria-hidden="true" />
+      )}
       {item.isDemo && <span className="demo-pill">{t.demoShort}</span>}
       {variant === "feature" && kind === "events" && item.startTime && (
         <div className="date-badge" aria-hidden="true">

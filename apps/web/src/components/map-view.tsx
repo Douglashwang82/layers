@@ -50,9 +50,12 @@ export function MapView({
           if (item.latitude == null || item.longitude == null) continue;
           const name = localized(item, locale);
           const popup = document.createElement("div");
-          const image = document.createElement("img");
-          image.src = item.image;
-          image.alt = "";
+          let image: HTMLImageElement | null = null;
+          if (item.image) {
+            image = document.createElement("img");
+            image.src = item.image;
+            image.alt = "";
+          }
           const title = document.createElement("strong");
           title.textContent = name;
           const detail = document.createElement("p");
@@ -64,7 +67,7 @@ export function MapView({
           const link = document.createElement("a");
           link.href = "/places/" + item.slug;
           link.textContent = t.details;
-          popup.append(image, title, detail, link);
+          popup.append(...(image ? [image] : []), title, detail, link);
           new mapboxgl.Marker({ color: pin })
             .setLngLat([item.longitude, item.latitude])
             .setPopup(new mapboxgl.Popup().setDOMContent(popup))
