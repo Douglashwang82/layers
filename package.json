@@ -18,6 +18,8 @@
     "db:seed": "tsx packages/database/src/seed.ts",
     "db:seed:reference": "tsx packages/database/src/seed-reference.ts",
     "admin:grant": "tsx packages/database/src/grant-admin.ts",
+    "membership:bootstrap": "tsx packages/database/src/membership-bootstrap.ts",
+    "mail:worker": "tsx packages/database/src/mail-worker.ts",
     "ingest": "tsx packages/database/src/ingestion-cli.ts",
     "db:sync-demo-flags": "tsx packages/database/src/sync-demo-flags.ts",
     "agent:run": "tsx packages/database/src/feed-agent.ts"

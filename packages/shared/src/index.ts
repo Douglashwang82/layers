@@ -2,6 +2,7 @@ import { z } from "zod";
 import { plainText } from "./text";
 export * from "./text";
 export * from "./membership";
+export * from "./mail";
 export const placeCategories = [
   "Taiwanese",
   "Bubble Tea",

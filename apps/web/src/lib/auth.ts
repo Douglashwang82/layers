@@ -2,7 +2,7 @@ import { betterAuth } from "better-auth";
 import { drizzleAdapter } from "better-auth/adapters/drizzle";
 import { bearer, emailOTP } from "better-auth/plugins";
 import { db, schema } from "@taiwanhub/database";
-import { resolveMailer } from "./mail";
+import { resolveMailer } from "@taiwanhub/shared";
 import { hasLiveInvitationForEmail } from "@/features/membership/repository";
 export const auth = betterAuth({
   database: drizzleAdapter(db, { provider: "pg", schema }),

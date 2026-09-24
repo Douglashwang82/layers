@@ -14,7 +14,7 @@ import {
   joinEmailComplete,
   revokeInvitation,
 } from "../../apps/web/src/features/membership/service";
-import { localTestMailer } from "../../apps/web/src/lib/mail";
+import { localTestMailer } from "../../packages/shared/src";
 import type { Actor } from "../../packages/shared/src";
 const admin: Actor = { id: crypto.randomUUID(), role: "ADMIN" };
 const nominatorA: Actor = { id: crypto.randomUUID(), role: "USER" };

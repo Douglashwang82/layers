@@ -27,9 +27,9 @@ class LocalTestMailer implements Mailer {
 export const localTestMailer = new LocalTestMailer();
 /**
  * No MAIL_PROVIDER has been selected by the team yet (plan section 13). In
- * production this throws MAIL_UNAVAILABLE rather than silently using the test
- * transport or dropping mail; outside production it falls back to the local
- * test transport for dev/CI.
+ * production this throws rather than silently using the test transport or
+ * dropping mail; outside production it falls back to the local test
+ * transport for dev/CI.
  */
 export function resolveMailer(): Mailer {
   const provider = process.env.MAIL_PROVIDER;

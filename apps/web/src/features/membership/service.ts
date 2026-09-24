@@ -18,15 +18,13 @@ import {
   joinContextInput,
   joinAcceptInput,
   joinEmailCompleteInput,
+  encryptOutboxPayload,
   type Actor,
   type NominationStatus,
+  type MailKind,
 } from "@taiwanhub/shared";
 import { auth } from "@/lib/auth";
 import { membershipMode, membershipIssuancePaused, appUrl } from "@/lib/config";
-import {
-  encryptOutboxPayload,
-  type MailKind,
-} from "@/lib/mail";
 import { requireReviewer, requireAdmin } from "./access";
 import { generateOpaqueToken, hashToken } from "./crypto";
 import {
