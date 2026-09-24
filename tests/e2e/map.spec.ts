@@ -1,4 +1,5 @@
 import { test, expect, type Page } from "@playwright/test";
+import { createTestAccount, submitSignIn } from "./fixtures";
 const noodleHouse = "Little Taipei Noodle House";
 /** Deterministic provider failure, whether or not a Mapbox token is configured. */
 async function blockMapProvider(page: Page) {
@@ -132,19 +133,9 @@ test("sign-in return keeps the selected item; personal layer creation, add, appl
     .click();
   await page.getByRole("button", { name: "Save", exact: true }).click();
   await expect(page).toHaveURL(/\/sign-in\?next=/);
-  await page
-    .getByRole("button", { name: "Create account", exact: true })
-    .click();
-  await page.getByLabel("Display name").fill("Layer Builder");
-  await page
-    .getByLabel("Email", { exact: true })
-    .fill(`layer-builder-${Date.now()}@example.test`);
-  await page
-    .getByLabel("Password", { exact: true })
-    .fill("Local-test-passphrase-927!");
-  await page
-    .getByRole("button", { name: "Create account", exact: true })
-    .click();
+  const email = `layer-builder-${Date.now()}@example.test`;
+  await createTestAccount("Layer Builder", email);
+  await submitSignIn(page, email);
   // Back on the map with the same item open; the action is presented, not executed.
   await expect(page).toHaveURL(/item=place/);
   await expect(

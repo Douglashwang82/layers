@@ -1,24 +1,13 @@
 import { test, expect } from "@playwright/test";
 import { Pool } from "pg";
 import "dotenv/config";
+import { createAndSignIn } from "./fixtures";
 test("event contribution stays private until an admin approves it", async ({
   page,
 }) => {
   const email = `moderation-${Date.now()}@example.test`;
   const name = `Community supper ${Date.now()}`;
-  await page.goto("/sign-in");
-  await page
-    .getByRole("button", { name: "Create account", exact: true })
-    .click();
-  await page.getByLabel("Display name").fill("Moderation Test");
-  await page.getByLabel("Email", { exact: true }).fill(email);
-  await page
-    .getByLabel("Password", { exact: true })
-    .fill("Local-test-passphrase-927!");
-  await page
-    .getByRole("button", { name: "Create account", exact: true })
-    .click();
-  await expect(page).toHaveURL("/");
+  await createAndSignIn(page, "Moderation Test", email);
   await page.goto("/submit/event");
   await page.getByLabel("Name / title").fill(name);
   await page
@@ -68,10 +57,9 @@ test("event contribution stays private until an admin approves it", async ({
       page.getByRole("heading", { name, exact: true }),
     ).toBeVisible();
   } finally {
-    await pool.query('UPDATE "user" SET role=$1 WHERE email=$2', [
-      "USER",
-      email,
-    ]);
+    // The event this test approves stays (submitted_by references this
+    // account, and browser tests intentionally leave contribution fixtures
+    // per AGENTS.md), so the account can't be deleted either - just end the pool.
     await pool.end();
   }
 });

@@ -1,4 +1,5 @@
 import { test, expect } from "@playwright/test";
+import { createAndSignIn } from "./fixtures";
 test("guest discovery, Chinese search, and responsive navigation", async ({
   page,
 }) => {
@@ -42,24 +43,14 @@ test("guest discovery, Chinese search, and responsive navigation", async ({
   await page.getByRole("button", { name: "Language" }).click();
   await expect(page.getByRole("tab", { name: /結果/ })).toBeVisible();
 });
-test("create account, save, change recommendation, RSVP and report a product sighting", async ({
+test("save, change recommendation, RSVP and report a product sighting", async ({
   page,
 }) => {
-  await page.goto("/sign-in");
-  await page
-    .getByRole("button", { name: "Create account", exact: true })
-    .click();
-  await page.getByLabel("Display name").fill("Browser Neighbor");
-  await page
-    .getByLabel("Email", { exact: true })
-    .fill(`browser-${Date.now()}@example.test`);
-  await page
-    .getByLabel("Password", { exact: true })
-    .fill("Local-test-passphrase-927!");
-  await page
-    .getByRole("button", { name: "Create account", exact: true })
-    .click();
-  await expect(page).toHaveURL("/");
+  await createAndSignIn(
+    page,
+    "Browser Neighbor",
+    `browser-${Date.now()}@example.test`,
+  );
   await page.goto("/places/demo-little-taipei-noodle-house");
   await page.getByRole("button", { name: "Save", exact: true }).click();
   await expect(

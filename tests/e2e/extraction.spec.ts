@@ -1,25 +1,14 @@
 import { test, expect } from "@playwright/test";
 import { Pool } from "pg";
 import "dotenv/config";
+import { createAndSignIn, deleteTestAccount } from "./fixtures";
 test("an admin manages extraction source pages from the web app", async ({
   page,
 }) => {
   const email = `extraction-${Date.now()}@example.test`;
   const slug = `browser-${Date.now()}`;
   const url = `https://example.org/browser-place-${Date.now()}`;
-  await page.goto("/sign-in");
-  await page
-    .getByRole("button", { name: "Create account", exact: true })
-    .click();
-  await page.getByLabel("Display name").fill("Extraction Test");
-  await page.getByLabel("Email", { exact: true }).fill(email);
-  await page
-    .getByLabel("Password", { exact: true })
-    .fill("Local-test-passphrase-927!");
-  await page
-    .getByRole("button", { name: "Create account", exact: true })
-    .click();
-  await expect(page).toHaveURL("/");
+  await createAndSignIn(page, "Extraction Test", email);
   // A plain account may not reach the source pages at all.
   await page.goto("/admin/extraction");
   await expect(
@@ -66,10 +55,7 @@ test("an admin manages extraction source pages from the web app", async ({
     ).toBe(0);
   } finally {
     await pool.query("DELETE FROM extraction_page WHERE feed_slug=$1", [slug]);
-    await pool.query('UPDATE "user" SET role=$1 WHERE email=$2', [
-      "USER",
-      email,
-    ]);
+    await deleteTestAccount(email);
     await pool.end();
   }
 });

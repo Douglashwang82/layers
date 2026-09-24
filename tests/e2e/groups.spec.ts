@@ -1,43 +1,12 @@
-import { test, expect, type Page } from "@playwright/test";
-async function createAccount(page: Page, name: string, email: string) {
-  await page.goto("/sign-in");
-  await page
-    .getByRole("button", { name: "Create account", exact: true })
-    .click();
-  await page.getByLabel("Display name").fill(name);
-  await page.getByLabel("Email", { exact: true }).fill(email);
-  await page
-    .getByLabel("Password", { exact: true })
-    .fill("Local-test-passphrase-927!");
-  await page
-    .getByRole("button", { name: "Create account", exact: true })
-    .click();
-  // Better Auth allows three sign-ups per 10 seconds per IP; this spec creates several.
-  const limited = page
-    .getByRole("alert", { name: "" })
-    .filter({ hasText: "Too many requests" });
-  await Promise.race([
-    page.waitForURL("/", { timeout: 15000 }).catch(() => {}),
-    limited
-      .first()
-      .waitFor({ timeout: 15000 })
-      .catch(() => {}),
-  ]);
-  if (await limited.count()) {
-    await page.waitForTimeout(11000);
-    await page
-      .getByRole("button", { name: "Create account", exact: true })
-      .click();
-  }
-  await expect(page).toHaveURL("/");
-}
+import { test, expect } from "@playwright/test";
+import { createAndSignIn } from "./fixtures";
 test("group creation, email-bound invitation, restricted layer and revocation", async ({
   browser,
 }) => {
   const stamp = Date.now();
   const ownerContext = await browser.newContext();
   const owner = await ownerContext.newPage();
-  await createAccount(owner, "Group Owner", `owner-${stamp}@example.test`);
+  await createAndSignIn(owner, "Group Owner", `owner-${stamp}@example.test`);
   await owner.goto("/groups/new");
   await owner.getByLabel("Group name").fill(`Bayou Students ${stamp}`);
   await owner.getByRole("button", { name: "Create group" }).click();
@@ -55,7 +24,7 @@ test("group creation, email-bound invitation, restricted layer and revocation", 
   // A different signed-in account is refused; the invited one joins as editor.
   const wrongContext = await browser.newContext();
   const wrong = await wrongContext.newPage();
-  await createAccount(wrong, "Wrong Person", `wrong-${stamp}@example.test`);
+  await createAndSignIn(wrong, "Wrong Person", `wrong-${stamp}@example.test`);
   await wrong.goto(joinPath);
   await wrong.getByRole("button", { name: "Accept invitation" }).click();
   await expect(wrong.locator(".error-message")).toContainText(
@@ -68,7 +37,7 @@ test("group creation, email-bound invitation, restricted layer and revocation", 
   await expect(
     member.getByText("Sign in with the invited account"),
   ).toBeVisible();
-  await createAccount(member, "Group Member", memberEmail);
+  await createAndSignIn(member, "Group Member", memberEmail);
   await member.goto(joinPath);
   await member.getByRole("button", { name: "Accept invitation" }).click();
   await expect(member).toHaveURL(groupUrl);
