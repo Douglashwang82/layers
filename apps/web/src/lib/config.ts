@@ -11,3 +11,12 @@ export const flags = {
 };
 export const appUrl =
   process.env.NEXT_PUBLIC_APP_URL ?? "http://localhost:3000";
+/**
+ * Fail closed: an unset or unrecognized value blocks new admission rather than
+ * silently allowing it. `invite_only` is the only value that opens the flow;
+ * `closed` and issuance pause keep existing logins working either way.
+ */
+export const membershipMode: "closed" | "invite_only" =
+  process.env.MEMBERSHIP_MODE === "invite_only" ? "invite_only" : "closed";
+export const membershipIssuancePaused =
+  process.env.MEMBERSHIP_ISSUANCE_PAUSED === "true";

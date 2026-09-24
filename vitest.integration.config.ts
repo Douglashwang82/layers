@@ -7,5 +7,11 @@ export default defineConfig({
     include: ["tests/integration/**/*.test.ts"],
     testTimeout: 20000,
     fileParallelism: false,
+    env: {
+      MEMBERSHIP_MODE: "invite_only",
+      // Test-only key so mail_outbox encryption has something to work with;
+      // never used outside this test run.
+      MAIL_OUTBOX_ENCRYPTION_KEY: "3HWCF7wU3kwiYI6i1Is5LdG9F6g/G40g4iBTgBVYS30=",
+    },
   },
 });

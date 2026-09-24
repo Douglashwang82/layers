@@ -81,6 +81,7 @@ import {
 import { flags, appUrl } from "@/lib/config";
 import { trackEvent } from "@/lib/analytics";
 import { clientEventNames } from "@/lib/track";
+import { handleMembershipRoute } from "@/features/membership/router";
 export const dynamic = "force-dynamic";
 async function handler(
   request: NextRequest,
@@ -90,6 +91,11 @@ async function handler(
     const { path } = await params;
     const [resource, id, action] = path;
     const method = request.method;
+    if (resource === "membership") {
+      const actor = await currentActor();
+      const query = Object.fromEntries(request.nextUrl.searchParams);
+      return handleMembershipRoute(request, path.slice(1), actor, query);
+    }
     if (
       ((resource === "products" || resource === "product-sightings") &&
         !flags.products) ||

@@ -1,4 +1,7 @@
 import { z } from "zod";
+import { plainText } from "./text";
+export * from "./text";
+export * from "./membership";
 export const placeCategories = [
   "Taiwanese",
   "Bubble Tea",
@@ -30,16 +33,6 @@ export const kinds = ["places", "events", "products", "organizations"] as const;
 export type Kind = (typeof kinds)[number];
 export type Role = "USER" | "MODERATOR" | "ADMIN";
 export type Actor = { id: string; role: Role };
-export const plainText = (max: number) =>
-  z
-    .string()
-    .trim()
-    .min(1)
-    .max(max)
-    .refine(
-      (v) => !/[<>\u0000-\u0008]/.test(v),
-      "Use plain text without markup.",
-    );
 export const imageUrl = z
   .string()
   .max(2048)
