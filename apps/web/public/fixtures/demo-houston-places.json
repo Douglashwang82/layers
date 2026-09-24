@@ -1,0 +1,17 @@
+{
+  "items": [
+    {
+      "id": "local-pipeline-check-bubble-tea",
+      "url": "https://bayoucitytcc.example.org/places/sample-bubble-tea-stop",
+      "fields": {
+        "name": "Sample Bubble Tea Stop",
+        "description": "A fictional listing used to verify the local content-collection pipeline end to end. Not a real business.",
+        "category": "Bubble Tea",
+        "neighborhood": "Chinatown",
+        "address": "123 Example Road, Houston, TX 77036",
+        "latitude": 29.7205,
+        "longitude": -95.5852
+      }
+    }
+  ]
+}
