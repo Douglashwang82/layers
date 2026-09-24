@@ -1,6 +1,7 @@
 "use client";
 import { useState, type FormEvent } from "react";
 import { useRouter } from "next/navigation";
+import Link from "next/link";
 import { Check, Link2, UserMinus, UserPlus } from "lucide-react";
 import { api, StatusMessage } from "@/components/actions";
 import { Field } from "@/components/ui/field";
@@ -192,6 +193,11 @@ export function GroupMembers({
             </div>
             <StatusMessage feedback={inviteFeedback} />
           </form>
+          <p className="fine-print">
+            <Link href={`/membership?email=${encodeURIComponent(email)}`}>
+              {t.groupNeedsAccount}
+            </Link>
+          </p>
           {inviteLink && (
             <div className="notice" role="status">
               <p>{format(t.inviteCreated, { email: inviteLink.email })}</p>

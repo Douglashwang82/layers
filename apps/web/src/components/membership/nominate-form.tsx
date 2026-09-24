@@ -11,7 +11,13 @@ const input = z.object({
   email: z.email(),
   note: z.string().trim().max(300).optional(),
 });
-export function NominateForm({ t }: { t: Copy }) {
+export function NominateForm({
+  t,
+  defaultEmail,
+}: {
+  t: Copy;
+  defaultEmail?: string;
+}) {
   const router = useRouter();
   const [feedback, setFeedback] = useState<
     { tone: "success" | "error"; text: string } | null
@@ -21,7 +27,10 @@ export function NominateForm({ t }: { t: Copy }) {
     handleSubmit,
     reset,
     formState: { errors, isSubmitting },
-  } = useForm<z.infer<typeof input>>({ resolver: zodResolver(input) });
+  } = useForm<z.infer<typeof input>>({
+    resolver: zodResolver(input),
+    defaultValues: { email: defaultEmail ?? "" },
+  });
   return (
     <form
       className="form-stack"

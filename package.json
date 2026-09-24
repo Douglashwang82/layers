@@ -19,6 +19,7 @@
     "db:seed:reference": "tsx packages/database/src/seed-reference.ts",
     "admin:grant": "tsx packages/database/src/grant-admin.ts",
     "membership:bootstrap": "tsx packages/database/src/membership-bootstrap.ts",
+    "membership:backfill-legacy": "tsx packages/database/src/membership-legacy-backfill.ts",
     "mail:worker": "tsx packages/database/src/mail-worker.ts",
     "ingest": "tsx packages/database/src/ingestion-cli.ts",
     "db:sync-demo-flags": "tsx packages/database/src/sync-demo-flags.ts",
