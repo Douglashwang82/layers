@@ -750,3 +750,229 @@ export const userMapPreference = pgTable("user_map_preference", {
     .notNull(),
   ...timestamps(),
 });
+/* ---------------------------------------------------------------------------
+   Invitation-only membership. No public sign-up: an admin bootstraps the first
+   members directly; everyone after that is nominated by an existing member and
+   approved by a reviewer (a capability, not a role). Platform admission is
+   independent of group invitations. See docs/invitation-membership-implementation-plan.md
+   and docs/adr/0001-membership-invitation-auth-transaction-boundary.md.
+   --------------------------------------------------------------------------- */
+export const membershipReviewer = pgTable("membership_reviewer", {
+  userId: uuid("user_id")
+    .primaryKey()
+    .references(() => user.id, { onDelete: "cascade" }),
+  grantedBy: uuid("granted_by")
+    .notNull()
+    .references(() => user.id),
+  grantedAt: timestamp("granted_at", { withTimezone: true })
+    .defaultNow()
+    .notNull(),
+  revokedBy: uuid("revoked_by").references(() => user.id),
+  revokedAt: timestamp("revoked_at", { withTimezone: true }),
+});
+export const membershipBatch = pgTable(
+  "membership_batch",
+  {
+    id: id(),
+    name: text("name").notNull(),
+    capacity: integer("capacity").notNull(),
+    status: text("status", { enum: ["open", "closed"] })
+      .default("open")
+      .notNull(),
+    createdBy: uuid("created_by").references(() => user.id),
+    ...timestamps(),
+  },
+  (t) => [
+    uniqueIndex("membership_batch_single_open")
+      .on(t.status)
+      .where(sql`${t.status} = 'open'`),
+    check("membership_batch_capacity_positive", sql`${t.capacity} > 0`),
+  ],
+);
+export const membershipNomination = pgTable(
+  "membership_nomination",
+  {
+    id: id(),
+    emailNormalized: text("email_normalized").notNull(),
+    nominatorId: uuid("nominator_id").references(() => user.id),
+    source: text("source", {
+      enum: ["member", "admin_direct", "operator_bootstrap"],
+    }).notNull(),
+    note: text("note"),
+    status: text("status", {
+      enum: [
+        "pending_review",
+        "needs_info",
+        "approved",
+        "joined",
+        "withdrawn",
+        "rejected",
+        "closed",
+      ],
+    })
+      .default("pending_review")
+      .notNull(),
+    revision: integer("revision").default(1).notNull(),
+    approvedBy: uuid("approved_by").references(() => user.id),
+    approvedAt: timestamp("approved_at", { withTimezone: true }),
+    ...timestamps(),
+  },
+  (t) => [
+    index("membership_nomination_email_idx").on(t.emailNormalized),
+    uniqueIndex("membership_nomination_open_email")
+      .on(t.emailNormalized)
+      .where(
+        sql`${t.status} IN ('pending_review', 'needs_info', 'approved')`,
+      ),
+    check(
+      "membership_nomination_nominator_required",
+      sql`${t.source} = 'operator_bootstrap' OR ${t.nominatorId} IS NOT NULL`,
+    ),
+  ],
+);
+export const membershipInvitation = pgTable(
+  "membership_invitation",
+  {
+    id: id(),
+    nominationId: uuid("nomination_id")
+      .notNull()
+      .unique()
+      .references(() => membershipNomination.id),
+    batchId: uuid("batch_id")
+      .notNull()
+      .references(() => membershipBatch.id),
+    delivery: text("delivery", { enum: ["manual", "email"] }).notNull(),
+    tokenHash: text("token_hash").unique().notNull(),
+    tokenVersion: integer("token_version").default(1).notNull(),
+    expiresAt: timestamp("expires_at", { withTimezone: true }).notNull(),
+    status: text("status", {
+      enum: ["issued", "redeemed", "revoked", "expired"],
+    })
+      .default("issued")
+      .notNull(),
+    redeemedBy: uuid("redeemed_by").references(() => user.id),
+    redeemedAt: timestamp("redeemed_at", { withTimezone: true }),
+    revokedBy: uuid("revoked_by").references(() => user.id),
+    revokedAt: timestamp("revoked_at", { withTimezone: true }),
+    ...timestamps(),
+  },
+  (t) => [
+    index("membership_invitation_batch_status_idx").on(t.batchId, t.status),
+  ],
+);
+export const membershipAdmission = pgTable(
+  "membership_admission",
+  {
+    userId: uuid("user_id")
+      .primaryKey()
+      .references(() => user.id, { onDelete: "cascade" }),
+    source: text("source", {
+      enum: ["legacy", "invitation", "operator_bootstrap"],
+    }).notNull(),
+    invitationId: uuid("invitation_id")
+      .unique()
+      .references(() => membershipInvitation.id),
+    admittedAt: timestamp("admitted_at", { withTimezone: true })
+      .defaultNow()
+      .notNull(),
+    termsVersion: text("terms_version"),
+    termsAcceptedAt: timestamp("terms_accepted_at", { withTimezone: true }),
+  },
+  (t) => [
+    check(
+      "membership_admission_invitation_required",
+      sql`${t.source} = 'legacy' OR ${t.invitationId} IS NOT NULL`,
+    ),
+  ],
+);
+export const membershipJoinContext = pgTable(
+  "membership_join_context",
+  {
+    id: id(),
+    secretHash: text("secret_hash").unique().notNull(),
+    invitationId: uuid("invitation_id")
+      .notNull()
+      .references(() => membershipInvitation.id),
+    tokenVersion: integer("token_version").notNull(),
+    expiresAt: timestamp("expires_at", { withTimezone: true }).notNull(),
+    termsVersion: text("terms_version"),
+    termsAcceptedAt: timestamp("terms_accepted_at", { withTimezone: true }),
+    consumedAt: timestamp("consumed_at", { withTimezone: true }),
+    ...timestamps(),
+  },
+  (t) => [index("membership_join_context_invitation_idx").on(t.invitationId)],
+);
+/** Append-only. Never updated or deleted; carries no token/OTP material. */
+export const membershipAudit = pgTable(
+  "membership_audit",
+  {
+    id: id(),
+    actorId: uuid("actor_id").references(() => user.id),
+    action: text("action").notNull(),
+    nominationId: uuid("nomination_id").references(() => membershipNomination.id),
+    invitationId: uuid("invitation_id").references(() => membershipInvitation.id),
+    targetUserId: uuid("target_user_id").references(() => user.id),
+    beforeState: jsonb("before_state").$type<Record<string, unknown>>(),
+    afterState: jsonb("after_state").$type<Record<string, unknown>>(),
+    reason: text("reason"),
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .defaultNow()
+      .notNull(),
+  },
+  (t) => [
+    index("membership_audit_nomination_idx").on(t.nominationId),
+    index("membership_audit_invitation_idx").on(t.invitationId),
+  ],
+);
+export const mailOutbox = pgTable(
+  "mail_outbox",
+  {
+    id: id(),
+    kind: text("kind").notNull(),
+    dedupeKey: text("dedupe_key").unique().notNull(),
+    recipient: text("recipient").notNull(),
+    payloadCiphertext: text("payload_ciphertext").notNull(),
+    payloadKeyVersion: integer("payload_key_version").notNull(),
+    status: text("status", {
+      enum: ["queued", "provider_accepted", "failed", "superseded"],
+    })
+      .default("queued")
+      .notNull(),
+    attempts: integer("attempts").default(0).notNull(),
+    nextAttemptAt: timestamp("next_attempt_at", { withTimezone: true })
+      .defaultNow()
+      .notNull(),
+    leaseUntil: timestamp("lease_until", { withTimezone: true }),
+    providerMessageId: text("provider_message_id"),
+    lastErrorCode: text("last_error_code"),
+    ...timestamps(),
+  },
+  (t) => [
+    index("mail_outbox_next_attempt_idx").on(t.status, t.nextAttemptAt),
+  ],
+);
+/** Actor-scoped idempotency for membership create/approve/direct-invite/reissue calls. */
+export const membershipRequest = pgTable(
+  "membership_request",
+  {
+    id: id(),
+    actorId: uuid("actor_id")
+      .notNull()
+      .references(() => user.id),
+    operation: text("operation").notNull(),
+    idempotencyKey: text("idempotency_key").notNull(),
+    requestHash: text("request_hash").notNull(),
+    resultEntityId: uuid("result_entity_id"),
+    resultVersion: integer("result_version"),
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .defaultNow()
+      .notNull(),
+  },
+  (t) => [
+    uniqueIndex("membership_request_identity").on(
+      t.actorId,
+      t.operation,
+      t.idempotencyKey,
+    ),
+  ],
+);
