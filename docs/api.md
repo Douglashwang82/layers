@@ -2,7 +2,9 @@
 
 Success: `{ "data": ... }`. Error: `{ "error": { "code": "...", "message": "..." } }`. Auth endpoints retain Better Auth's native response shape. Images/preferences use a message on errors. HTTP 400 validation, 401 unauthenticated, 403 forbidden, 404 missing/disabled, 409 capacity/ended conflicts, 413 oversized, 429 throttled, 500 unexpected failure.
 
-Better Auth is mounted at `/api/auth/*`: `/sign-up/email`, `/sign-in/email`, `/sign-out`, `/get-session`, and social provider flows. Use its browser SDK or bearer plugin contract for native clients. All application mutations use the authenticated actor; body user IDs are ignored by schemas.
+Better Auth is mounted at `/api/auth/*`: `/sign-in/email`, `/sign-out`, `/get-session`, `/sign-in/email-otp`, `/email-otp/send-verification-otp`, and social provider flows. Use its browser SDK or bearer plugin contract for native clients. All application mutations use the authenticated actor; body user IDs are ignored by schemas.
+
+**Membership is invite-only** (see [the implementation plan](invitation-membership-implementation-plan.md) and [ADR 0001](adr/0001-membership-invitation-auth-transaction-boundary.md)). `POST /api/auth/sign-up/email` always fails (`emailAndPassword.disableSignUp`); existing password logins are unaffected. `/api/auth/sign-in/email-otp` and `/api/auth/email-otp/send-verification-otp` work normally for an email that already has an account, but for one that doesn't, they only proceed if a live invitation exists for that email — otherwise they're refused before Better Auth ever runs, so no OTP is wasted on someone who isn't invited. The actual, reliable admission gate is a `databaseHooks.user.create.before` check in `apps/web/src/lib/auth.ts` that applies to every account-creation path, including Google's first-time callback; this HTTP-level check is only there to avoid burning OTP sends on requests that would be vetoed anyway.
 
 | Method         | Route                                                       | Behavior                                                                                            |
 | -------------- | ----------------------------------------------------------- | --------------------------------------------------------------------------------------------------- |
@@ -43,6 +45,32 @@ Better Auth is mounted at `/api/auth/*`: `/sign-up/email`, `/sign-in/email`, `/s
 | GET / POST     | `/api/v1/content`, `/api/v1/content/{id-or-slug}`           | Approved content (authors see their own pending); submit for review                                 |
 | POST / DELETE  | `/api/v1/content/{uuid}/save`                               | Save/unsave content                                                                                 |
 | POST           | `/api/v1/analytics`                                         | Guest outcome events, allowlisted names only                                                        |
+
+## Membership
+
+All under `/api/v1/membership`. `join/*` routes are the only ones reachable without a session; they read/write a short-lived `membership_join` HttpOnly cookie instead, never the raw invitation token.
+
+| Method             | Route                                        | Behavior                                                                                                |
+| ------------------ | -------------------------------------------- | ------------------------------------------------------------------------------------------------------- |
+| GET                | `/membership/me`                             | Own reviewer/admin flags, own nominations, open batch summary                                           |
+| POST               | `/membership/nominations`                    | `{email,note?}`; verified-email members only; duplicate targets get one generic error                   |
+| GET                | `/membership/nominations?scope=mine\|review` | Own nominations, or the review queue (reviewer/admin only)                                              |
+| PATCH              | `/membership/nominations/{id}`               | Nominator edits `{note,revision}` while `pending_review`/`needs_info`                                   |
+| POST               | `/membership/nominations/{id}/withdraw`      | `{revision}`; nominator or admin                                                                        |
+| POST               | `/membership/nominations/{id}/decision`      | `{decision:approve\|needs_info\|reject,revision,reason?}`; reject requires ADMIN                        |
+| POST               | `/membership/invitations/{id}/revoke`        | `{reason?}`; nominator or admin, before redemption                                                      |
+| POST               | `/membership/invitations/{id}/reissue`       | New token/expiry for a still-issued invitation; invalidates prior join sessions                         |
+| POST               | `/membership/join/context`                   | `{token,returnTo?}`; no session; sets the join cookie, returns masked email/nominator/expiry            |
+| POST               | `/membership/join/email/start`               | `{acceptTerms:true}`; sends the OTP to the invitation's email                                           |
+| POST               | `/membership/join/email/complete`            | `{otp}`; on success, admission is finalized before the session cookie is ever forwarded                 |
+| GET / POST         | `/membership/admin/invitations`              | ADMIN; list, or direct-invite `{email,batchId,delivery:manual\|email}` (manual returns a one-time link) |
+| GET                | `/membership/admin/reviewers`                | ADMIN; active and revoked reviewers                                                                     |
+| PUT                | `/membership/admin/reviewers/{userId}`       | ADMIN; `{enabled,reason?}`                                                                              |
+| GET                | `/membership/admin/lookup?email=`            | ADMIN; resolve a user id from an email (for the reviewer-grant UI)                                      |
+| GET / POST / PATCH | `/membership/admin/batches[/{id}]`           | ADMIN; list / open `{name,capacity}` / update `{name?,capacity?,status?}`                               |
+| POST               | `/membership/admin/mail/{id}/retry`          | ADMIN; retry a failed invitation email                                                                  |
+
+Error codes beyond the shared set: `INVITE_REQUIRED`, `INVITE_INVALID`, `OTP_INVALID`, `INVITE_ALREADY_REDEEMED`, `SELF_APPROVAL_FORBIDDEN`, `REVIEWER_REQUIRED`, `EMAIL_VERIFICATION_REQUIRED`, `NOMINATION_UNAVAILABLE`, `REVISION_CONFLICT`, `BATCH_FULL`, `MEMBERSHIP_PAUSED`. Invalid/expired/revoked invitations all return the same `INVITE_INVALID` message so a guessed or stale token doesn't reveal anything.
 
 Catalog query parameters: `city` (slug, default houston), `q`, `category`, `neighborhood`, `sort=popular|score|date`, `page` (1-based), and for events `period=today|weekend|week`, `organization` UUID. Lists return `{items,total,page,pageSize:12}`. Products are globally defined; their sighting queries are city-scoped.
 

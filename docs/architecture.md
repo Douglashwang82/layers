@@ -10,6 +10,8 @@ The simple pnpm workspace intentionally omits Turborepo, an empty UI package and
 
 Better Auth manages credentials, hashed passwords, sessions, CSRF protections on auth endpoints and optional Google accounts. Session user IDs are always server-derived. Account metadata permits language/home-city/bio but not role assignment. The bearer plugin gives a future native client an HTTP authentication path without assuming browser cookies. Tokens must be stored in native secure storage; do not expose them in URLs or localStorage. No custom JWT system exists.
 
+Membership is invite-only (see [the plan](invitation-membership-implementation-plan.md), [ADR 0001](adr/0001-membership-invitation-auth-transaction-boundary.md)). Password sign-up is permanently disabled (`emailAndPassword.disableSignUp`); existing password logins are unaffected. Email OTP is the default onboarding path, gated by a `databaseHooks.user.create.before` check that applies uniformly to every account-creation call site (OTP, Google's first-time callback, and any future one) - a pure read with no transactional dependency, since the installed Better Auth version doesn't give OTP-based sign-in a real transaction to join. Admission itself (the `membership_admission` row, invitation redemption, and the decision of whether to ever hand out a session) is finalized in the application's own transaction after Better Auth's call returns, using `returnHeaders: true` to hold the session cookie back until that commits.
+
 ## Services and consistency
 
 - Recommendation: unique `(user_id,place_id)`, upsert changes the vote. Only approved votes count. New binary votes are immediately approved; accompanying free text is pending. Hidden votes stay hidden when edited.

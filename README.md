@@ -18,13 +18,15 @@ pnpm dev
 
 Open http://localhost:3000. Set `AUTH_SECRET` in `.env` to a random value before running a shared environment. Generate one with `node -e "console.log(require('crypto').randomBytes(32).toString('hex'))"`. `.env` is ignored by Git. Next loads the workspace `.env` through its config; database tools load it directly.
 
-Create an account at `/sign-in`. Email/password works without external credentials. Seed users have no passwords and cannot log in. No default admin or backdoor login is installed. After creating your own account, grant admin locally:
+Membership is invite-only - there is no public sign-up page. Seed users have no passwords and cannot log in, and no default admin or backdoor login is installed. To create your own account in a fresh environment, set `MEMBERSHIP_MODE=invite_only` in `.env`, then bootstrap the first invitation:
 
 ```sh
+pnpm membership:bootstrap you@example.com
+# follow the one-time link it prints to /join, complete the Email OTP flow, then:
 pnpm admin:grant you@example.com
 ```
 
-Visit `/admin` to approve pending events, places, sightings and notes; edit content; hide, reject or soft-delete content. Moderator roles can review and edit; only admins can soft-delete. Roles are never accepted from account creation or profile requests.
+Visit `/admin` to approve pending events, places, sightings and notes; edit content; hide, reject or soft-delete content; and use `/admin/membership` to open batches, invite people directly, and grant/revoke reviewer access. Moderator roles can review and edit; only admins can soft-delete. Roles are never accepted from account creation or profile requests. See [docs/invitation-membership-implementation-plan.md](docs/invitation-membership-implementation-plan.md) for how membership works end to end.
 
 ## Stack and layout
 
@@ -33,7 +35,7 @@ Visit `/admin` to approve pending events, places, sightings and notes; edit cont
 - `packages/shared`: domain types, Zod boundaries, authorization and transparent ranking functions. This is the starting point for a future Expo app.
 - `src/features/catalog`: public data queries and home feed composition.
 - `src/features/community`: transactional mutations and moderation, separate from HTTP routes.
-- Better Auth: maintained email/password and optional Google authentication with bearer support for future mobile clients. Selected instead of Auth.js to avoid implementing password hashing, registration and credential account management ourselves.
+- Better Auth: maintained password sign-in (existing accounts only), Email OTP (the invite-only membership path), and optional Google authentication, with bearer support for future mobile clients. Selected instead of Auth.js to avoid implementing password hashing, registration and credential account management ourselves.
 
 Drizzle keeps PostgreSQL features explicit, including typed PostGIS geometry columns and GiST indexes. Complex capacity and ranking queries use parameterized SQL through its underlying `pg` pool. There is one database and one ORM, no microservice or second store.
 
@@ -45,7 +47,7 @@ Seeds insert deterministic UUIDs and do not erase user data. Running again refre
 
 ## Features
 
-Map-first home with applied layers (system presets, personal and group collections, My saves projection), synchronized results/details and a full list fallback; layer library, creation, curation, follow and reviewed publication; groups with roles and email-bound invitations; local content with explicit location status; guest browsing; accounts; English/繁體中文; Houston city selection; place and event filtering; bilingual unified search; place recommendation voting and moderated short notes; capacity-safe RSVP/cancellation; saves; organization follows; product sightings; place/event submissions; role-protected moderation with audit history; optional Mapbox; image upload abstraction; persisted analytics; public metadata and sitemap excluding demo listings.
+Map-first home with applied layers (system presets, personal and group collections, My saves projection), synchronized results/details and a full list fallback; layer library, creation, curation, follow and reviewed publication; groups with roles and email-bound invitations; local content with explicit location status; guest browsing; invite-only membership (member nominations, reviewer approval, admin batches/direct invites); English/繁體中文; Houston city selection; place and event filtering; bilingual unified search; place recommendation voting and moderated short notes; capacity-safe RSVP/cancellation; saves; organization follows; product sightings; place/event submissions; role-protected moderation with audit history; optional Mapbox; image upload abstraction; persisted analytics; public metadata and sitemap excluding demo listings.
 
 ## Configuration
 
@@ -63,6 +65,10 @@ See `.env.example` for the complete list.
 | `ANALYTICS_CONSOLE`                                                | Log event names/properties locally; DB events always persisted                             |
 | `FEATURE_PRODUCTS`, `FEATURE_ORGANIZATIONS`, `FEATURE_SUBMISSIONS` | Set `false` to disable optional feature entry points                                       |
 | `FEATURE_MAP_HOME`, `FEATURE_LAYER_WRITES`, `FEATURE_CONTENT`      | Map-first home (false restores the legacy entry screen), layer/group writes, local content |
+| `MEMBERSHIP_MODE`                                                  | `closed` (default; no new accounts) or `invite_only` to enable the invitation flow         |
+| `MEMBERSHIP_ISSUANCE_PAUSED`                                       | `true` pauses new approvals/invites without affecting already-issued ones                  |
+| `MAIL_PROVIDER`, `MAIL_FROM`                                       | No provider is wired up yet; unset uses the local test transport (dev/CI only)             |
+| `MAIL_OUTBOX_ENCRYPTION_KEY`                                       | 32 random bytes, base64-encoded, encrypting queued invitation email payloads at rest       |
 
 Mapbox/Google/S3 are optional for local startup. Missing Mapbox displays a clear fallback with external directions. Local uploads support JPEG, PNG and WebP up to 5 MB. Production must configure object storage to upload files; HTTPS image URLs can also be submitted. Untrusted image URLs are rendered directly, not fetched by the server image proxy.
 
