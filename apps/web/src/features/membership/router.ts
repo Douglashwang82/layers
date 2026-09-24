@@ -14,6 +14,7 @@ import {
   reissueInvitation,
   adminDirectInvite,
   listReviewers,
+  lookupUserByEmail,
   setReviewer,
   listBatches,
   createBatch,
@@ -97,6 +98,8 @@ export async function handleMembershipRoute(
         return ok(await listReviewers(actor));
       if (section === "admin" && id === "batches")
         return ok(await listBatches(actor));
+      if (section === "admin" && id === "lookup")
+        return ok(await lookupUserByEmail(actor, query.email ?? ""));
       throw new AppError(404, "NOT_FOUND", "Endpoint not found.");
     }
     if (section === "join") {

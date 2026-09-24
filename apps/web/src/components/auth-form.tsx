@@ -1,5 +1,6 @@
 "use client";
 import { useState } from "react";
+import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { createAuthClient } from "better-auth/react";
 import { useForm } from "react-hook-form";
@@ -12,8 +13,8 @@ const client = createAuthClient();
 const input = z.object({
   email: z.email(),
   password: z.string().min(10).max(128),
-  name: z.string().trim().max(80).optional(),
 });
+/** Existing password/Google members only - no sign-up path here (invite-only, see /join). */
 export function AuthForm({
   t,
   next,
@@ -23,7 +24,6 @@ export function AuthForm({
   next: string;
   google: boolean;
 }) {
-  const [signup, setSignup] = useState(false);
   const [message, setMessage] = useState("");
   const router = useRouter();
   const {
@@ -42,12 +42,7 @@ export function AuthForm({
       onSubmit={handleSubmit(async (data) => {
         setMessage("");
         try {
-          const result = signup
-            ? await client.signUp.email({
-                ...data,
-                name: data.name?.trim() || data.email.split("@")[0],
-              })
-            : await client.signIn.email(data);
+          const result = await client.signIn.email(data);
           if (result.error) {
             setMessage(result.error.message ?? t.authError);
             return;
@@ -59,16 +54,7 @@ export function AuthForm({
         }
       })}
     >
-      <h1>{signup ? t.signUp : t.signIn}</h1>
-      {signup && (
-        <Field id="auth-name" label={t.name} error={errors.name?.message}>
-          <input
-            autoComplete="name"
-            {...register("name")}
-            {...fieldProps("auth-name", { error: errors.name?.message })}
-          />
-        </Field>
-      )}
+      <h1>{t.signIn}</h1>
       <Field id="auth-email" label={t.email} error={errors.email?.message}>
         <input
           type="email"
@@ -86,7 +72,7 @@ export function AuthForm({
       >
         <input
           type="password"
-          autoComplete={signup ? "new-password" : "current-password"}
+          autoComplete="current-password"
           required
           minLength={10}
           {...register("password")}
@@ -101,7 +87,7 @@ export function AuthForm({
         disabled={isSubmitting}
         aria-busy={isSubmitting || undefined}
       >
-        {isSubmitting ? t.submitting : signup ? t.signUp : t.signIn}
+        {isSubmitting ? t.submitting : t.signIn}
       </button>
       {google && (
         <button
@@ -121,14 +107,10 @@ export function AuthForm({
         feedback={message ? { tone: "error", text: message } : null}
       />
       <p className="auth-links">
-        {signup ? t.haveAccount : t.noAccount}{" "}
-        <button
-          type="button"
-          className="text-button"
-          onClick={() => setSignup(!signup)}
-        >
-          {signup ? t.signIn : t.signUp}
-        </button>
+        {t.membershipInviteOnly}{" "}
+        <Link className="text-button" href="/join">
+          {t.askToBeInvited}
+        </Link>
       </p>
       <small className="fine-print">{t.privacy}</small>
     </form>

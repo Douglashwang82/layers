@@ -4,12 +4,15 @@ import { plainText } from "./text";
 export function normalizeEmail(email: string) {
   return email.trim().toLowerCase();
 }
+/** An untouched optional textarea submits "", not undefined - treat it the same. */
+const optionalPlainText = (max: number) =>
+  z.preprocess((v) => (v === "" ? undefined : v), plainText(max).optional());
 export const nominationEmailInput = z.object({
   email: z.email(),
-  note: plainText(300).optional(),
+  note: optionalPlainText(300),
 });
 export const nominationPatchInput = z.object({
-  note: plainText(300).optional(),
+  note: optionalPlainText(300),
   revision: z.number().int().min(1),
 });
 export const revisionedInput = z.object({
@@ -19,7 +22,7 @@ export const nominationDecisionInput = z
   .object({
     decision: z.enum(["approve", "needs_info", "reject"]),
     revision: z.number().int().min(1),
-    reason: plainText(500).optional(),
+    reason: optionalPlainText(500),
   })
   .refine(
     (v) => v.decision === "approve" || !!v.reason,
@@ -27,7 +30,7 @@ export const nominationDecisionInput = z
   );
 export const reviewerToggleInput = z.object({
   enabled: z.boolean(),
-  reason: plainText(300).optional(),
+  reason: optionalPlainText(300),
 });
 export const batchCreateInput = z.object({
   name: plainText(120),

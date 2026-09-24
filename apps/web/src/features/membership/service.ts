@@ -78,7 +78,10 @@ function requireIssuanceOpen() {
 function maskEmail(email: string) {
   const [local, domain] = email.split("@");
   const visible = local.slice(0, 1) || "*";
-  return `${visible}${"*".repeat(Math.max(local.length - 1, 3))}@${domain}`;
+  // Capped rather than mirroring the real length: a long local-part shouldn't
+  // blow out the layout, and there's no reason to reveal its exact length.
+  const stars = Math.min(Math.max(local.length - 1, 3), 8);
+  return `${visible}${"*".repeat(stars)}@${domain}`;
 }
 function nominationView(row: NominationRow) {
   return {
@@ -561,6 +564,13 @@ export async function listReviewers(actor: Actor | null) {
   requireAdmin(actor);
   return repoListReviewers();
 }
+/** ADMIN-only lookup so the reviewer-grant UI can work from an email like the rest of the admin tools (e.g. `pnpm admin:grant`). */
+export async function lookupUserByEmail(actor: Actor | null, email: string) {
+  requireAdmin(actor);
+  const user = await getUserByEmail(normalizeEmail(email));
+  if (!user) throw new AppError(404, "NOT_FOUND", "No account with that email.");
+  return { id: user.id };
+}
 export async function setReviewer(
   actor: Actor | null,
   userId: string,
@@ -753,7 +763,9 @@ export async function joinEmailComplete(
   let otpResult: { headers: Headers; response: { token: string; user: { id: string } } };
   try {
     otpResult = (await auth.api.signInEmailOTP({
-      body: { email, otp: input.otp },
+      // Only used if this call creates a brand-new user; ignored for an
+      // existing one. Never derived from the email prefix (plan section 1).
+      body: { email, otp: input.otp, name: "TaiwanHub Member" },
       returnHeaders: true,
     })) as typeof otpResult;
   } catch {

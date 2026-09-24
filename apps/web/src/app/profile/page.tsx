@@ -48,6 +48,9 @@ export default async function Profile() {
           <Link className="settings-row" href="/profile/contributions">
             {t.contributions} <span aria-hidden="true">→</span>
           </Link>
+          <Link className="settings-row" href="/membership">
+            {t.membershipTitle} <span aria-hidden="true">→</span>
+          </Link>
           {flags.submissions && (
             <>
               <Link className="settings-row" href="/submit/place">

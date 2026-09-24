@@ -15,6 +15,8 @@ import {
   AddExtractionPage,
   ExtractionPageControls,
 } from "@/components/extraction-controls";
+import { MembershipAdminPanel } from "@/components/membership/admin-panel";
+import { listBatches, listReviewers } from "@/features/membership/service";
 export default async function Admin({
   params,
 }: {
@@ -27,8 +29,12 @@ export default async function Admin({
   const { section } = await params;
   const kind = section?.[0];
   const admin = actor.role === "ADMIN";
-  // Source pages are an administrator concern: adding one asserts permission.
-  if (kind === "extraction" && !admin) notFound();
+  // Source pages and membership are administrator concerns.
+  if ((kind === "extraction" || kind === "membership") && !admin) notFound();
+  const [membershipBatches, membershipReviewers] =
+    kind === "membership"
+      ? await Promise.all([listBatches(actor), listReviewers(actor)])
+      : [[], []];
   const extraction = kind === "extraction" ? await listExtractionPages() : [];
   const ingestion =
     kind === "ingestion"
@@ -130,6 +136,14 @@ export default async function Admin({
             Source pages
           </Link>
         )}
+        {admin && (
+          <Link
+            href="/admin/membership"
+            aria-current={kind === "membership" ? "page" : undefined}
+          >
+            {t.adminMembershipTitle}
+          </Link>
+        )}
         {kinds.map((k) => (
           <Link
             key={k}
@@ -140,7 +154,13 @@ export default async function Admin({
           </Link>
         ))}
       </nav>
-      {kind === "extraction" ? (
+      {kind === "membership" ? (
+        <MembershipAdminPanel
+          t={t}
+          batches={membershipBatches}
+          reviewers={membershipReviewers}
+        />
+      ) : kind === "extraction" ? (
         <>
           <p className="muted">
             Pages the extraction adapter reads. Adding one asserts that storing
