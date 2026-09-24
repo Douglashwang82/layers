@@ -1,8 +1,8 @@
 # TaiwanHub 邀請制會員：工程執行方案
 
-日期：2026-09-24。狀態：工程交接規格，尚未實作。
+日期：2026-09-24。狀態：S0–S7 已在本機 disposable dev DB 完成並通過測試（含瀏覽器手動驗證的完整加入流程）；**尚未部署到正式環境**，正式環境的遷移、權限指派、寄信與部署仍須另有涵蓋該環境的授權。
 
-本文件將已討論的產品方向轉成可拆票的執行方案。只新增規劃文件；不代表資料庫、登入或線上政策已改變。文中新增路由、資料表、設定及命令均為待實作項目。正式環境的遷移、權限指派、寄信與部署須另有涵蓋該環境的授權。
+本文件原將已討論的產品方向轉成可拆票的執行方案；現況：schema／migration、`features/membership` 服務與 API、auth gate（`databaseHooks.user.create.before`）、`/join`／`/membership`／`/membership/review`／`/admin/membership` UI、mail outbox worker、`membership:bootstrap`／`membership:backfill-legacy` CLI、E2E fixture 遷移均已實作並測試。尚未定案／未實作：正式 mail provider（僅有介面與本機 test transport）、outbox worker 的排程部署方式、Google 受邀新戶的完整UI流程（目前只有 databaseHooks veto，沒有專屬的 join-context 整合）、正式環境 cutover 演練。詳見 [ADR 0001](adr/0001-membership-invitation-auth-transaction-boundary.md) 與各章節內文。
 
 ## 1. 目標、已確認決策與建議預設
 
