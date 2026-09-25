@@ -1,6 +1,6 @@
 # Mapbox discovery and TaiwanHub reviews: engineering implementation plan
 
-Status: P1–P4 implemented and tested locally with a fake provider (unit, database integration, browser tests). Reviews follow the D1 decision (layer/group-scoped). P0 live feasibility with a real key, D2–D4 decisions and P5 staging/pilot rollout are still open. Updated September 25, 2026.
+Status: P1–P4 implemented and tested locally. Reviews follow the D1 decision (layer/group-scoped). P0 partly verified with a real key on localhost: autocomplete, text search, details and compact details load with attribution, and locations drive Mapbox pins (see docs/deployment.md). Still open: signed-in flows with the real provider, referrer restrictions and billing reconciliation, decisions D2–D4, and the P5 staging/pilot rollout. Updated September 25, 2026.
 
 This is the authoritative implementation handoff for the [Google integration design](google-places-integration-design.md). It incorporates the decision to retain Mapbox for map customization and cost. All new tables, endpoints, flags, and files below are proposed. Existing behavior is identified separately. This document does not authorize production migrations, deployment, cloud billing configuration, or paid API testing.
 

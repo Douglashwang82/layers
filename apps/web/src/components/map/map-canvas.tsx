@@ -16,6 +16,8 @@ export type MapCanvasHandle = {
   fitTo: (items: MapItem[]) => void;
   /** Current camera center, used to bias provider search toward what the user sees. */
   getCenter: () => { lat: number; lng: number } | null;
+  /** Frame provider search results, which often fall outside the current view. */
+  fitPoints: (points: { lat: number; lng: number }[]) => void;
   /** Center a provider-resolved point, respecting reduced motion and panel padding. */
   focusPoint: (point: { lat: number; lng: number }) => void;
   fitBounds: (bounds: Bounds) => void;
@@ -217,6 +219,25 @@ export function MapCanvas({
     getCenter() {
       const c = mapRef.current?.getCenter();
       return c ? { lat: c.lat, lng: c.lng } : null;
+    },
+    fitPoints(points) {
+      const map = mapRef.current;
+      if (!map || !points.length) return;
+      let w = Infinity,
+        s = Infinity,
+        e = -Infinity,
+        n = -Infinity;
+      for (const p of points) {
+        w = Math.min(w, p.lng);
+        e = Math.max(e, p.lng);
+        s = Math.min(s, p.lat);
+        n = Math.max(n, p.lat);
+      }
+      map.fitBounds([w, s, e, n], {
+        padding: 56,
+        maxZoom: 15,
+        duration: prefersReducedMotion() || !latest.current.effects ? 0 : 400,
+      });
     },
     focusPoint(point) {
       const map = mapRef.current;

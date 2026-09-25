@@ -1037,10 +1037,26 @@
   display: grid;
   gap: var(--th-space-3);
 }
+/* Visible overflow: the autocomplete's suggestion list extends below its box.
+   The site is light-only; UI Kit otherwise follows the OS dark mode. */
 .provider-slot {
   min-height: 0;
   max-width: 100%;
-  overflow: hidden;
+  overflow: visible;
+  color-scheme: light;
+}
+/* Grid children default to min-width:auto, which let the 400px-wide UI Kit
+   element overflow the panel and clip its attribution. */
+.provider-slot > * {
+  color-scheme: light;
+  width: 100%;
+  min-width: 0;
+  max-width: 100%;
+}
+.business-discovery > *,
+.business-panel > *,
+.external-references li > * {
+  min-width: 0;
 }
 .business-panel {
   display: grid;

@@ -668,19 +668,19 @@ export function MapWorkspace({
       currentCenter={() => canvas.current?.getCenter() ?? null}
       t={t}
       onSelect={selectSearchPlace}
-      onResults={(found) =>
-        setSearchPoints(
-          found
-            .filter((p) => p.location)
-            .map((p) => ({
-              key: `search:${p.id}`,
-              kind: "search" as const,
-              lat: p.location!.lat,
-              lng: p.location!.lng,
-              placeId: p.id,
-            })),
-        )
-      }
+      onResults={(found) => {
+        const points = found
+          .filter((p) => p.location)
+          .map((p) => ({
+            key: `search:${p.id}`,
+            kind: "search" as const,
+            lat: p.location!.lat,
+            lng: p.location!.lng,
+            placeId: p.id,
+          }));
+        setSearchPoints(points);
+        canvas.current?.fitPoints(points);
+      }}
     />
   );
   const footer = (
