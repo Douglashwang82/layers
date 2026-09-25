@@ -1,5 +1,6 @@
 import { z } from "zod";
 import { plainText } from "./text";
+import { selectionGrantToken } from "./place-subjects";
 export * from "./text";
 export * from "./membership";
 export * from "./mail";
@@ -575,9 +576,29 @@ export const layerPatchInput = z.object({
   order: z.array(z.uuid()).max(500).optional(),
 });
 export type LayerPatchInput = z.infer<typeof layerPatchInput>;
+/**
+ * Layer membership keys: visible item keys plus `subject:{uuid}` for external
+ * places. Map items keep `itemKeyPattern`; only layer membership accepts subjects.
+ */
+export const layerItemKeyPattern =
+  /^(place|event|content|subject):([0-9a-f-]{36})$/;
+export type LayerItemRef = {
+  type: ItemType | "subject";
+  id: string;
+};
+export function parseLayerItemKey(
+  value: string | undefined | null,
+): LayerItemRef | null {
+  const match = value ? layerItemKeyPattern.exec(value) : null;
+  return match
+    ? { type: match[1] as LayerItemRef["type"], id: match[2] }
+    : null;
+}
 export const layerItemInput = z.object({
-  key: z.string().regex(itemKeyPattern),
+  key: z.string().regex(layerItemKeyPattern),
   note: z.string().trim().max(300).default(""),
+  /** Lets a member add a business they just resolved but cannot otherwise see yet. */
+  selectionGrant: selectionGrantToken.optional(),
 });
 const httpsUrl = z.union([z.literal(""), z.url({ protocol: /^https?$/ })]);
 /**

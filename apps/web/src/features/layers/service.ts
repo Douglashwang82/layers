@@ -5,7 +5,7 @@ import {
   layerInput,
   layerItemInput,
   layerPatchInput,
-  parseItemKey,
+  parseLayerItemKey,
   requireActor,
   type Actor,
 } from "@taiwanhub/shared";
@@ -18,6 +18,7 @@ import {
 } from "./repository";
 import { flags } from "@/lib/config";
 import { requeueLayerReviews } from "@/features/reviews/service";
+import { requireActionableSubject } from "@/features/place-subjects/service";
 async function transaction<T>(fn: (tx: PoolClient) => Promise<T>) {
   const tx = await pool.connect();
   try {
@@ -217,34 +218,39 @@ export async function addLayerItem(
   writable();
   const a = requireActor(actor);
   const input = layerItemInput.parse(body);
-  const ref = parseItemKey(input.key)!;
+  const ref = parseLayerItemKey(input.key)!;
   const found = await requireEditableLayer(id, a);
   notProjected(found);
   return transaction(async (tx) => {
-    const table =
-      ref.type === "place"
-        ? "place"
-        : ref.type === "event"
-          ? "event"
-          : "content_post";
-    if (ref.type === "content" && !flags.content)
-      throw new AppError(404, "NOT_FOUND", "This item is unavailable.");
-    const entity = await tx.query<{ city_id: string }>(
-      `SELECT city_id FROM ${table} WHERE id=$1 AND status='approved'`,
-      [ref.id],
-    );
-    if (!entity.rows[0])
-      throw new AppError(404, "NOT_FOUND", "This item is unavailable.");
-    if (entity.rows[0].city_id !== found.layer.cityId)
-      throw new AppError(
-        400,
-        "CITY_MISMATCH",
-        "This layer belongs to a different city.",
+    let target: { column: string; id: string; external: boolean };
+    if (ref.type === "subject")
+      target = await subjectTarget(tx, a, found, ref.id, input.selectionGrant);
+    else {
+      const table =
+        ref.type === "place"
+          ? "place"
+          : ref.type === "event"
+            ? "event"
+            : "content_post";
+      if (ref.type === "content" && !flags.content)
+        throw new AppError(404, "NOT_FOUND", "This item is unavailable.");
+      const entity = await tx.query<{ city_id: string }>(
+        `SELECT city_id FROM ${table} WHERE id=$1 AND status='approved'`,
+        [ref.id],
       );
-    const column = `${ref.type}_id`;
+      if (!entity.rows[0])
+        throw new AppError(404, "NOT_FOUND", "This item is unavailable.");
+      if (entity.rows[0].city_id !== found.layer.cityId)
+        throw new AppError(
+          400,
+          "CITY_MISMATCH",
+          "This layer belongs to a different city.",
+        );
+      target = { column: itemColumns[ref.type], id: ref.id, external: false };
+    }
     const result = await tx.query(
-      `INSERT INTO layer_item(layer_id,${column},note,position,added_by) VALUES($1,$2,$3,(SELECT COALESCE(max(position),-1)+1 FROM layer_item WHERE layer_id=$1),$4) ON CONFLICT DO NOTHING`,
-      [found.layer.id, ref.id, input.note, a.id],
+      `INSERT INTO layer_item(layer_id,${target.column},note,position,added_by) VALUES($1,$2,$3,(SELECT COALESCE(max(position),-1)+1 FROM layer_item WHERE layer_id=$1),$4) ON CONFLICT DO NOTHING`,
+      [found.layer.id, target.id, input.note, a.id],
     );
     const added = (result.rowCount ?? 0) > 0;
     if (added) {
@@ -252,13 +258,100 @@ export async function addLayerItem(
         "UPDATE layer SET updated_by=$2,updated_at=now() WHERE id=$1",
         [found.layer.id, a.id],
       );
+      // A reviewed public layer never publishes an unchecked external place.
+      if (target.external) await requirePublicationReview(tx, found, a.id);
       await record(tx, a.id, "layer_item_added", {
         layerId: found.layer.id,
         type: ref.type,
       });
     }
-    return { added, key: input.key };
+    const key = target.column === "place_id" ? `place:${target.id}` : input.key;
+    return { added, key };
   });
+}
+/** Allowlisted key-kind to column mapping; never interpolate a client value. */
+const itemColumns = {
+  place: "place_id",
+  event: "event_id",
+  content: "content_id",
+  subject: "subject_id",
+} as const;
+/**
+ * External places join a layer only when active, visible to the actor (or just
+ * resolved under a selection grant) and curated into the layer's city. A
+ * subject linked to a catalog place is stored as that place, deduplicating it.
+ */
+async function subjectTarget(
+  tx: PoolClient,
+  actor: Actor,
+  found: LayerWithAccess,
+  subjectId: string,
+  selectionGrant: string | undefined,
+) {
+  const subject = await requireActionableSubject(
+    tx,
+    actor,
+    subjectId,
+    selectionGrant,
+  );
+  if (subject.catalog_place_id) {
+    const place = await tx.query<{ city_id: string }>(
+      "SELECT city_id FROM place WHERE id=$1 AND status='approved'",
+      [subject.catalog_place_id],
+    );
+    if (place.rows[0]?.city_id !== found.layer.cityId)
+      throw new AppError(
+        400,
+        "CITY_MISMATCH",
+        "This layer belongs to a different city.",
+      );
+    return {
+      column: "place_id",
+      id: subject.catalog_place_id,
+      external: false,
+    };
+  }
+  if (!flags.externalPlaceCollections)
+    throw new AppError(404, "DISABLED", "Adding this place is unavailable.");
+  const city = await tx.query<{ city_id: string | null }>(
+    "SELECT city_id FROM place_subject WHERE id=$1 AND city_review_status='approved'",
+    [subject.id],
+  );
+  if (!city.rows[0])
+    throw new AppError(
+      409,
+      "CITY_REVIEW_REQUIRED",
+      "Saved — city review needed before adding to a layer.",
+    );
+  if (city.rows[0].city_id !== found.layer.cityId)
+    throw new AppError(
+      400,
+      "CITY_MISMATCH",
+      "This layer belongs to a different city.",
+    );
+  return { column: "subject_id", id: subject.id, external: true };
+}
+async function requirePublicationReview(
+  tx: PoolClient,
+  found: LayerWithAccess,
+  actorId: string,
+) {
+  const layer = await tx.query<{ review_status: string; audience: string }>(
+    "SELECT review_status,audience FROM layer WHERE id=$1 FOR UPDATE",
+    [found.layer.id],
+  );
+  if (
+    layer.rows[0]?.audience !== "public" ||
+    layer.rows[0].review_status !== "approved"
+  )
+    return;
+  await tx.query("UPDATE layer SET review_status='pending' WHERE id=$1", [
+    found.layer.id,
+  ]);
+  await tx.query(
+    "INSERT INTO submission(user_id,entity_type,entity_id) VALUES($1,'layers',$2)",
+    [actorId, found.layer.id],
+  );
 }
 export async function removeLayerItem(
   actor: Actor | null,
@@ -267,12 +360,12 @@ export async function removeLayerItem(
 ) {
   writable();
   const a = requireActor(actor);
-  const ref = parseItemKey(key);
+  const ref = parseLayerItemKey(key);
   if (!ref) throw new AppError(400, "INVALID_ITEM", "Unknown item.");
   const found = await requireEditableLayer(id, a);
   notProjected(found);
   const result = await pool.query(
-    `DELETE FROM layer_item WHERE layer_id=$1 AND ${ref.type}_id=$2`,
+    `DELETE FROM layer_item WHERE layer_id=$1 AND ${itemColumns[ref.type]}=$2`,
     [found.layer.id, ref.id],
   );
   if (result.rowCount)

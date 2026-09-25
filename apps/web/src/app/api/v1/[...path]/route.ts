@@ -25,6 +25,7 @@ import { getActiveCity } from "@/lib/city";
 import { runMapQuery } from "@/features/map/query";
 import { resolveMapRequest } from "@/features/map/request";
 import { getMapItemDetail } from "@/features/map/detail";
+import { listExternalReferences } from "@/features/map/external";
 import {
   getLayer,
   listLibrary,
@@ -127,6 +128,21 @@ async function handler(
       if (id === "item")
         return ok(await getMapItemDetail(String(query.key ?? ""), actor));
       const { city, state } = await resolveMapRequest(query, actor);
+      if (id === "external-references")
+        return ok(
+          await listExternalReferences(
+            state,
+            city,
+            actor,
+            z.coerce
+              .number()
+              .int()
+              .min(0)
+              .max(10000)
+              .catch(0)
+              .parse(query.cursor ?? 0),
+          ),
+        );
       const result = await runMapQuery(state, city, actor);
       if (id === "results") {
         const start = (state.page - 1) * mapPageSize;
