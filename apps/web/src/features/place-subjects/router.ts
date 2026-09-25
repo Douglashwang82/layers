@@ -11,7 +11,11 @@ import {
 } from "@taiwanhub/shared";
 import { appUrl } from "@/lib/config";
 import { contributionLimit } from "@/features/community/service";
-import { getSubjectDetail, lookupSubject } from "./repository";
+import {
+  editableLayersForSubject,
+  getSubjectDetail,
+  lookupSubject,
+} from "./repository";
 import { listCityReviewQueue, patchSubject } from "./admin";
 import {
   listReviewScopes,
@@ -107,6 +111,14 @@ export async function handlePlaceSubjectRoute(
         await lookupLimit(request, actor);
         return ok(
           await lookupSubject(input.provider, input.providerPlaceId, actor),
+        );
+      }
+      if (id === "editable-layers" && !action) {
+        const subjectId = query.subjectId
+          ? z.uuid().parse(query.subjectId)
+          : null;
+        return ok(
+          await editableLayersForSubject(requireActor(actor), subjectId),
         );
       }
       if (id && action === "reviews") {

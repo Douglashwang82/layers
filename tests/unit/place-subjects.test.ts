@@ -226,3 +226,33 @@ describe("scoped review rules", () => {
     });
   });
 });
+describe("provider location guard", () => {
+  it("accepts finite in-range coordinates, including LatLng accessors", async () => {
+    const { validLocation } =
+      await import("../../apps/web/src/lib/places/provider");
+    expect(validLocation({ lat: 29.76, lng: -95.37 })).toEqual({
+      lat: 29.76,
+      lng: -95.37,
+    });
+    expect(validLocation({ lat: () => 25.03, lng: () => 121.56 })).toEqual({
+      lat: 25.03,
+      lng: 121.56,
+    });
+  });
+  it("never produces a (0,0) or out-of-range pin", async () => {
+    const { validLocation } =
+      await import("../../apps/web/src/lib/places/provider");
+    for (const bad of [
+      null,
+      undefined,
+      {},
+      { lat: 0, lng: 0 },
+      { lat: NaN, lng: 10 },
+      { lat: 91, lng: 0 },
+      { lat: 10, lng: -181 },
+      { lat: "29", lng: "-95" },
+      { lat: Infinity, lng: 1 },
+    ])
+      expect(validLocation(bad)).toBeNull();
+  });
+});

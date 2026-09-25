@@ -31,3 +31,18 @@ export const membershipMode: "closed" | "invite_only" =
   process.env.MEMBERSHIP_MODE === "invite_only" ? "invite_only" : "closed";
 export const membershipIssuancePaused =
   process.env.MEMBERSHIP_ISSUANCE_PAUSED === "true";
+/**
+ * What the browser needs for places work. The UI Kit key is intentionally
+ * browser-visible (restricted by referrer/API in Google Cloud) and is only
+ * handed out while discovery is enabled, so a disabled flag loads no provider.
+ */
+export function placesClientConfig() {
+  return {
+    providerKey: flags.googlePlacesDiscovery
+      ? process.env.NEXT_PUBLIC_GOOGLE_PLACES_UI_KIT_KEY || null
+      : null,
+    reviewWrites: flags.placeReviewWrites,
+    collections: flags.externalPlaceCollections,
+    mapEffects: flags.mapEffects,
+  };
+}

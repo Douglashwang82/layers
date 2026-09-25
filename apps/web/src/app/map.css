@@ -1029,3 +1029,136 @@
   height: 20px;
   accent-color: var(--th-brand-text);
 }
+/* Business discovery and TaiwanHub reviews (Google Places UI Kit). */
+.discovery-modes {
+  margin: 0 0 var(--th-space-2);
+}
+.business-discovery {
+  display: grid;
+  gap: var(--th-space-3);
+}
+.provider-slot {
+  min-height: 0;
+  max-width: 100%;
+  overflow: hidden;
+}
+.business-panel {
+  display: grid;
+  gap: var(--th-space-3);
+  padding: var(--th-space-3);
+}
+.business-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: var(--th-space-2);
+}
+/* The TaiwanHub region is visually distinct from the provider's attributed details. */
+.community-region {
+  display: grid;
+  gap: var(--th-space-2);
+  padding-top: var(--th-space-3);
+  border-top: 2px solid var(--th-divider);
+}
+.community-region h2 {
+  font-size: 1.1rem;
+  margin: 0;
+}
+.review-scope h3 {
+  font-size: 1rem;
+  margin: 0;
+}
+.review-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: var(--th-space-2);
+}
+.review-list li {
+  padding: var(--th-space-2);
+  border: 1px solid var(--th-divider);
+  border-radius: var(--th-radius-input);
+  overflow-wrap: anywhere;
+}
+.review-editor {
+  display: grid;
+  gap: var(--th-space-2);
+}
+.review-editor textarea,
+.review-editor select {
+  width: 100%;
+}
+.star-input {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px;
+  border: 0;
+  padding: 0;
+  margin: 0;
+}
+.star-input legend {
+  margin-bottom: 4px;
+}
+.star-input label {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  min-height: 44px;
+  min-width: 44px;
+  justify-content: center;
+  cursor: pointer;
+  color: var(--th-muted);
+}
+.star-input label.on {
+  color: var(--th-text);
+}
+.star-input label.on svg {
+  fill: var(--th-sun);
+}
+.star-input input {
+  position: absolute;
+  opacity: 0;
+  width: 1px;
+  height: 1px;
+}
+.star-input label:focus-within {
+  outline: 2px solid var(--th-focus);
+  outline-offset: 2px;
+  border-radius: var(--th-radius-input);
+}
+.star-input .no-stars {
+  padding: 0 var(--th-space-2);
+}
+.external-references,
+.saved-external {
+  display: grid;
+  gap: var(--th-space-2);
+  margin-top: var(--th-space-3);
+}
+.saved-external {
+  list-style: none;
+  padding: 0;
+}
+.saved-external li,
+.external-references li {
+  display: grid;
+  gap: var(--th-space-1);
+}
+.external-references li.selected {
+  outline: 2px solid var(--th-primary);
+  outline-offset: 2px;
+}
+.fake-provider {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--th-space-2);
+  padding: var(--th-space-2);
+  border: 1px dashed var(--th-control-border);
+  border-radius: var(--th-radius-input);
+  list-style: none;
+}
+.map-panel:focus {
+  outline: none;
+}

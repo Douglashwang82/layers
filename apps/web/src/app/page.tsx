@@ -1,6 +1,6 @@
 import { getCopy, getLocale } from "@/lib/i18n";
 import { currentActor } from "@/lib/session";
-import { flags } from "@/lib/config";
+import { flags, placesClientConfig } from "@/lib/config";
 import { resolveMapRequest } from "@/features/map/request";
 import { runMapQuery } from "@/features/map/query";
 import { getMapItemDetail } from "@/features/map/detail";
@@ -43,6 +43,7 @@ export default async function HomePage({
       restored={restored}
       contentEnabled={flags.content}
       layerWrites={flags.layerWrites}
+      places={placesClientConfig()}
     />
   );
 }

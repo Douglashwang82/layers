@@ -8,6 +8,11 @@ export const clientEventNames = [
   "map_area_searched",
   "map_fallback_used",
   "layer_share_link_copied",
+  // Provider usage estimates (component type only; never queries, IDs or locations).
+  "business_search_opened",
+  "business_selected",
+  "places_component_loaded",
+  "places_component_failed",
 ] as const;
 export type ClientEventName = (typeof clientEventNames)[number];
 export function track(

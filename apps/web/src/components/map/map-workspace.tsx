@@ -36,8 +36,13 @@ import { type Copy, type Locale, format } from "@/lib/dictionary";
 import {
   MapCanvas,
   type CanvasStatus,
+  type ExtraPoint,
   type MapCanvasHandle,
 } from "./map-canvas";
+import { getPlacesProvider, type ProviderPlace } from "@/lib/places/provider";
+import { BusinessDiscovery } from "@/components/places/business-discovery";
+import { BusinessPanel } from "@/components/places/business-panel";
+import { ExternalReferences } from "@/components/places/external-references";
 import { MapToolbar } from "./map-toolbar";
 import { ActiveLayersPanel } from "./active-layers-panel";
 import { MapResults } from "./map-results";
@@ -45,6 +50,21 @@ import { ItemPreview } from "./item-preview";
 import { track } from "@/lib/track";
 import { mapSessionKey } from "@/lib/map-session";
 type Sheet = "peek" | "half" | "expanded";
+/** Server-read flags and the browser-visible provider key (only when discovery is on). */
+export type PlacesConfig = {
+  providerKey: string | null;
+  reviewWrites: boolean;
+  collections: boolean;
+  mapEffects: boolean;
+};
+/** An in-memory business selection; it never enters the URL until a subject exists. */
+type BusinessSelection = {
+  key: string;
+  placeId: string | null;
+  subjectId: string | null;
+  location: { lat: number; lng: number } | null;
+  temporary: boolean;
+};
 function keyOf(state: MapState, includeCity: boolean) {
   return serializeMapQuery(
     {
@@ -90,6 +110,7 @@ export function MapWorkspace({
   restored,
   contentEnabled,
   layerWrites,
+  places,
 }: {
   initial: MapQueryResult;
   initialDetail: ItemDetail | null;
@@ -102,6 +123,7 @@ export function MapWorkspace({
   restored: boolean;
   contentEnabled: boolean;
   layerWrites: boolean;
+  places: PlacesConfig;
 }) {
   const searchParams = useSearchParams();
   const canvas = useRef<MapCanvasHandle>(null);
@@ -313,6 +335,55 @@ export function MapWorkspace({
       window.history.back();
     } else commit({ item: undefined }, "replace");
   };
+  /* Business discovery: a separate mode and in-memory selection, lazily loading the provider. */
+  const provider = useMemo(
+    () => getPlacesProvider(places.providerKey ?? undefined, locale),
+    [places.providerKey, locale],
+  );
+  const [mode, setMode] = useState<"layers" | "business">("layers");
+  const [business, setBusiness] = useState<BusinessSelection | null>(null);
+  const [searchPoints, setSearchPoints] = useState<ExtraPoint[]>([]);
+  const [externalPoints, setExternalPoints] = useState<ExtraPoint[]>([]);
+  const extraPoints = useMemo(() => {
+    const points = [...externalPoints, ...searchPoints];
+    if (business?.location && !points.some((p) => p.key === business.key))
+      points.push({
+        key: business.key,
+        kind: business.temporary ? "search" : "external",
+        lat: business.location.lat,
+        lng: business.location.lng,
+        placeId: business.placeId ?? undefined,
+      });
+    return points;
+  }, [externalPoints, searchPoints, business]);
+  const selectBusiness = (next: BusinessSelection) => {
+    setBusiness(next);
+    setSheet("half");
+    if (next.location) canvas.current?.focusPoint(next.location);
+  };
+  const selectSearchPlace = (place: ProviderPlace) =>
+    selectBusiness({
+      key: `search:${place.id}`,
+      placeId: place.id,
+      subjectId: null,
+      location: place.location,
+      temporary: true,
+    });
+  const closeBusiness = () => {
+    setBusiness(null);
+    panelRef.current?.focus();
+  };
+  const onSelectExtra = (key: string) => {
+    const point = extraPoints.find((p) => p.key === key);
+    if (!point) return;
+    selectBusiness({
+      key,
+      placeId: point.placeId ?? null,
+      subjectId: key.startsWith("subject:") ? key.slice(8) : null,
+      location: { lat: point.lat, lng: point.lng },
+      temporary: point.kind === "search",
+    });
+  };
   /* Camera and area */
   const [pendingArea, setPendingArea] = useState<Bounds | null>(null);
   const [canvasStatus, setCanvasStatus] = useState<CanvasStatus>(
@@ -399,8 +470,35 @@ export function MapWorkspace({
   const unmapped = result.items.filter(
     (i) => i.latitude == null || i.longitude == null,
   );
-  const detailInPanel = !!selected && !wide;
-  const showDetailRail = !!selected && wide && !listView;
+  const businessPanel = business && (
+    <BusinessPanel
+      key={business.key}
+      provider={provider}
+      placeId={business.placeId}
+      subjectId={business.subjectId}
+      temporary={business.temporary}
+      authenticated={authenticated}
+      flags={{
+        reviewWrites: places.reviewWrites,
+        collections: places.collections,
+        layerWrites,
+      }}
+      t={t}
+      locale={locale}
+      onClose={closeBusiness}
+      onLocation={(place) => {
+        if (!place.location || business.location) return;
+        setBusiness((b) =>
+          b && b.key === business.key ? { ...b, location: place.location } : b,
+        );
+        canvas.current?.focusPoint(place.location);
+      }}
+    />
+  );
+  // On wide screens the rail hosts details, except in list view where there is no rail.
+  const businessInPanel = !!business && (!wide || listView);
+  const detailInPanel = (!!selected && !wide) || businessInPanel;
+  const showDetailRail = (!!selected || !!business) && wide && !listView;
   const layerCount = result.layers.filter((l) => l.status === "ok").length;
   const otherCity = result.layers.filter((l) => l.status === "other-city");
   const preview = selected && (
@@ -544,7 +642,46 @@ export function MapWorkspace({
           onMore={() => setLimit((n) => n + 20)}
         />
       )}
+      <ExternalReferences
+        provider={provider}
+        queryKey={queryKey}
+        area={state.area}
+        selectedSubjectId={business?.subjectId ?? null}
+        t={t}
+        onPoints={setExternalPoints}
+        onSelect={(ref, location) =>
+          selectBusiness({
+            key: ref.canonicalKey,
+            placeId: ref.providerPlaceId,
+            subjectId: ref.subjectId,
+            location,
+            temporary: false,
+          })
+        }
+      />
     </>
+  );
+  const discoveryPanel = provider && (
+    <BusinessDiscovery
+      provider={provider}
+      cityCenter={{ lat: city.latitude, lng: city.longitude }}
+      currentCenter={() => canvas.current?.getCenter() ?? null}
+      t={t}
+      onSelect={selectSearchPlace}
+      onResults={(found) =>
+        setSearchPoints(
+          found
+            .filter((p) => p.location)
+            .map((p) => ({
+              key: `search:${p.id}`,
+              kind: "search" as const,
+              lat: p.location!.lat,
+              lng: p.location!.lng,
+              placeId: p.id,
+            })),
+        )
+      }
+    />
   );
   const footer = (
     <div className="map-footer">
@@ -591,6 +728,38 @@ export function MapWorkspace({
         {city.name} · {t.mapNav}
       </h1>
       <div className="map-stage">
+        {provider && (
+          <div
+            className="segmented discovery-modes"
+            role="group"
+            aria-label={t.discoveryModes}
+          >
+            {(
+              [
+                ["layers", t.layersMode],
+                ["business", t.businessMode],
+              ] as const
+            ).map(([value, label]) => (
+              <button
+                key={value}
+                type="button"
+                aria-pressed={mode === value}
+                className={mode === value ? "on" : ""}
+                onClick={() => {
+                  setMode(value);
+                  setTab("results");
+                  // Leaving discovery clears temporary pins but keeps layer pins and selection.
+                  if (value === "layers") {
+                    setSearchPoints([]);
+                    if (business?.temporary) setBusiness(null);
+                  }
+                }}
+              >
+                {label}
+              </button>
+            ))}
+          </div>
+        )}
         <MapToolbar
           state={state}
           cityName={city.name}
@@ -604,7 +773,11 @@ export function MapWorkspace({
               ref={canvas}
               token={token}
               items={result.items}
-              selectedKey={selectedKey}
+              selectedKey={business ? null : selectedKey}
+              extraPoints={extraPoints}
+              extraSelectedKey={business?.key ?? null}
+              effects={places.mapEffects}
+              onSelectExtra={onSelectExtra}
               center={[city.longitude, city.latitude]}
               zoom={10.5}
               locale={locale}
@@ -721,7 +894,12 @@ export function MapWorkspace({
           </div>
         )}
       </div>
-      <div className="map-panel" ref={panelRef} aria-label={t.mapNav}>
+      <div
+        className="map-panel"
+        ref={panelRef}
+        aria-label={t.mapNav}
+        tabIndex={-1}
+      >
         <div className="sheet-handle">
           <button
             type="button"
@@ -762,7 +940,13 @@ export function MapWorkspace({
           </p>
         ))}
         {detailInPanel ? (
-          preview
+          businessInPanel ? (
+            businessPanel
+          ) : (
+            preview
+          )
+        ) : mode === "business" && discoveryPanel ? (
+          <div className="panel-body">{discoveryPanel}</div>
         ) : (
           <>
             <div className="panel-tabs" role="tablist" aria-label={t.mapNav}>
@@ -791,7 +975,9 @@ export function MapWorkspace({
         )}
         {footer}
       </div>
-      {showDetailRail && <aside className="map-rail">{preview}</aside>}
+      {showDetailRail && (
+        <aside className="map-rail">{businessPanel ?? preview}</aside>
+      )}
     </div>
   );
 }

@@ -23,6 +23,16 @@ Membership is invitation-only end to end (see [the plan](invitation-membership-i
 - A cutover on an existing deployment: briefly block new account creation, run `pnpm membership:backfill-legacy` (dry-run first) so existing accounts get a `source=legacy` admission row, assign initial reviewers and a membership batch through `/admin/membership`, then set `MEMBERSHIP_MODE=invite_only`. Do not roll back to a pre-invitation build; if you must revert, keep whatever gate exists in the rollback version and do not re-enable public sign-up.
 - The `mail_outbox` worker (`pnpm mail:worker`) has no scheduler wired up yet - it needs a deployable, periodic invocation (cron, queue consumer, etc.) before invitation emails actually go out; this is a real open dependency, not a formality.
 
+### Google Places and TaiwanHub reviews rollout
+
+See [the implementation plan](google-places-implementation-plan.md) section 13. Everything ships with flags off. Apply migrations 0010–0011 (additive) first, then deploy.
+
+- `NEXT_PUBLIC_GOOGLE_PLACES_UI_KIT_KEY`: a dedicated browser key. It is visible in the browser by design, so restrict it in Google Cloud to the site's referrers and to the Maps JavaScript API / Places UI Kit, with a separate key per environment. Never reuse `GOOGLE_CLIENT_*` (OAuth) or any server credential. The app hands the key to the browser only while `FEATURE_GOOGLE_PLACES_DISCOVERY=true`. The value `fake` selects a test provider that is refused in production builds.
+- Enable in order: `FEATURE_GOOGLE_PLACES_DISCOVERY`, then `FEATURE_PLACE_REVIEW_WRITES`, then `FEATURE_EXTERNAL_PLACE_COLLECTIONS`. `FEATURE_MAP_EFFECTS` is presentation-only and independent. Turning a write flag off stops new writes; existing reads, unsaves and layer removals keep working.
+- **Spend control:** set per-API quotas and billing alerts in Google Cloud before enabling discovery. Alerts are not a cap, and an app flag cannot stop requests from already-open tabs. To stop provider calls urgently, first set `FEATURE_GOOGLE_PLACES_DISCOVERY=false` and redeploy. Then lower the key's quota to zero, or disable or restrict the key. Client counters (`places_component_loaded`/`_failed`, `business_*`) are estimates; reconcile them with the Google billing report during the pilot.
+- **Operators:** moderators curate external places at `GET /api/v1/admin/place-subjects` (city review, status, catalog linking, provider-ID replacement). Review decisions go through the existing admin queue, which now shows review snapshots and their revision.
+- Live UI Kit behavior (component availability, attribution, the selected marker, saved-place reopening, referrer restrictions and SKUs) has not been verified with a real key yet. Browser tests use the fake provider.
+
 ## Operational assumptions
 
 The pool is limited to ten connections per runtime. Size your provider pool/connection budget for the number of Vercel instances. PostgreSQL backs rate limiting; monitor and periodically purge expired counters and expired auth sessions. Back up the database and object storage, and test restoring them. Set log retention and avoid copying full auth payloads into logs. Migration and admin-grant credentials are release/operator credentials, not browser configuration.

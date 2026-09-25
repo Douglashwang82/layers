@@ -2,23 +2,57 @@
 import {
   useEffect,
   useImperativeHandle,
+  useMemo,
   useRef,
   useState,
   type Ref,
 } from "react";
 import type { Map as MapboxMap, GeoJSONSource } from "mapbox-gl";
-import type { Bounds, ItemType } from "@taiwanhub/shared";
+import { maxMapPoints, type Bounds, type ItemType } from "@taiwanhub/shared";
 import type { MapItem } from "@/features/map/query";
 import type { Copy, Locale } from "@/lib/dictionary";
 import "mapbox-gl/dist/mapbox-gl.css";
 export type MapCanvasHandle = {
   fitTo: (items: MapItem[]) => void;
+  /** Current camera center, used to bias provider search toward what the user sees. */
+  getCenter: () => { lat: number; lng: number } | null;
+  /** Center a provider-resolved point, respecting reduced motion and panel padding. */
+  focusPoint: (point: { lat: number; lng: number }) => void;
   fitBounds: (bounds: Bounds) => void;
   flyTo: (center: [number, number], zoom?: number) => void;
   resize: () => void;
   retry: () => void;
 };
 export type CanvasStatus = "loading" | "ready" | "failed";
+/**
+ * Provider-resolved points (temporary search results and authorized external
+ * references). Kept in their own source so clearing a search never touches
+ * catalog or layer pins, and never persisted.
+ */
+export type ExtraPoint = {
+  key: string;
+  kind: "search" | "external";
+  lat: number;
+  lng: number;
+  /** Provider ID for reopening the selection; never rendered or stored. */
+  placeId?: string;
+};
+function extraGeoJSON(points: ExtraPoint[]) {
+  return {
+    type: "FeatureCollection" as const,
+    features: points.map((p) => ({
+      type: "Feature" as const,
+      properties: { key: p.key, kind: p.kind },
+      geometry: { type: "Point" as const, coordinates: [p.lng, p.lat] },
+    })),
+  };
+}
+function prefersReducedMotion() {
+  return (
+    typeof window !== "undefined" &&
+    window.matchMedia("(prefers-reduced-motion: reduce)").matches
+  );
+}
 /** Resolve a theme token at runtime so pins follow the stylesheet, not a literal. */
 function themeColor(name: string, fallback: string) {
   const value = getComputedStyle(document.documentElement)
@@ -59,17 +93,22 @@ function toGeoJSON(items: MapItem[]) {
       })),
   };
 }
+const noPoints: ExtraPoint[] = [];
 export function MapCanvas({
   ref,
   token,
   items,
   selectedKey,
+  extraPoints = noPoints,
+  extraSelectedKey = null,
+  effects = false,
   center,
   zoom,
   locale,
   t,
   padding,
   onSelect,
+  onSelectExtra,
   onUserMove,
   onStatus,
   onLocationDenied,
@@ -78,6 +117,11 @@ export function MapCanvas({
   token: string | undefined;
   items: MapItem[];
   selectedKey: string | null;
+  extraPoints?: ExtraPoint[];
+  extraSelectedKey?: string | null;
+  /** Presentation-only selection effects (FEATURE_MAP_EFFECTS). */
+  effects?: boolean;
+  onSelectExtra?: (key: string) => void;
   center: [number, number];
   zoom: number;
   locale: Locale;
@@ -92,8 +136,17 @@ export function MapCanvas({
   const mapRef = useRef<MapboxMap | null>(null);
   const loadedRef = useRef(false);
   const userMovedRef = useRef(false);
+  // The canvas keeps its point budget: extra points reserve room within it.
+  const catalogItems = useMemo(
+    () => items.slice(0, Math.max(0, maxMapPoints - extraPoints.length)),
+    [items, extraPoints.length],
+  );
   const latest = useRef({
-    items,
+    items: catalogItems,
+    extraPoints,
+    extraSelectedKey,
+    effects,
+    onSelectExtra,
     selectedKey,
     onSelect,
     onUserMove,
@@ -103,7 +156,11 @@ export function MapCanvas({
   });
   useEffect(() => {
     latest.current = {
-      items,
+      items: catalogItems,
+      extraPoints,
+      extraSelectedKey,
+      effects,
+      onSelectExtra,
       selectedKey,
       onSelect,
       onUserMove,
@@ -113,6 +170,23 @@ export function MapCanvas({
     };
   });
   const [attempt, setAttempt] = useState(0);
+  /**
+   * With effects on, a selection dims other pins (still legible, never hidden)
+   * and changes ease in. Reduced motion keeps the dimming but not the easing.
+   */
+  function applyEffects(map: MapboxMap) {
+    const { effects: on, selectedKey: a, extraSelectedKey: b } = latest.current;
+    const opacity = on && (a || b) ? 0.55 : 1;
+    const duration = on && !prefersReducedMotion() ? 200 : 0;
+    for (const layer of ["points", "extra-points"]) {
+      if (!map.getLayer(layer)) continue;
+      map.setPaintProperty(layer, "circle-opacity-transition", {
+        duration,
+        delay: 0,
+      });
+      map.setPaintProperty(layer, "circle-opacity", opacity);
+    }
+  }
   useImperativeHandle(ref, () => ({
     fitTo(list) {
       const map = mapRef.current;
@@ -139,6 +213,21 @@ export function MapCanvas({
         n = Math.max(n, p.latitude!);
       }
       map.fitBounds([w, s, e, n], { padding: 56, maxZoom: 15, duration: 240 });
+    },
+    getCenter() {
+      const c = mapRef.current?.getCenter();
+      return c ? { lat: c.lat, lng: c.lng } : null;
+    },
+    focusPoint(point) {
+      const map = mapRef.current;
+      if (!map) return;
+      const options = {
+        center: [point.lng, point.lat] as [number, number],
+        zoom: Math.max(map.getZoom(), 14),
+      };
+      if (prefersReducedMotion() || !latest.current.effects)
+        map.jumpTo(options);
+      else map.easeTo({ ...options, duration: 400 });
     },
     fitBounds(bounds) {
       mapRef.current?.fitBounds(bounds, { padding: 24, duration: 0 });
@@ -325,6 +414,51 @@ export function MapCanvas({
             properties?: Record<string, unknown> | null;
             geometry: { type: string; coordinates: unknown };
           };
+          map.addSource("places-extra", {
+            type: "geojson",
+            data: extraGeoJSON(latest.current.extraPoints),
+          });
+          map.addLayer({
+            id: "extra-halo",
+            type: "circle",
+            source: "places-extra",
+            filter: [
+              "==",
+              ["get", "key"],
+              latest.current.extraSelectedKey ?? "",
+            ],
+            paint: {
+              "circle-radius": 22,
+              "circle-color": lime,
+              "circle-opacity": 0.9,
+              "circle-stroke-color": text,
+              "circle-stroke-width": 2,
+            },
+          });
+          map.addLayer({
+            id: "extra-points",
+            type: "circle",
+            source: "places-extra",
+            paint: {
+              "circle-radius": 11,
+              // Search results are hollow; saved/layer external places are filled.
+              "circle-color": [
+                "match",
+                ["get", "kind"],
+                "search",
+                "#ffffff",
+                colors.place,
+              ],
+              "circle-stroke-color": text,
+              "circle-stroke-width": 2.5,
+            },
+          });
+          map.on("click", "extra-points", (e) => {
+            const key = (e.features?.[0] as Feature | undefined)?.properties
+              ?.key;
+            if (key) latest.current.onSelectExtra?.(String(key));
+          });
+          applyEffects(map);
           map.on("click", "points", (e) => {
             const feature = e.features?.[0] as Feature | undefined;
             const key = feature?.properties?.key;
@@ -352,7 +486,7 @@ export function MapCanvas({
               },
             );
           });
-          for (const layer of ["points", "clusters"]) {
+          for (const layer of ["points", "clusters", "extra-points"]) {
             map.on(
               "mouseenter",
               layer,
@@ -401,14 +535,24 @@ export function MapCanvas({
     const map = mapRef.current;
     if (!map || !loadedRef.current) return;
     (map.getSource("items") as GeoJSONSource | undefined)?.setData(
-      toGeoJSON(items),
+      toGeoJSON(catalogItems),
     );
-  }, [items]);
+  }, [catalogItems]);
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!map || !loadedRef.current) return;
+    (map.getSource("places-extra") as GeoJSONSource | undefined)?.setData(
+      extraGeoJSON(extraPoints),
+    );
+  }, [extraPoints]);
+  // Selection is a filter/paint update on the stable map; it never remounts or refetches.
   useEffect(() => {
     const map = mapRef.current;
     if (!map || !loadedRef.current) return;
     map.setFilter("selected-halo", ["==", ["get", "key"], selectedKey ?? ""]);
-  }, [selectedKey]);
+    map.setFilter("extra-halo", ["==", ["get", "key"], extraSelectedKey ?? ""]);
+    applyEffects(map);
+  }, [selectedKey, extraSelectedKey, effects]);
   useEffect(() => {
     const map = mapRef.current;
     if (!map || !loadedRef.current) return;

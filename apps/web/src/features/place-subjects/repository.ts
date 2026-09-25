@@ -9,6 +9,7 @@ import {
   type PlaceProvider,
   type PlaceSubjectStatus,
 } from "@taiwanhub/shared";
+import { listEditableLayers } from "@/features/layers/repository";
 type Queryable = Pick<PoolClient, "query">;
 /**
  * Visibility predicate for subject `s` (with its linked catalog place `p` LEFT
@@ -179,4 +180,34 @@ export async function lookupSubject(
     }),
     cityReviewStatus: row.city_review_status,
   };
+}
+/**
+ * The actor's editable layers for the add-to-layer picker, marking those that
+ * already hold this subject (by subject or by its linked catalog place). Only
+ * the actor's own layers are inspected, so nothing about others leaks.
+ */
+export async function editableLayersForSubject(
+  actor: Actor,
+  subjectId: string | null,
+) {
+  const layers = await listEditableLayers(actor);
+  if (!layers.length) return [];
+  const has = new Set<string>();
+  if (subjectId) {
+    const contains = await pool.query<{ layer_id: string }>(
+      `SELECT i.layer_id FROM layer_item i JOIN place_subject s ON s.id=$1
+       WHERE i.layer_id=ANY($2::uuid[]) AND (i.subject_id=s.id OR (s.catalog_place_id IS NOT NULL AND i.place_id=s.catalog_place_id))`,
+      [subjectId, layers.map((l) => l.id)],
+    );
+    for (const row of contains.rows) has.add(row.layer_id);
+  }
+  return layers.map((l) => ({
+    id: l.id,
+    slug: l.slug,
+    title: l.title,
+    titleChinese: l.titleChinese,
+    audience: l.audience,
+    citySlug: l.citySlug,
+    contains: has.has(l.id),
+  }));
 }

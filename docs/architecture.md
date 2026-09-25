@@ -37,6 +37,10 @@ The storage interface has local development and S3-compatible implementations. P
 
 English/Traditional Chinese dictionaries are centralized. Entity translation falls back to English. Server pages render meaningful HTML, detail metadata, canonical URLs and OpenGraph. Keyboard-visible focus, labeled forms, semantic regions, text alongside icons and mobile bottom navigation are included. Mapbox is loaded dynamically only for maps. Client-side failures have status messages; public errors have a retry boundary. Large client server-state libraries are unnecessary here.
 
+## Places discovery and scoped reviews
+
+Mapbox stays the renderer. Business discovery uses Google Places UI Kit web components through `apps/web/src/lib/places/provider.ts`, which only mounts the supported elements and relays their `gmp-select`/`gmp-load` events; it never calls ordinary Places APIs. Provider data (names, addresses, photos, coordinates) stays transient in the browser. The server stores only provider place IDs, on `place_subject`/`place_provider_reference`, plus TaiwanHub-authored saves, layer memberships and reviews (`features/place-subjects`, `features/reviews`). Reviews are scoped to one layer or one group with per-scope aggregates. Search and external-reference pins live in a separate Mapbox source from catalog pins, and share the canvas's 1,000-point budget. External references resolve their location through visible provider components, three at a time, and an unresolved row is never pinned. A deterministic fake provider backs E2E tests. See [the implementation plan](google-places-implementation-plan.md).
+
 ## Upstream references
 
 Implementation was checked against [Next.js installation](https://nextjs.org/docs/app/getting-started/installation), [Better Auth Next.js integration](https://better-auth.com/docs/integrations/next), and [Drizzle PostGIS geometry](https://orm.drizzle.team/docs/guides/postgis-geometry-point), plus the installed Next.js version-matched documentation.

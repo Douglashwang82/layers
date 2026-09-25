@@ -5,7 +5,9 @@ import { currentActor } from "@/lib/session";
 import { getSaved } from "@/features/catalog/repository";
 import { getCopy, getLocale } from "@/lib/i18n";
 import { CardGrid, EmptyState, SectionHeading } from "@/components/cards";
-import { flags } from "@/lib/config";
+import { flags, placesClientConfig } from "@/lib/config";
+import { listSavedExternalPlaces } from "@/features/map/external";
+import { SavedExternalList } from "@/components/places/subject-page";
 import { mySavesSlug } from "@/features/layers/repository";
 import { listSavedContent } from "@/features/content/repository";
 import { FileText } from "lucide-react";
@@ -16,18 +18,20 @@ import { FileText } from "lucide-react";
 export default async function SavedPage() {
   const actor = await currentActor();
   if (!actor) redirect("/sign-in?next=/saved");
-  const [saved, t, locale, savedContent] = await Promise.all([
+  const [saved, t, locale, savedContent, savedExternal] = await Promise.all([
     getSaved(actor.id),
     getCopy(),
     getLocale(),
     flags.content ? listSavedContent(actor.id) : Promise.resolve([]),
+    listSavedExternalPlaces(actor.id),
   ]);
   const groups = (["places", "events", "products"] as const).filter(
     (kind) => kind !== "products" || flags.products,
   );
   const total =
     groups.reduce((sum, kind) => sum + (saved[kind]?.length ?? 0), 0) +
-    savedContent.length;
+    savedContent.length +
+    savedExternal.length;
   return (
     <div className="container page-bottom">
       <div className="page-header">
@@ -73,6 +77,20 @@ export default async function SavedPage() {
               />
             </section>
           ))
+      )}
+      {savedExternal.length > 0 && (
+        <section className="section">
+          <SectionHeading
+            title={`${t.savedExternal} (${savedExternal.length})`}
+            t={t}
+          />
+          <SavedExternalList
+            items={savedExternal}
+            providerKey={placesClientConfig().providerKey}
+            t={t}
+            locale={locale}
+          />
+        </section>
       )}
       {savedContent.length > 0 && (
         <section className="section">
