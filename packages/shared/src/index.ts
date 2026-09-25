@@ -3,6 +3,7 @@ import { plainText } from "./text";
 export * from "./text";
 export * from "./membership";
 export * from "./mail";
+export * from "./place-subjects";
 export const placeCategories = [
   "Taiwanese",
   "Bubble Tea",

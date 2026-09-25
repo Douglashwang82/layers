@@ -46,6 +46,19 @@ Better Auth is mounted at `/api/auth/*`: `/sign-in/email`, `/sign-out`, `/get-se
 | POST / DELETE  | `/api/v1/content/{uuid}/save`                               | Save/unsave content                                                                                 |
 | POST           | `/api/v1/analytics`                                         | Guest outcome events, allowlisted names only                                                        |
 
+## Place subjects
+
+Local identity for catalog places and external (Google-referenced) businesses; part of the staged [Google Places plan](google-places-implementation-plan.md). Responses are `Cache-Control: private, no-store`. Missing and unauthorized subjects are indistinguishable (`404 NOT_FOUND` / `{subjectId:null}`). Only provider place IDs are ever accepted or returned — no provider display data.
+
+| Method        | Path                                                             | Notes                                                                                                                                                                                                                                    |
+| ------------- | ---------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| GET           | `/api/v1/place-subjects/lookup?provider=google&providerPlaceId=` | Read-only, rate-limited; `{subjectId:null}` unless the caller may already see the subject, else `{subjectId,canonicalKey,cityReviewStatus}`                                                                                              |
+| POST          | `/api/v1/place-subjects/resolve`                                 | Session; strict `{catalogPlaceId}` or `{provider:'google',providerPlaceId}` (≤512 URL-safe chars). Idempotent; returns `{subjectId,canonicalKey,cityReviewStatus,selectionGrant}`. Provider form needs `FEATURE_GOOGLE_PLACES_DISCOVERY` |
+| GET           | `/api/v1/place-subjects/{uuid}`                                  | Authorized local metadata: canonical key/href, reviewed city, current provider reference, own saved state                                                                                                                                |
+| POST / DELETE | `/api/v1/place-subjects/{uuid}/save`                             | Session; POST `{selectionGrant?}` saves (catalog-linked subjects into `saved_place`; external ones need `FEATURE_EXTERNAL_PLACE_COLLECTIONS`). DELETE always removes the caller's own save                                               |
+
+`selectionGrant` is an HMAC-signed, actor- and subject-bound token valid for 10 minutes. It lets a member make their own first save of a subject they just resolved but cannot otherwise see; it grants nothing else. Keep it in memory and request bodies, never URLs or logs.
+
 ## Membership
 
 All under `/api/v1/membership`. `join/*` routes are the only ones reachable without a session; they read/write a short-lived `membership_join` HttpOnly cookie instead, never the raw invitation token.

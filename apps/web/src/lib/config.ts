@@ -8,6 +8,17 @@ export const flags = {
   layerWrites: process.env.FEATURE_LAYER_WRITES !== "false",
   /** General local content (posts) in layers and results. */
   content: process.env.FEATURE_CONTENT !== "false",
+  /* Google Places / external place work (docs/google-places-implementation-plan.md).
+     Off unless explicitly enabled; existing authorized reads and removals stay available. */
+  /** Provider-backed discovery and resolving provider references. */
+  googlePlacesDiscovery: process.env.FEATURE_GOOGLE_PLACES_DISCOVERY === "true",
+  /** New TaiwanHub review writes. */
+  placeReviewWrites: process.env.FEATURE_PLACE_REVIEW_WRITES === "true",
+  /** New external-place saves and layer writes. */
+  externalPlaceCollections:
+    process.env.FEATURE_EXTERNAL_PLACE_COLLECTIONS === "true",
+  /** Presentation-only map selection effects. */
+  mapEffects: process.env.FEATURE_MAP_EFFECTS === "true",
 };
 export const appUrl =
   process.env.NEXT_PUBLIC_APP_URL ?? "http://localhost:3000";

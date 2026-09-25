@@ -700,6 +700,8 @@ export const layerItem = pgTable(
     contentId: uuid("content_id").references(() => contentPost.id, {
       onDelete: "cascade",
     }),
+    /** External (provider-referenced) place; subjects are soft-deleted, never cascaded. */
+    subjectId: uuid("subject_id").references(() => placeSubject.id),
     note: text("note").default("").notNull(),
     position: integer("position").default(0).notNull(),
     validFrom: timestamp("valid_from", { withTimezone: true }),
@@ -720,9 +722,13 @@ export const layerItem = pgTable(
     uniqueIndex("layer_item_content_unique")
       .on(t.layerId, t.contentId)
       .where(sql`${t.contentId} IS NOT NULL`),
+    uniqueIndex("layer_item_subject_unique")
+      .on(t.layerId, t.subjectId)
+      .where(sql`${t.subjectId} IS NOT NULL`),
+    index("layer_item_subject_idx").on(t.subjectId),
     check(
       "layer_item_one_entity",
-      sql`num_nonnulls(${t.placeId}, ${t.eventId}, ${t.contentId}) = 1`,
+      sql`num_nonnulls(${t.placeId}, ${t.eventId}, ${t.contentId}, ${t.subjectId}) = 1`,
     ),
   ],
 );
@@ -974,5 +980,106 @@ export const membershipRequest = pgTable(
       t.operation,
       t.idempotencyKey,
     ),
+  ],
+);
+/* ---------------------------------------------------------------------------
+   Place subjects: the local identity TaiwanHub contributions attach to. A
+   subject is either a lazily created wrapper around a catalog place or an
+   external business known only by a provider reference. Only provider IDs are
+   stored — never provider names, addresses, photos, ratings or coordinates.
+   See docs/google-places-implementation-plan.md section 5.
+   --------------------------------------------------------------------------- */
+export const placeSubject = pgTable(
+  "place_subject",
+  {
+    id: id(),
+    catalogPlaceId: uuid("catalog_place_id")
+      .unique()
+      .references(() => place.id),
+    /** Local curation metadata; null until a moderator reviews it or a catalog link supplies it. */
+    cityId: uuid("city_id").references(() => city.id),
+    cityReviewStatus: text("city_review_status", {
+      enum: ["unreviewed", "approved"],
+    })
+      .default("unreviewed")
+      .notNull(),
+    cityReviewedBy: uuid("city_reviewed_by").references(() => user.id),
+    cityReviewedAt: timestamp("city_reviewed_at", { withTimezone: true }),
+    status: text("status", { enum: ["active", "hidden", "deleted"] })
+      .default("active")
+      .notNull(),
+    revision: integer("revision").default(1).notNull(),
+    ...timestamps(),
+  },
+  (t) => [
+    index("place_subject_city_review_idx").on(
+      t.cityReviewStatus,
+      t.createdAt,
+    ),
+    check(
+      "place_subject_city_review_status_check",
+      sql`${t.cityReviewStatus} IN ('unreviewed', 'approved')`,
+    ),
+    check(
+      "place_subject_status_check",
+      sql`${t.status} IN ('active', 'hidden', 'deleted')`,
+    ),
+    check(
+      "place_subject_approved_city_check",
+      sql`${t.cityReviewStatus} = 'unreviewed' OR ${t.cityId} IS NOT NULL`,
+    ),
+    check("place_subject_revision_check", sql`${t.revision} >= 1`),
+  ],
+);
+export const placeProviderReference = pgTable(
+  "place_provider_reference",
+  {
+    id: id(),
+    subjectId: uuid("subject_id")
+      .notNull()
+      .references(() => placeSubject.id),
+    provider: text("provider", { enum: ["google"] }).notNull(),
+    providerPlaceId: text("provider_place_id").notNull(),
+    /** Superseded IDs stay as aliases so an old ID still reaches the same subject. */
+    state: text("state", { enum: ["current", "superseded"] })
+      .default("current")
+      .notNull(),
+    ...timestamps(),
+  },
+  (t) => [
+    uniqueIndex("place_provider_reference_identity").on(
+      t.provider,
+      t.providerPlaceId,
+    ),
+    uniqueIndex("place_provider_reference_current")
+      .on(t.subjectId, t.provider)
+      .where(sql`${t.state} = 'current'`),
+    index("place_provider_reference_subject_idx").on(t.subjectId),
+    check("place_provider_reference_provider_check", sql`${t.provider} = 'google'`),
+    check(
+      "place_provider_reference_state_check",
+      sql`${t.state} IN ('current', 'superseded')`,
+    ),
+    check(
+      "place_provider_reference_id_length",
+      sql`char_length(${t.providerPlaceId}) BETWEEN 1 AND 512`,
+    ),
+  ],
+);
+/** Saves of external subjects. Catalog-linked subjects keep using saved_place. */
+export const savedPlaceSubject = pgTable(
+  "saved_place_subject",
+  {
+    userId: uuid("user_id")
+      .notNull()
+      .references(() => user.id, { onDelete: "cascade" }),
+    subjectId: uuid("subject_id")
+      .notNull()
+      .references(() => placeSubject.id),
+    ...timestamps(),
+  },
+  (t) => [
+    primaryKey({ columns: [t.userId, t.subjectId] }),
+    index("saved_place_subject_subject_idx").on(t.subjectId),
   ],
 );
