@@ -6,11 +6,18 @@ import {
   AppError,
   placeSubjectLookupInput,
   requireActor,
+  reviewScope,
   type Actor,
 } from "@taiwanhub/shared";
 import { appUrl } from "@/lib/config";
 import { contributionLimit } from "@/features/community/service";
 import { getSubjectDetail, lookupSubject } from "./repository";
+import { listCityReviewQueue, patchSubject } from "./admin";
+import {
+  listReviewScopes,
+  listScopeReviews,
+} from "@/features/reviews/repository";
+import { deleteReview, writeReview } from "@/features/reviews/service";
 import {
   resolvePlaceSubject,
   savePlaceSubject,
@@ -102,6 +109,35 @@ export async function handlePlaceSubjectRoute(
           await lookupSubject(input.provider, input.providerPlaceId, actor),
         );
       }
+      if (id && action === "reviews") {
+        const scope = reviewScope.parse(query.scope ?? "");
+        const page = z.coerce
+          .number()
+          .int()
+          .min(1)
+          .max(500)
+          .catch(1)
+          .parse(query.page ?? 1);
+        const result = await listScopeReviews(
+          z.uuid().parse(id),
+          scope,
+          actor,
+          page,
+        );
+        if (!result)
+          throw new AppError(
+            404,
+            "NOT_FOUND",
+            "These reviews are unavailable.",
+          );
+        return ok(result);
+      }
+      if (id && action === "review-scopes") {
+        const result = await listReviewScopes(z.uuid().parse(id), actor);
+        if (!result)
+          throw new AppError(404, "NOT_FOUND", "This place is unavailable.");
+        return ok(result);
+      }
       if (id && !action) {
         const detail = await getSubjectDetail(z.uuid().parse(id), actor);
         if (!detail)
@@ -113,15 +149,43 @@ export async function handlePlaceSubjectRoute(
     checkOrigin(request);
     const a = requireActor(actor);
     await contributionLimit(a);
-    const body = method === "DELETE" ? {} : await readJsonBody(request);
+    const body = await readJsonBody(request);
     if (id === "resolve" && !action && method === "POST")
       return ok(await resolvePlaceSubject(a, body));
+    if (id && action === "review") {
+      const subjectId = z.uuid().parse(id);
+      if (method === "PUT") return ok(await writeReview(a, subjectId, body));
+      if (method === "DELETE")
+        return ok(await deleteReview(a, subjectId, body));
+    }
     if (id && action === "save") {
       const subjectId = z.uuid().parse(id);
       if (method === "POST")
         return ok(await savePlaceSubject(a, subjectId, body));
       if (method === "DELETE")
         return ok(await unsavePlaceSubject(a, subjectId));
+    }
+    throw new AppError(404, "NOT_FOUND", "Endpoint not found.");
+  } catch (error) {
+    return errorResponse(error);
+  }
+}
+/** /api/v1/admin/place-subjects[/{id}]: moderator city curation, status, linking and provider replacement. */
+export async function handleAdminPlaceSubjectRoute(
+  request: NextRequest,
+  id: string | undefined,
+  actor: Actor | null,
+  query: Record<string, string>,
+): Promise<NextResponse> {
+  try {
+    if (request.method === "GET" && !id)
+      return ok(await listCityReviewQueue(actor, query));
+    if (request.method === "PATCH" && id) {
+      checkOrigin(request);
+      const subjectId = z.uuid().parse(id);
+      return ok(
+        await patchSubject(actor, subjectId, await readJsonBody(request)),
+      );
     }
     throw new AppError(404, "NOT_FOUND", "Endpoint not found.");
   } catch (error) {

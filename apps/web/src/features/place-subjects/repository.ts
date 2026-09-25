@@ -15,10 +15,10 @@ type Queryable = Pick<PoolClient, "query">;
  * JOINed). $1 is the actor ID or null, $2 whether the actor is a moderator.
  *
  * Active subject AND no hidden/deleted/unapproved linked catalog record AND one of:
- * an approved linked catalog place, the actor's own save, or membership in a
- * layer the actor may view. Public layers additionally require a reviewed
- * subject city. Moderators see everything for moderation. Reviews (P2) will add
- * an approved-public-review branch.
+ * an approved linked catalog place, the actor's own save or live review, an
+ * approved review in one of the actor's groups, or membership in a layer the
+ * actor may view. Public layers additionally require a reviewed subject city.
+ * Moderators see everything for moderation.
  */
 export const visibleSubject = `($2::boolean OR (
   s.status='active'
@@ -26,6 +26,8 @@ export const visibleSubject = `($2::boolean OR (
   AND (
     p.status='approved'
     OR ($1::uuid IS NOT NULL AND EXISTS (SELECT 1 FROM saved_place_subject ss WHERE ss.subject_id=s.id AND ss.user_id=$1::uuid))
+    OR ($1::uuid IS NOT NULL AND EXISTS (SELECT 1 FROM place_review pr WHERE pr.subject_id=s.id AND pr.user_id=$1::uuid AND pr.status<>'deleted'))
+    OR ($1::uuid IS NOT NULL AND EXISTS (SELECT 1 FROM place_review pr JOIN group_member gm ON gm.group_id=pr.group_id AND gm.user_id=$1::uuid WHERE pr.subject_id=s.id AND pr.status='approved'))
     OR EXISTS (
       SELECT 1 FROM layer_item li JOIN layer l ON l.id=li.layer_id
       WHERE li.subject_id=s.id AND (

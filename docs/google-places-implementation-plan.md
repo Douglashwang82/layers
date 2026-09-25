@@ -16,14 +16,27 @@ This is the authoritative implementation handoff for the [Google integration des
 
 ### Product and operations decisions to record
 
-| ID  | Decision                                                                             | Recommended working assumption                                                                             | Owner / deadline                                                                           |
-| --- | ------------------------------------------------------------------------------------ | ---------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------ |
-| D1  | Does “only on my map” mean app-only community reviews or personally private reviews? | Publicly readable TaiwanHub reviews after moderation; private/group layer notes remain private/group       | Product owner, before review schema/API approval. This assumption is not user confirmation |
-| D2  | Initial geography                                                                    | Existing supported cities, Houston first; users can save an external reference before its city is reviewed | Product owner + backend lead, before collection implementation                             |
-| D3  | Google account, applicable region terms, permitted component release channel         | Dedicated project; verify billing region and use supported Essentials components where available           | Platform owner, during P0                                                                  |
-| D4  | Monthly spend ceiling and pilot size                                                 | Use the model in section 10; owner supplies the actual budget and alert thresholds                         | Product/platform owner, before any paid pilot                                              |
+| ID  | Decision                                                                             | Recommended working assumption                                                                                               | Owner / deadline                                               |
+| --- | ------------------------------------------------------------------------------------ | ---------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------- |
+| D1  | Does “only on my map” mean app-only community reviews or personally private reviews? | **Decided 2026-09-25: layer- or group-scoped reviews** (see “Scoped reviews” below). Supersedes the shared-review assumption | Product owner — recorded                                       |
+| D2  | Initial geography                                                                    | Existing supported cities, Houston first; users can save an external reference before its city is reviewed                   | Product owner + backend lead, before collection implementation |
+| D3  | Google account, applicable region terms, permitted component release channel         | Dedicated project; verify billing region and use supported Essentials components where available                             | Platform owner, during P0                                      |
+| D4  | Monthly spend ceiling and pilot size                                                 | Use the model in section 10; owner supplies the actual budget and alert thresholds                                           | Product/platform owner, before any paid pilot                  |
 
 Proceed with discovery adapters, map effects, fixtures, and API design while D1 is open. Do not enable shared review publication until D1 is settled. If private/group review visibility is selected, revise review uniqueness, membership authorization, aggregate partitions, moderation access, and sharing tests before implementing that branch. Private ratings must never enter a public aggregate.
+
+### Scoped reviews (D1 decision, 2026-09-25)
+
+The product owner chose layer- or group-scoped reviews, which replaces the shared-review assumption used elsewhere in this document. Where the plan says “public”, “approved public reviews” or “public aggregate”, read it as “within the review's scope”.
+
+- Every review belongs to exactly one scope. A **layer** scope is visible to anyone who may view that layer. A **group** scope is visible only to that group's members.
+- There is one editable review per member, place and scope: unique `(subject, user, layer)` or `(subject, user, group)`. A member may review the same place in several scopes.
+- Aggregates (average stars, rated count, review count) are computed per scope and are never merged across scopes.
+- Writing requires viewing the scope. A layer review also requires that place to be a member of the layer. A group review requires membership and an accessible subject (or a selection grant).
+- Moderation: reviews in a **public-audience** layer start `pending` and count only after moderator approval. Reviews in private layers and in groups are visible to their audience immediately and can be reported. Publishing a layer returns its never-moderated approved reviews to `pending` in the same transaction.
+- A moderator-rejected review returns to `pending` when edited, whatever its scope. Hidden and moderator-deleted rules are unchanged.
+- An approved group-scoped review makes its subject visible to members of that group.
+- Deleting a layer or group removes the reviews in that scope along with their history. Retention remains an open item (section 5).
 
 ### First release and later work
 

@@ -323,6 +323,8 @@ export const submission = pgTable("submission", {
   entityId: uuid("entity_id").notNull(),
   status: text("status").default("pending").notNull(),
   reason: text("reason"),
+  /** Revision of the entity this submission reviews; required for place reviews, null for legacy rows. */
+  entityRevision: integer("entity_revision"),
   ...timestamps(),
 });
 export const image = pgTable("image", {
@@ -1081,5 +1083,109 @@ export const savedPlaceSubject = pgTable(
   (t) => [
     primaryKey({ columns: [t.userId, t.subjectId] }),
     index("saved_place_subject_subject_idx").on(t.subjectId),
+  ],
+);
+/**
+ * A member's review of a place within one scope: a layer (visible to that
+ * layer's viewers) or a group (members only). Aggregates are per scope and
+ * never merged. See the "Scoped reviews" section of the implementation plan.
+ */
+export const placeReview = pgTable(
+  "place_review",
+  {
+    id: id(),
+    subjectId: uuid("subject_id")
+      .notNull()
+      .references(() => placeSubject.id),
+    userId: uuid("user_id")
+      .notNull()
+      .references(() => user.id),
+    scopeKind: text("scope_kind", { enum: ["layer", "group"] }).notNull(),
+    layerId: uuid("layer_id").references(() => layer.id, {
+      onDelete: "cascade",
+    }),
+    groupId: uuid("group_id").references(() => group.id, {
+      onDelete: "cascade",
+    }),
+    stars: integer("stars"),
+    body: text("body").default("").notNull(),
+    status: text("status", {
+      enum: ["pending", "approved", "rejected", "hidden", "deleted"],
+    }).notNull(),
+    deletionSource: text("deletion_source", { enum: ["author", "moderator"] }),
+    /** Set when a moderator approved the current content; null for scope-trusted auto-approval. */
+    moderatedBy: uuid("moderated_by").references(() => user.id),
+    moderatedAt: timestamp("moderated_at", { withTimezone: true }),
+    revision: integer("revision").default(1).notNull(),
+    ...timestamps(),
+  },
+  (t) => [
+    uniqueIndex("place_review_layer_unique")
+      .on(t.subjectId, t.userId, t.layerId)
+      .where(sql`${t.layerId} IS NOT NULL`),
+    uniqueIndex("place_review_group_unique")
+      .on(t.subjectId, t.userId, t.groupId)
+      .where(sql`${t.groupId} IS NOT NULL`),
+    index("place_review_layer_idx").on(
+      t.layerId,
+      t.subjectId,
+      t.status,
+      t.createdAt,
+    ),
+    index("place_review_group_idx").on(
+      t.groupId,
+      t.subjectId,
+      t.status,
+      t.createdAt,
+    ),
+    index("place_review_user_idx").on(t.userId),
+    index("place_review_subject_idx").on(t.subjectId),
+    check(
+      "place_review_scope_check",
+      sql`(${t.scopeKind} = 'layer' AND ${t.layerId} IS NOT NULL AND ${t.groupId} IS NULL) OR (${t.scopeKind} = 'group' AND ${t.groupId} IS NOT NULL AND ${t.layerId} IS NULL)`,
+    ),
+    check(
+      "place_review_stars_check",
+      sql`${t.stars} IS NULL OR ${t.stars} BETWEEN 1 AND 5`,
+    ),
+    check("place_review_body_length", sql`char_length(${t.body}) <= 2000`),
+    check(
+      "place_review_not_empty",
+      sql`${t.stars} IS NOT NULL OR char_length(btrim(${t.body})) > 0`,
+    ),
+    check(
+      "place_review_status_check",
+      sql`${t.status} IN ('pending', 'approved', 'rejected', 'hidden', 'deleted')`,
+    ),
+    check(
+      "place_review_deletion_check",
+      sql`(${t.status} = 'deleted') = (${t.deletionSource} IS NOT NULL)`,
+    ),
+    check("place_review_revision_check", sql`${t.revision} >= 1`),
+  ],
+);
+/** Append-only snapshot of every content/status revision of a review. Never exposed publicly. */
+export const placeReviewRevision = pgTable(
+  "place_review_revision",
+  {
+    id: id(),
+    reviewId: uuid("review_id")
+      .notNull()
+      .references(() => placeReview.id, { onDelete: "cascade" }),
+    revision: integer("revision").notNull(),
+    actorId: uuid("actor_id").references(() => user.id, {
+      onDelete: "set null",
+    }),
+    changeKind: text("change_kind").notNull(),
+    stars: integer("stars"),
+    body: text("body").notNull(),
+    status: text("status").notNull(),
+    reason: text("reason"),
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .defaultNow()
+      .notNull(),
+  },
+  (t) => [
+    uniqueIndex("place_review_revision_identity").on(t.reviewId, t.revision),
   ],
 );

@@ -98,8 +98,9 @@ export default async function Admin({
       created_at: Date;
       preview: string;
       detail: string;
+      review_revision: number | null;
     }>(
-      `SELECT s.*,COALESCE(p.name,e.name,n.body,pr.name,cp.title,ly.title,'Community content') AS preview,COALESCE(p.description,e.description,n.body,concat_ws(' · ',store.name,ps.observed_at::text,ps.price::text),cp.body,concat_ws(' · ',ly.description,ly.audience,ly.review_status)) AS detail FROM submission s LEFT JOIN place p ON s.entity_type='places' AND p.id=s.entity_id LEFT JOIN event e ON s.entity_type='events' AND e.id=s.entity_id LEFT JOIN place_note n ON s.entity_type='notes' AND n.id=s.entity_id LEFT JOIN product_sighting ps ON s.entity_type='sightings' AND ps.id=s.entity_id LEFT JOIN product pr ON pr.id=ps.product_id LEFT JOIN place store ON store.id=ps.place_id LEFT JOIN content_post cp ON s.entity_type='content' AND cp.id=s.entity_id LEFT JOIN layer ly ON s.entity_type='layers' AND ly.id=s.entity_id WHERE s.status='pending' ORDER BY s.created_at LIMIT 100`,
+      `SELECT s.*,COALESCE(p.name,e.name,n.body,pr.name,cp.title,ly.title,CASE WHEN rv.id IS NOT NULL THEN concat('Review · ',rv.scope_kind,' · ',COALESCE(rv.stars::text || '★','no stars'),' · ',rv.status) END,'Community content') AS preview,COALESCE(p.description,e.description,n.body,concat_ws(' · ',store.name,ps.observed_at::text,ps.price::text),cp.body,concat_ws(' · ',ly.description,ly.audience,ly.review_status),rv.body) AS detail,CASE WHEN rv.id IS NOT NULL THEN COALESCE(s.entity_revision,rv.revision) END AS review_revision FROM submission s LEFT JOIN place p ON s.entity_type='places' AND p.id=s.entity_id LEFT JOIN event e ON s.entity_type='events' AND e.id=s.entity_id LEFT JOIN place_note n ON s.entity_type='notes' AND n.id=s.entity_id LEFT JOIN product_sighting ps ON s.entity_type='sightings' AND ps.id=s.entity_id LEFT JOIN product pr ON pr.id=ps.product_id LEFT JOIN place store ON store.id=ps.place_id LEFT JOIN content_post cp ON s.entity_type='content' AND cp.id=s.entity_id LEFT JOIN layer ly ON s.entity_type='layers' AND ly.id=s.entity_id LEFT JOIN place_review rv ON s.entity_type='reviews' AND rv.id=s.entity_id WHERE s.status='pending' ORDER BY s.created_at LIMIT 100`,
     )
   ).rows;
   const items =
@@ -302,6 +303,7 @@ export default async function Admin({
             <ModerateControls
               entityType={s.entity_type}
               entityId={s.entity_id}
+              expectedRevision={s.review_revision ?? undefined}
               {...{ t, admin }}
             />
           </article>

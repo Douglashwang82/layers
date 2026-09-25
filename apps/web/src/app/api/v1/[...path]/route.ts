@@ -82,7 +82,10 @@ import { flags, appUrl } from "@/lib/config";
 import { trackEvent } from "@/lib/analytics";
 import { clientEventNames } from "@/lib/track";
 import { handleMembershipRoute } from "@/features/membership/router";
-import { handlePlaceSubjectRoute } from "@/features/place-subjects/router";
+import {
+  handleAdminPlaceSubjectRoute,
+  handlePlaceSubjectRoute,
+} from "@/features/place-subjects/router";
 export const dynamic = "force-dynamic";
 async function handler(
   request: NextRequest,
@@ -96,6 +99,11 @@ async function handler(
       const actor = await currentActor();
       const query = Object.fromEntries(request.nextUrl.searchParams);
       return handleMembershipRoute(request, path.slice(1), actor, query);
+    }
+    if (resource === "admin" && id === "place-subjects") {
+      const actor = await currentActor();
+      const query = Object.fromEntries(request.nextUrl.searchParams);
+      return await handleAdminPlaceSubjectRoute(request, action, actor, query);
     }
     if (resource === "place-subjects") {
       const actor = await currentActor();
@@ -510,4 +518,10 @@ async function handler(
 function ok(data: unknown, status = 200) {
   return NextResponse.json({ data }, { status });
 }
-export { handler as GET, handler as POST, handler as DELETE, handler as PATCH };
+export {
+  handler as GET,
+  handler as POST,
+  handler as DELETE,
+  handler as PATCH,
+  handler as PUT,
+};

@@ -18,7 +18,7 @@ import {
   type SubjectRow,
 } from "./repository";
 import { grantSecret, signSelectionGrant, verifySelectionGrant } from "./grant";
-async function transaction<T>(fn: (tx: PoolClient) => Promise<T>) {
+export async function transaction<T>(fn: (tx: PoolClient) => Promise<T>) {
   const tx = await pool.connect();
   try {
     await tx.query("BEGIN");
@@ -133,7 +133,7 @@ export async function resolvePlaceSubject(actor: Actor | null, body: unknown) {
  * or one they resolved within the grant window. The grant never extends to
  * anyone else's content, city approval or layer access.
  */
-async function requireActionableSubject(
+export async function requireActionableSubject(
   tx: PoolClient,
   actor: Actor,
   subjectId: string,

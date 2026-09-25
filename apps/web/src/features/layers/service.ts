@@ -17,6 +17,7 @@ import {
   type LayerWithAccess,
 } from "./repository";
 import { flags } from "@/lib/config";
+import { requeueLayerReviews } from "@/features/reviews/service";
 async function transaction<T>(fn: (tx: PoolClient) => Promise<T>) {
   const tx = await pool.connect();
   try {
@@ -340,6 +341,8 @@ export async function publishLayer(
         "INSERT INTO submission(user_id,entity_type,entity_id) VALUES($1,'layers',$2)",
         [a.id, found.layer.id],
       );
+      // Scope-approved reviews in this layer must pass moderation before the public sees them.
+      await requeueLayerReviews(tx, found.layer.id, a.id);
       await record(tx, a.id, "layer_publish_requested", {
         layerId: found.layer.id,
       });

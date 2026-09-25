@@ -14,6 +14,7 @@ import {
   type Kind,
 } from "@taiwanhub/shared";
 import { tables } from "../catalog/repository";
+import { decideReview } from "../reviews/service";
 const moderationTables = {
   ...tables,
   notes: "place_note",
@@ -291,6 +292,21 @@ export async function submitContent(
 export async function moderate(actor: Actor | null, body: unknown) {
   const a = requireModerator(actor);
   const input = moderationInput.parse(body);
+  // Reviews have revision-aware rules; never fall through to the generic status update.
+  if (input.entityType === "reviews") {
+    if (input.expectedRevision === undefined)
+      throw new AppError(
+        400,
+        "REVISION_REQUIRED",
+        "Reload the queue and decide on the current revision.",
+      );
+    return decideReview(a, input.entityId, {
+      action: input.action,
+      expectedRevision: input.expectedRevision,
+      reason: input.reason,
+    });
+  }
+  const entityType = input.entityType;
   if (input.action === "deleted" && a.role !== "ADMIN")
     throw new AppError(
       403,
@@ -309,7 +325,7 @@ export async function moderate(actor: Actor | null, body: unknown) {
             ],
           )
         : await tx.query(
-            `UPDATE ${moderationTables[input.entityType]} SET status=$1,updated_at=now() WHERE id=$2 RETURNING id`,
+            `UPDATE ${moderationTables[entityType]} SET status=$1,updated_at=now() WHERE id=$2 RETURNING id`,
             [input.action, input.entityId],
           );
     if (!result.rowCount)

@@ -104,12 +104,15 @@ export const moderationEntityTypes = [
   "recommendations",
   "layers",
   "content",
+  "reviews",
 ] as const;
 export const moderationInput = z.object({
   entityType: z.enum(moderationEntityTypes),
   entityId: z.uuid(),
   action: z.enum(["approved", "rejected", "hidden", "deleted"]),
   reason: plainText(500),
+  /** Required for reviews: decisions apply only to the current revision. */
+  expectedRevision: z.number().int().min(1).optional(),
 });
 export const editInput = z.object({
   name: plainText(120),

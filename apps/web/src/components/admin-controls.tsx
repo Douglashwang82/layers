@@ -87,11 +87,14 @@ export function RevisionControls({ id }: { id: string }) {
 export function ModerateControls({
   entityType,
   entityId,
+  expectedRevision,
   t,
   admin,
 }: {
   entityType: string;
   entityId: string;
+  /** Reviews are decided per revision; a stale one returns 409. */
+  expectedRevision?: number;
   t: Copy;
   admin: boolean;
 }) {
@@ -131,6 +134,7 @@ export function ModerateControls({
                   entityId,
                   action,
                   reason,
+                  ...(expectedRevision ? { expectedRevision } : {}),
                 });
                 router.refresh();
                 setMessage(action);

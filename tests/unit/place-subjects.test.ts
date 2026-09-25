@@ -9,6 +9,10 @@ import {
   providerPlaceId,
   subjectHref,
   subjectKey,
+  ownerWriteStatus,
+  placeReviewInput,
+  reviewScope,
+  summarizeRatings,
 } from "../../packages/shared/src";
 import {
   selectionGrantTtlMs,
@@ -155,5 +159,70 @@ describe("selection grants", () => {
       `${token.split(".")[0]}.`,
     ])
       expect(verifySelectionGrant(bad, claims, secret, now)).toBe(false);
+  });
+});
+describe("scoped review rules", () => {
+  const scope = `group:${uuid}`;
+  it("parses layer and group scopes only", () => {
+    expect(reviewScope.parse(`layer:${uuid}`)).toEqual({
+      kind: "layer",
+      id: uuid,
+    });
+    expect(reviewScope.parse(scope)).toEqual({ kind: "group", id: uuid });
+    for (const bad of [`public:${uuid}`, `group:${uuid}x`, "", `place:${uuid}`])
+      expect(reviewScope.safeParse(bad).success).toBe(false);
+  });
+  it("accepts stars, a comment, or both, but never neither", () => {
+    const ok = (v: object) =>
+      placeReviewInput.safeParse({ scope, expectedRevision: null, ...v })
+        .success;
+    expect(ok({ stars: 5, body: "" })).toBe(true);
+    expect(ok({ stars: null, body: "Nice" })).toBe(true);
+    expect(ok({ stars: 3, body: "Nice" })).toBe(true);
+    expect(ok({ stars: null, body: "   " })).toBe(false);
+    for (const stars of [0, 6, 2.5])
+      expect(ok({ stars, body: "x" })).toBe(false);
+    expect(ok({ stars: 5, body: "x".repeat(2001) })).toBe(false);
+    expect(ok({ stars: 5, body: "bad" })).toBe(false);
+    expect(ok({ stars: 5, body: "", userId: uuid })).toBe(false);
+  });
+  it("derives the status after an owner write", () => {
+    expect(ownerWriteStatus(null, false)).toBe("approved");
+    expect(ownerWriteStatus(null, true)).toBe("pending");
+    expect(
+      ownerWriteStatus({ status: "approved", deletionSource: null }, true),
+    ).toBe("pending");
+    expect(
+      ownerWriteStatus({ status: "rejected", deletionSource: null }, false),
+    ).toBe("pending");
+    expect(
+      ownerWriteStatus({ status: "hidden", deletionSource: null }, false),
+    ).toBe("hidden");
+    expect(
+      ownerWriteStatus({ status: "deleted", deletionSource: "author" }, false),
+    ).toBe("approved");
+    expect(
+      ownerWriteStatus(
+        { status: "deleted", deletionSource: "moderator" },
+        false,
+      ),
+    ).toBeNull();
+  });
+  it("summarizes ratings without inventing a zero", () => {
+    expect(summarizeRatings([])).toEqual({
+      totalReviews: 0,
+      ratedCount: 0,
+      averageStars: null,
+    });
+    expect(summarizeRatings([null, null])).toEqual({
+      totalReviews: 2,
+      ratedCount: 0,
+      averageStars: null,
+    });
+    expect(summarizeRatings([5, 4, null, 4])).toEqual({
+      totalReviews: 4,
+      ratedCount: 3,
+      averageStars: 4.3,
+    });
   });
 });
