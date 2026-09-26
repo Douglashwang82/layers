@@ -1,0 +1,72 @@
+name: Invitation mail outbox
+# Best-effort dispatch of queued invitation email (docs/deployment.md,
+# "Invitation mail worker"). GitHub may delay or skip scheduled runs; five
+# minutes is a dispatch target, not a delivery SLA. Sign-in codes are sent
+# immediately by the web app and never depend on this workflow.
+#
+# Disabled until a rollout enables it. Two explicit gates:
+# 1. Repository variable MAIL_WORKER_ENVIRONMENTS: a JSON array of GitHub
+#    environment names, e.g. ["staging"]. Unset = the job never starts.
+# 2. Environment variable MAIL_WORKER_ENABLED=true in each listed environment.
+# Runs only `pnpm mail:worker`: no migrations, seeds or extraction.
+on:
+  schedule:
+    - cron: "*/5 * * * *"
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: GitHub environment to run against
+        required: true
+        type: string
+permissions:
+  contents: read
+jobs:
+  dispatch:
+    if: >-
+      (github.event_name == 'schedule' && vars.MAIL_WORKER_ENVIRONMENTS != '') ||
+      github.event_name == 'workflow_dispatch'
+    strategy:
+      fail-fast: false
+      matrix:
+        environment: ${{ fromJSON(github.event_name == 'workflow_dispatch' && format('["{0}"]', inputs.environment) || vars.MAIL_WORKER_ENVIRONMENTS || '[]') }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 6
+    environment: ${{ matrix.environment }}
+    concurrency:
+      group: taiwanhub-mail-outbox-${{ matrix.environment }}
+      cancel-in-progress: false
+    steps:
+      - name: Require explicit enablement
+        id: gate
+        env:
+          MAIL_WORKER_ENABLED: ${{ vars.MAIL_WORKER_ENABLED }}
+        run: |
+          if [ "$MAIL_WORKER_ENABLED" = "true" ]; then
+            echo "enabled=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "MAIL_WORKER_ENABLED is not true for this environment; nothing to do."
+          fi
+      - if: steps.gate.outputs.enabled == 'true'
+        uses: actions/checkout@v4
+      - if: steps.gate.outputs.enabled == 'true'
+        uses: pnpm/action-setup@v4
+        with:
+          version: 10.15.0
+      - if: steps.gate.outputs.enabled == 'true'
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+      - if: steps.gate.outputs.enabled == 'true'
+        run: pnpm install --frozen-lockfile
+      - name: Dispatch due invitation email
+        if: steps.gate.outputs.enabled == 'true'
+        env:
+          # Set here rather than job-wide so the install keeps the tsx runner.
+          NODE_ENV: production
+          DATABASE_URL: ${{ secrets.MAIL_WORKER_DATABASE_URL }}
+          MAIL_PROVIDER: ${{ vars.MAIL_PROVIDER }}
+          MAIL_FROM: ${{ vars.MAIL_FROM }}
+          RESEND_API_KEY: ${{ secrets.RESEND_API_KEY }}
+          MAIL_OUTBOX_ENCRYPTION_KEY: ${{ secrets.MAIL_OUTBOX_ENCRYPTION_KEY }}
+        run: pnpm mail:worker

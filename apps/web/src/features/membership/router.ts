@@ -23,12 +23,28 @@ import {
   joinEmailStart,
   joinEmailComplete,
   retryMail,
+  listMailJobs,
 } from "./service";
+import { RateLimitedError, trustedClientIp } from "./rate-limit";
 const JOIN_COOKIE = "membership_join";
 function ok(data: unknown, status = 200) {
   return NextResponse.json({ data }, { status });
 }
 function errorResponse(error: unknown) {
+  if (error instanceof RateLimitedError)
+    return NextResponse.json(
+      {
+        error: {
+          code: error.code,
+          message: error.message,
+          retryAfter: error.retryAfterSeconds,
+        },
+      },
+      {
+        status: 429,
+        headers: { "Retry-After": String(error.retryAfterSeconds) },
+      },
+    );
   if (error instanceof z.ZodError)
     return NextResponse.json(
       {
@@ -61,7 +77,11 @@ function setJoinCookie(response: NextResponse, secret: string) {
 function requireJoinCookie(request: NextRequest) {
   const secret = joinCookieValue(request);
   if (!secret)
-    throw new AppError(404, "INVITE_INVALID", "This invitation session has expired.");
+    throw new AppError(
+      404,
+      "INVITE_INVALID",
+      "This invitation session has expired.",
+    );
   return secret;
 }
 async function readJsonBody(request: NextRequest) {
@@ -69,7 +89,8 @@ async function readJsonBody(request: NextRequest) {
   if (contentLength > 16384)
     throw new AppError(413, "TOO_LARGE", "Request is too large.");
   const raw = await request.text();
-  if (raw.length > 16384) throw new AppError(413, "TOO_LARGE", "Request is too large.");
+  if (raw.length > 16384)
+    throw new AppError(413, "TOO_LARGE", "Request is too large.");
   return raw ? JSON.parse(raw) : {};
 }
 function checkOrigin(request: NextRequest) {
@@ -100,37 +121,14 @@ export async function handleMembershipRoute(
         return ok(await listBatches(actor));
       if (section === "admin" && id === "lookup")
         return ok(await lookupUserByEmail(actor, query.email ?? ""));
+      if (section === "admin" && id === "mail" && !action)
+        return ok(await listMailJobs(actor, query));
       throw new AppError(404, "NOT_FOUND", "Endpoint not found.");
     }
     if (section === "join") {
-      checkOrigin(request);
-      const body = await readJsonBody(request);
-      if (id === "context" && method === "POST") {
-        const result = await createJoinContext(body);
-        const response = ok({
-          maskedEmail: result.maskedEmail,
-          nominatorName: result.nominatorName,
-          invitationExpiresAt: result.invitationExpiresAt,
-          returnTo: result.returnTo,
-        });
-        setJoinCookie(response, result.secret);
-        return response;
-      }
-      if (id === "email" && action === "start" && method === "POST")
-        return ok(await joinEmailStart(requireJoinCookie(request), body));
-      if (id === "email" && action === "complete" && method === "POST") {
-        const response = ok(null);
-        const outcome = await joinEmailComplete(
-          requireJoinCookie(request),
-          body,
-          (headers) => {
-            const setCookie = headers.get("set-cookie");
-            if (setCookie) response.headers.append("set-cookie", setCookie);
-          },
-        );
-        return NextResponse.json({ data: outcome }, { headers: response.headers });
-      }
-      throw new AppError(404, "NOT_FOUND", "Endpoint not found.");
+      const response = await handleJoinRoute(request, id, action, method);
+      response.headers.set("Cache-Control", "no-store");
+      return response;
     }
     checkOrigin(request);
     const body = await readJsonBody(request);
@@ -163,6 +161,52 @@ export async function handleMembershipRoute(
         return ok(await updateBatch(actor, action, body));
       if (id === "mail" && action && rest[3] === "retry" && method === "POST")
         return ok(await retryMail(actor, action));
+    }
+    throw new AppError(404, "NOT_FOUND", "Endpoint not found.");
+  } catch (error) {
+    return errorResponse(error);
+  }
+}
+/** Invitation join steps: no-store, same-origin, bounded bodies, shared IP/email limits. */
+async function handleJoinRoute(
+  request: NextRequest,
+  id: string | undefined,
+  action: string | undefined,
+  method: string,
+): Promise<NextResponse> {
+  try {
+    checkOrigin(request);
+    const body = await readJsonBody(request);
+    const clientIp = trustedClientIp(request.headers);
+    if (id === "context" && method === "POST") {
+      const result = await createJoinContext(body, clientIp);
+      const response = ok({
+        maskedEmail: result.maskedEmail,
+        nominatorName: result.nominatorName,
+        invitationExpiresAt: result.invitationExpiresAt,
+        returnTo: result.returnTo,
+      });
+      setJoinCookie(response, result.secret);
+      return response;
+    }
+    if (id === "email" && action === "start" && method === "POST")
+      return ok(
+        await joinEmailStart(requireJoinCookie(request), body, clientIp),
+      );
+    if (id === "email" && action === "complete" && method === "POST") {
+      const setCookies: string[] = [];
+      const outcome = await joinEmailComplete(
+        requireJoinCookie(request),
+        body,
+        // Called only after the admission transaction commits. Every session
+        // cookie is forwarded individually (a joined header would corrupt
+        // multiple Set-Cookie values).
+        (headers) => setCookies.push(...headers.getSetCookie()),
+      );
+      const response = ok(outcome);
+      for (const cookie of setCookies)
+        response.headers.append("set-cookie", cookie);
+      return response;
     }
     throw new AppError(404, "NOT_FOUND", "Endpoint not found.");
   } catch (error) {

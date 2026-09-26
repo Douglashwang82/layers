@@ -3,3 +3,6 @@
 # TO-DO
   - [ ] daily collection works
   - [ ] UI detailing
+  - [ ] design a invitation base membership
+  - [ ] integrate with Google apis
+  - [ ] review and rating layer

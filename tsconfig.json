@@ -15,7 +15,8 @@
     "paths": {
       "@/*": ["apps/web/src/*"],
       "@taiwanhub/database": ["packages/database/src/index.ts"],
-      "@taiwanhub/shared": ["packages/shared/src/index.ts"]
+      "@taiwanhub/shared": ["packages/shared/src/index.ts"],
+      "@taiwanhub/shared/mail": ["packages/shared/src/mail.ts"]
     },
     "plugins": [{ "name": "next" }]
   },

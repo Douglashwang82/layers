@@ -14,8 +14,9 @@ import {
   joinEmailComplete,
   revokeInvitation,
 } from "../../apps/web/src/features/membership/service";
-import { localTestMailer } from "../../packages/shared/src";
+import { localTestMailer } from "../../packages/shared/src/mail";
 import type { Actor } from "../../packages/shared/src";
+import { resetCodeSendLimits } from "../../apps/web/src/features/membership/rate-limit";
 const admin: Actor = { id: crypto.randomUUID(), role: "ADMIN" };
 const nominatorA: Actor = { id: crypto.randomUUID(), role: "USER" };
 const nominatorB: Actor = { id: crypto.randomUUID(), role: "USER" };
@@ -39,7 +40,13 @@ async function makeUser(actor: Actor, emailVerified = true) {
   cleanupUserIds.push(actor.id);
   await pool.query(
     'INSERT INTO "user"(id,name,email,role,email_verified) VALUES($1,$2,$3,$4,$5)',
-    [actor.id, "Membership Test", `${actor.id}@example.test`, actor.role, emailVerified],
+    [
+      actor.id,
+      "Membership Test",
+      `${actor.id}@example.test`,
+      actor.role,
+      emailVerified,
+    ],
   );
 }
 async function extractOtp(email: string) {
@@ -64,9 +71,10 @@ afterAll(async () => {
     )
   ).rows.map((r) => r.id);
   const allUserIds = [...cleanupUserIds, ...joinedUserIds];
-  await pool.query(`DELETE FROM membership_admission WHERE user_id = ANY($1::uuid[])`, [
-    allUserIds,
-  ]);
+  await pool.query(
+    `DELETE FROM membership_admission WHERE user_id = ANY($1::uuid[])`,
+    [allUserIds],
+  );
   await pool.query(
     `DELETE FROM membership_audit WHERE actor_id = ANY($1::uuid[]) OR target_user_id = ANY($1::uuid[])`,
     [allUserIds],
@@ -87,14 +95,18 @@ afterAll(async () => {
     `DELETE FROM membership_nomination WHERE nominator_id = ANY($1::uuid[]) OR email_normalized = ANY($2::text[])`,
     [cleanupUserIds, cleanupEmails],
   );
-  await pool.query(`DELETE FROM membership_reviewer WHERE user_id = ANY($1::uuid[])`, [
-    cleanupUserIds,
-  ]);
+  await pool.query(
+    `DELETE FROM membership_reviewer WHERE user_id = ANY($1::uuid[])`,
+    [cleanupUserIds],
+  );
   if (cleanupBatchIds.length)
-    await pool.query(`DELETE FROM membership_batch WHERE id = ANY($1::uuid[])`, [
-      cleanupBatchIds,
-    ]);
-  await pool.query(`DELETE FROM "user" WHERE id = ANY($1::uuid[])`, [allUserIds]);
+    await pool.query(
+      `DELETE FROM membership_batch WHERE id = ANY($1::uuid[])`,
+      [cleanupBatchIds],
+    );
+  await pool.query(`DELETE FROM "user" WHERE id = ANY($1::uuid[])`, [
+    allUserIds,
+  ]);
   await pool.end();
 });
 describe("nomination lifecycle", () => {
@@ -110,9 +122,11 @@ describe("nomination lifecycle", () => {
   it("gives a different nominator and an existing-member target the same generic error", async () => {
     const email = testEmail("friend");
     await createNomination(nominatorA, { email });
-    await expect(createNomination(nominatorB, { email })).rejects.toMatchObject({
-      code: "NOMINATION_UNAVAILABLE",
-    });
+    await expect(createNomination(nominatorB, { email })).rejects.toMatchObject(
+      {
+        code: "NOMINATION_UNAVAILABLE",
+      },
+    );
     await expect(
       createNomination(nominatorB, { email: `${plainUser.id}@example.test` }),
     ).rejects.toMatchObject({ code: "NOMINATION_UNAVAILABLE" });
@@ -189,13 +203,21 @@ describe("batch capacity", () => {
     });
     expect(first.delivery).toBe("manual");
     await expect(
-      adminDirectInvite(admin, { email: testEmail("seat"), batchId, delivery: "manual" }),
+      adminDirectInvite(admin, {
+        email: testEmail("seat"),
+        batchId,
+        delivery: "manual",
+      }),
     ).rejects.toMatchObject({ code: "BATCH_FULL" });
     await expect(
       createBatch(admin, { name: `Extra ${crypto.randomUUID()}`, capacity: 5 }),
     ).rejects.toMatchObject({ code: "NOMINATION_UNAVAILABLE" });
     await updateBatch(admin, batchId, { capacity: 2 });
-    await adminDirectInvite(admin, { email: testEmail("seat"), batchId, delivery: "manual" });
+    await adminDirectInvite(admin, {
+      email: testEmail("seat"),
+      batchId,
+      delivery: "manual",
+    });
     await expect(
       updateBatch(admin, batchId, { capacity: 1 }),
     ).rejects.toMatchObject({ code: "VALIDATION_ERROR" });
@@ -217,8 +239,13 @@ describe("full join flow", () => {
   });
   it("completes admission end-to-end via a manually delivered invitation", async () => {
     const email = testEmail("newmember");
-    const invite = await adminDirectInvite(admin, { email, batchId, delivery: "manual" });
-    if (invite.delivery !== "manual") throw new Error("expected manual delivery");
+    const invite = await adminDirectInvite(admin, {
+      email,
+      batchId,
+      delivery: "manual",
+    });
+    if (invite.delivery !== "manual")
+      throw new Error("expected manual delivery");
     const url = new URL(invite.link);
     const token = url.hash.replace("#invite=", "");
     const context = await createJoinContext({ token });
@@ -246,8 +273,13 @@ describe("full join flow", () => {
     // invitation is therefore still 'issued' and no admission row exists yet.
     const { auth } = await import("../../apps/web/src/lib/auth");
     const email = testEmail("interrupted");
-    const invite = await adminDirectInvite(admin, { email, batchId, delivery: "manual" });
-    if (invite.delivery !== "manual") throw new Error("expected manual delivery");
+    const invite = await adminDirectInvite(admin, {
+      email,
+      batchId,
+      delivery: "manual",
+    });
+    if (invite.delivery !== "manual")
+      throw new Error("expected manual delivery");
     const url = new URL(invite.link);
     const token = url.hash.replace("#invite=", "");
     const context = await createJoinContext({ token });
@@ -259,9 +291,18 @@ describe("full join flow", () => {
       [invite.invitationId],
     );
     expect(stillIssued.rows[0].status).toBe("issued");
+    // A second code within the 60-second resend cooldown is refused.
+    await expect(
+      joinEmailStart(context.secret, { acceptTerms: true }),
+    ).rejects.toMatchObject({ code: "RATE_LIMITED" });
+    await resetCodeSendLimits(email);
     await joinEmailStart(context.secret, { acceptTerms: true });
     const secondOtp = await extractOtp(email);
-    const outcome = await joinEmailComplete(context.secret, { otp: secondOtp }, () => {});
+    const outcome = await joinEmailComplete(
+      context.secret,
+      { otp: secondOtp },
+      () => {},
+    );
     expect(outcome).toEqual({ joined: true });
     const admission = await pool.query(
       `SELECT source FROM membership_admission a JOIN "user" u ON u.id = a.user_id WHERE u.email = $1`,
@@ -271,8 +312,13 @@ describe("full join flow", () => {
   });
   it("rejects redemption of a revoked invitation", async () => {
     const email = testEmail("revoked");
-    const invite = await adminDirectInvite(admin, { email, batchId, delivery: "manual" });
-    if (invite.delivery !== "manual") throw new Error("expected manual delivery");
+    const invite = await adminDirectInvite(admin, {
+      email,
+      batchId,
+      delivery: "manual",
+    });
+    if (invite.delivery !== "manual")
+      throw new Error("expected manual delivery");
     const url = new URL(invite.link);
     const token = url.hash.replace("#invite=", "");
     await revokeInvitation(admin, invite.invitationId, {});

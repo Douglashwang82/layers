@@ -11,7 +11,14 @@ export default defineConfig({
       MEMBERSHIP_MODE: "invite_only",
       // Test-only key so mail_outbox encryption has something to work with;
       // never used outside this test run.
-      MAIL_OUTBOX_ENCRYPTION_KEY: "3HWCF7wU3kwiYI6i1Is5LdG9F6g/G40g4iBTgBVYS30=",
+      MAIL_OUTBOX_ENCRYPTION_KEY:
+        "3HWCF7wU3kwiYI6i1Is5LdG9F6g/G40g4iBTgBVYS30=",
+      // Always the in-memory transport: a local .env pointing at a real
+      // provider must never make integration tests send mail.
+      MAIL_PROVIDER: "test",
+      RESEND_API_KEY: "",
+      MAIL_CAPTURE_DIR: "",
+      TRUSTED_CLIENT_IP_HEADER: "",
     },
   },
 });

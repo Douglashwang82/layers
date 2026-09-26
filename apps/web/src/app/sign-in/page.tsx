@@ -19,7 +19,9 @@ export default async function SignInPage({
         <AuthForm
           t={t}
           next={query.next ?? "/"}
-          google={!!process.env.GOOGLE_CLIENT_ID}
+          google={
+            !!process.env.GOOGLE_CLIENT_ID && !!process.env.GOOGLE_CLIENT_SECRET
+          }
         />
       </div>
     </div>

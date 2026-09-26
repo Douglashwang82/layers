@@ -16,11 +16,17 @@ import {
   ExtractionPageControls,
 } from "@/components/extraction-controls";
 import { MembershipAdminPanel } from "@/components/membership/admin-panel";
-import { listBatches, listReviewers } from "@/features/membership/service";
+import {
+  listBatches,
+  listMailJobs,
+  listReviewers,
+} from "@/features/membership/service";
 export default async function Admin({
   params,
+  searchParams,
 }: {
   params: Promise<{ section?: string[] }>;
+  searchParams: Promise<{ mailStatus?: string; mailPage?: string }>;
 }) {
   const actor = await currentActor();
   if (!actor) redirect("/sign-in?next=/admin");
@@ -35,6 +41,13 @@ export default async function Admin({
     kind === "membership"
       ? await Promise.all([listBatches(actor), listReviewers(actor)])
       : [[], []];
+  const mailQuery = kind === "membership" ? await searchParams : null;
+  const membershipMail = mailQuery
+    ? await listMailJobs(actor, {
+        status: mailQuery.mailStatus ?? "failed",
+        page: mailQuery.mailPage ?? "1",
+      })
+    : null;
   const extraction = kind === "extraction" ? await listExtractionPages() : [];
   const ingestion =
     kind === "ingestion"
@@ -160,6 +173,7 @@ export default async function Admin({
           t={t}
           batches={membershipBatches}
           reviewers={membershipReviewers}
+          mail={membershipMail}
         />
       ) : kind === "extraction" ? (
         <>

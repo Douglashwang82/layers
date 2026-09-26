@@ -1,8 +1,29 @@
 "use client";
 import { useState } from "react";
+import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { type Copy, format } from "@/lib/dictionary";
 import { api, StatusMessage } from "../actions";
+type MailStatus = "queued" | "provider_accepted" | "failed" | "superseded";
+export type MailJobs = {
+  status: MailStatus;
+  page: number;
+  pageSize: number;
+  counts: Record<string, number>;
+  oldestDueAt: string | null;
+  jobs: {
+    id: string;
+    kind: string;
+    recipient: string;
+    status: string;
+    attempts: number;
+    nextAttemptAt: string;
+    providerMessageId: string | null;
+    errorCode: string | null;
+    reconciliationRequired: boolean;
+    retryable: boolean;
+  }[];
+};
 type Batch = {
   id: string;
   name: string;
@@ -20,9 +41,10 @@ type Reviewer = {
 function useApi(t: Copy) {
   const router = useRouter();
   const [busy, setBusy] = useState(false);
-  const [feedback, setFeedback] = useState<
-    { tone: "success" | "error"; text: string } | null
-  >(null);
+  const [feedback, setFeedback] = useState<{
+    tone: "success" | "error";
+    text: string;
+  } | null>(null);
   async function run(fn: () => Promise<unknown>, success?: string) {
     setBusy(true);
     setFeedback(null);
@@ -46,7 +68,10 @@ function BatchesPanel({ t, batches }: { t: Copy; batches: Batch[] }) {
   const [name, setName] = useState("");
   const [capacity, setCapacity] = useState(20);
   return (
-    <section className="form-panel form-stack" aria-labelledby="batches-heading">
+    <section
+      className="form-panel form-stack"
+      aria-labelledby="batches-heading"
+    >
       <h2 id="batches-heading">{t.adminBatchesTitle}</h2>
       <ul className="settings-rows">
         {batches.map((b) => (
@@ -82,8 +107,7 @@ function BatchesPanel({ t, batches }: { t: Copy; batches: Batch[] }) {
         onSubmit={(e) => {
           e.preventDefault();
           run(
-            () =>
-              api("membership/admin/batches", "POST", { name, capacity }),
+            () => api("membership/admin/batches", "POST", { name, capacity }),
             undefined,
           );
         }}
@@ -116,7 +140,10 @@ function ReviewersPanel({ t, reviewers }: { t: Copy; reviewers: Reviewer[] }) {
   const { run, busy, feedback } = useApi(t);
   const [email, setEmail] = useState("");
   return (
-    <section className="form-panel form-stack" aria-labelledby="reviewers-heading">
+    <section
+      className="form-panel form-stack"
+      aria-labelledby="reviewers-heading"
+    >
       <h2 id="reviewers-heading">{t.adminReviewersTitle}</h2>
       <ul className="settings-rows">
         {reviewers
@@ -184,7 +211,10 @@ function DirectInvitePanel({ t, batches }: { t: Copy; batches: Batch[] }) {
   const [delivery, setDelivery] = useState<"manual" | "email">("manual");
   const [link, setLink] = useState("");
   return (
-    <section className="form-panel form-stack" aria-labelledby="direct-invite-heading">
+    <section
+      className="form-panel form-stack"
+      aria-labelledby="direct-invite-heading"
+    >
       <h2 id="direct-invite-heading">{t.adminDirectInviteTitle}</h2>
       <p className="muted">{t.adminDirectInviteBody}</p>
       <form
@@ -250,20 +280,123 @@ function DirectInvitePanel({ t, batches }: { t: Copy; batches: Batch[] }) {
     </section>
   );
 }
+/**
+ * Invitation delivery visibility for operators: masked recipients and
+ * redacted error codes only. Retry is offered only for idle failed jobs the
+ * server will accept; every retry is audited server-side.
+ */
+function MailPanel({ t, mail }: { t: Copy; mail: MailJobs }) {
+  const { run, busy, feedback } = useApi(t);
+  const labels: Record<MailStatus, string> = {
+    queued: t.adminMailStatusQueued,
+    provider_accepted: t.adminMailStatusAccepted,
+    failed: t.adminMailStatusFailed,
+    superseded: t.adminMailStatusSuperseded,
+  };
+  const href = (status: MailStatus, page = 1) =>
+    `/admin/membership?mailStatus=${status}&mailPage=${page}`;
+  return (
+    <section className="form-panel form-stack" aria-labelledby="mail-heading">
+      <h2 id="mail-heading">{t.adminMailTitle}</h2>
+      <p className="muted">{t.adminMailBody}</p>
+      {mail.oldestDueAt && (
+        <p role="status">
+          {format(t.adminMailOldestDue, {
+            time: new Date(mail.oldestDueAt).toLocaleString(),
+          })}
+        </p>
+      )}
+      <nav className="tabs" aria-label={t.adminMailFilter}>
+        {(Object.keys(labels) as MailStatus[]).map((status) => (
+          <Link
+            key={status}
+            href={href(status)}
+            aria-current={mail.status === status ? "page" : undefined}
+          >
+            {labels[status]} ({mail.counts[status] ?? 0})
+          </Link>
+        ))}
+      </nav>
+      <ul className="settings-rows">
+        {mail.jobs.map((job) => (
+          <li key={job.id} className="settings-row">
+            <span>
+              {job.recipient} · {labels[job.status as MailStatus] ?? job.status}{" "}
+              · {format(t.adminMailAttempts, { count: job.attempts })}
+              {job.errorCode && (
+                <> · {format(t.adminMailError, { code: job.errorCode })}</>
+              )}
+              {job.status === "queued" && (
+                <>
+                  {" "}
+                  ·{" "}
+                  {format(t.adminMailNextAttempt, {
+                    time: new Date(job.nextAttemptAt).toLocaleString(),
+                  })}
+                </>
+              )}
+              {job.providerMessageId && (
+                <small className="fine-print">
+                  {" "}
+                  {format(t.adminMailProviderId, { id: job.providerMessageId })}
+                </small>
+              )}
+              {job.reconciliationRequired && (
+                <small className="fine-print"> {t.adminMailReconcile}</small>
+              )}
+            </span>
+            {job.retryable && (
+              <button
+                type="button"
+                className="text-button"
+                disabled={busy}
+                onClick={() =>
+                  run(
+                    () => api(`membership/admin/mail/${job.id}/retry`, "POST"),
+                    t.adminMailRetried,
+                  )
+                }
+              >
+                {t.adminMailRetry}
+              </button>
+            )}
+          </li>
+        ))}
+      </ul>
+      {!mail.jobs.length && <p className="muted">{t.adminMailEmpty}</p>}
+      <div className="auth-links">
+        {mail.page > 1 && (
+          <Link className="text-button" href={href(mail.status, mail.page - 1)}>
+            {t.adminMailPrevious}
+          </Link>
+        )}{" "}
+        {mail.jobs.length === mail.pageSize && (
+          <Link className="text-button" href={href(mail.status, mail.page + 1)}>
+            {t.adminMailNext}
+          </Link>
+        )}
+      </div>
+      <StatusMessage feedback={feedback} />
+    </section>
+  );
+}
 export function MembershipAdminPanel({
   t,
   batches,
   reviewers,
+  mail,
 }: {
   t: Copy;
   batches: Batch[];
   reviewers: Reviewer[];
+  mail: MailJobs | null;
 }) {
   return (
     <div className="settings-layout">
       <BatchesPanel t={t} batches={batches} />
       <ReviewersPanel t={t} reviewers={reviewers} />
       <DirectInvitePanel t={t} batches={batches} />
+      {mail && <MailPanel t={t} mail={mail} />}
     </div>
   );
 }

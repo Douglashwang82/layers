@@ -40,8 +40,22 @@ export async function deleteTestAccount(email: string) {
   );
   await pool.query('DELETE FROM "user" WHERE email=$1', [email]);
 }
-/** Fills and submits the sign-in form on whatever /sign-in?next=... page is already loaded, without navigating or asserting a destination. */
+/**
+ * Fills and submits the password sign-in form on whatever /sign-in?next=...
+ * page is already loaded, without navigating or asserting a destination.
+ * Email code is the default method, so switch to password first.
+ */
 export async function submitSignIn(page: Page, email: string) {
+  // Each fixture represents a separate client. Keep Better Auth's real limits
+  // enabled without having every account in the suite consume one loopback IP.
+  await page.setExtraHTTPHeaders({
+    "x-forwarded-for": [10, ...crypto.getRandomValues(new Uint8Array(3))].join(
+      ".",
+    ),
+  });
+  await page
+    .getByRole("button", { name: "Use password instead", exact: true })
+    .click();
   await page.getByLabel("Email", { exact: true }).fill(email);
   await page.getByLabel("Password", { exact: true }).fill(E2E_PASSWORD);
   await page.getByRole("button", { name: "Sign in", exact: true }).click();

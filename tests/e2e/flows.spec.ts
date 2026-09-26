@@ -1,5 +1,32 @@
 import { test, expect } from "@playwright/test";
 import { createAndSignIn } from "./fixtures";
+import { pool } from "../../packages/database/src";
+import { resolveDateWindow } from "../../packages/shared/src";
+
+const weekendEventId = crypto.randomUUID();
+test.beforeAll(async () => {
+  // Demo dates are fixed at first seed and may target the following weekend.
+  // This spec owns a current Houston-weekend fixture instead of relying on them.
+  const window = resolveDateWindow("weekend", "America/Chicago");
+  const start = new Date(window.end!.getTime() - 3_600_000);
+  const end = new Date(window.end!.getTime() + 3_600_000);
+  const result = await pool.query(
+    `INSERT INTO event(id, slug, name, description, image, category, city_id,
+       neighborhood, address, latitude, longitude, location, organizer_id,
+       venue, start_time, end_time, capacity, status, is_demo, source)
+     SELECT $1, $2, 'E2E weekend gathering', description, image, category, city_id,
+       neighborhood, address, latitude, longitude, location, organizer_id,
+       venue, $3, $4, 30, 'approved', true, 'Browser test fixture'
+     FROM event WHERE is_demo = true AND status = 'approved' LIMIT 1`,
+    [weekendEventId, `e2e-weekend-${weekendEventId}`, start, end],
+  );
+  if (result.rowCount !== 1)
+    throw new Error("Seed the disposable E2E database first.");
+});
+test.afterAll(async () => {
+  await pool.query("DELETE FROM event WHERE id = $1", [weekendEventId]);
+});
+
 test("guest discovery, Chinese search, and responsive navigation", async ({
   page,
 }) => {

@@ -56,6 +56,17 @@ export const joinAcceptInput = z.object({
 export const joinEmailCompleteInput = z.object({
   otp: z.string().regex(/^\d{4,10}$/),
 });
+export const mailJobStatuses = [
+  "queued",
+  "provider_accepted",
+  "failed",
+  "superseded",
+] as const;
+export const mailJobListInput = z.object({
+  status: z.enum(mailJobStatuses).catch("failed"),
+  page: z.coerce.number().int().min(1).max(10000).catch(1),
+  pageSize: z.coerce.number().int().min(1).max(50).catch(20),
+});
 /**
  * Only a same-origin relative path may ride along with an invitation link.
  * Rejects protocol-relative ("//host"), backslash tricks, and any scheme.
@@ -134,4 +145,8 @@ export const membershipErrorCodes = {
   BATCH_FULL: "BATCH_FULL",
   MEMBERSHIP_PAUSED: "MEMBERSHIP_PAUSED",
   MAIL_UNAVAILABLE: "MAIL_UNAVAILABLE",
+  TERMS_REQUIRED: "TERMS_REQUIRED",
+  RATE_LIMITED: "RATE_LIMITED",
+  MAIL_RETRY_UNAVAILABLE: "MAIL_RETRY_UNAVAILABLE",
+  MAIL_RECONCILIATION_REQUIRED: "MAIL_RECONCILIATION_REQUIRED",
 } as const;

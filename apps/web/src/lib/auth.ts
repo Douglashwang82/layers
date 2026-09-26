@@ -1,9 +1,21 @@
+import { AsyncLocalStorage } from "node:async_hooks";
 import { betterAuth } from "better-auth";
 import { drizzleAdapter } from "better-auth/adapters/drizzle";
 import { bearer, emailOTP } from "better-auth/plugins";
 import { db, schema } from "@taiwanhub/database";
-import { resolveMailer } from "@taiwanhub/shared";
+import {
+  resolveMailer,
+  signInCodeEmail,
+  mailErrorCode,
+  type MailErrorCode,
+} from "@taiwanhub/shared/mail";
 import { hasLiveInvitationForEmail } from "@/features/membership/repository";
+/**
+ * Better Auth awaits sendVerificationOTP but swallows (and logs) its errors,
+ * so a caller that needs the delivery outcome - the invitation join flow, which
+ * may show an actionable failure - runs its in-process call inside this store.
+ */
+export const codeDelivery = new AsyncLocalStorage<{ error?: MailErrorCode }>();
 export const auth = betterAuth({
   database: drizzleAdapter(db, { provider: "pg", schema }),
   secret: process.env.AUTH_SECRET,
@@ -40,24 +52,39 @@ export const auth = betterAuth({
     // and auth.api.signInEmailOTP in-process for a legitimately invited email
     // that has no account yet, and disableSignUp would silently no-op sending
     // for exactly that case (see docs/adr/0001, section on account-creation
-    // paths). The public native endpoints are blocked at the HTTP layer
-    // instead (apps/web/src/app/api/auth/[...all]/route.ts); the
-    // databaseHooks.user.create.before gate below is the actual backstop that
-    // decides whether an account may be created at all, for every path
-    // including this one and Google.
+    // paths). The public native endpoints only serve admitted members
+    // (apps/web/src/app/api/auth/[...all]/route.ts); the
+    // databaseHooks.user.create.before gate below is the backstop that decides
+    // whether an account may be created at all, and lib/session.ts grants
+    // application privileges only to admitted users.
     emailOTP({
       disableSignUp: false,
       otpLength: 6,
       expiresIn: 300,
       allowedAttempts: 3,
+      // Only a hash is stored; a resend always rotates to a new code.
+      storeOTP: "hashed",
+      resendStrategy: "rotate",
       sendVerificationOTP: async ({ email, otp, type }) => {
+        // Only sign-in codes are delivered; other OTP purposes stay disabled
+        // and their native routes are blocked.
         if (type !== "sign-in") return;
-        await resolveMailer().send({
-          to: email,
-          kind: "membership_otp",
-          subject: "Your TaiwanHub code",
-          text: `Your one-time code is ${otp}. It expires in 5 minutes.`,
-        });
+        try {
+          await resolveMailer().send({
+            to: email,
+            kind: "membership_otp",
+            ...signInCodeEmail(otp),
+          });
+        } catch (error) {
+          const code = mailErrorCode(error);
+          const store = codeDelivery.getStore();
+          if (store) store.error = code;
+          // Redacted operational record: no address, code or provider text.
+          console.warn(
+            JSON.stringify({ event: "sign_in_code_send_failed", code }),
+          );
+          throw error;
+        }
       },
     }),
   ],
@@ -65,7 +92,7 @@ export const auth = betterAuth({
   databaseHooks: {
     user: {
       create: {
-        // The actual admission gate: every account-creation call site funnels
+        // The account-creation gate: every account-creation call site funnels
         // through here (OTP sign-in, Google's first-time callback, and any
         // future path), and vetoing is a pure read with no atomicity
         // concerns (see docs/adr/0001-membership-invitation-auth-transaction-boundary.md
@@ -73,8 +100,7 @@ export const auth = betterAuth({
         // handled separately, in features/membership/service.ts.
         before: async (user) => {
           const email = (user.email ?? "").toLowerCase();
-          if (!email || !(await hasLiveInvitationForEmail(email)))
-            return false;
+          if (!email || !(await hasLiveInvitationForEmail(email))) return false;
         },
         after: async (user) => {
           await db

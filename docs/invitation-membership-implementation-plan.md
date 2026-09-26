@@ -2,6 +2,8 @@
 
 日期：2026-09-24。狀態：S0–S7 已在本機 disposable dev DB 完成並通過測試（含瀏覽器手動驗證的完整加入流程）；**尚未部署到正式環境**，正式環境的遷移、權限指派、寄信與部署仍須另有涵蓋該環境的授權。
 
+2026-09-25 更新：後續的 beta 準備工作（回訪會員 Email 驗證碼登入、以 admission 為權限邊界、Resend 寄信、outbox worker 租約與冪等、營運寄信檢視、端對端測試）改由 [會員 beta 準備方案](membership-beta-readiness-plan.md) 規範並已在程式中實作；本文件中關於寄信供應商「尚未選定」、worker「尚無排程」及「user 存在即可以 OTP 登入」的描述已被取代，以原始碼及 [部署說明](deployment.md) 為準。對應 migration 為 `0012_shiny_rick_jones.sql`（僅新增 `mail_outbox.lease_owner`、`first_attempt_at`、`sender`）。M1–M5 已完成本機驗證：67 個單元測試、126 個整合測試、14 個瀏覽器測試，以及 lint、typecheck、production build 全數通過；詳見 [驗證紀錄](membership-beta-verification.md)。M6 staging 實際寄信與上線驗收尚未執行，亦未部署到任何環境。
+
 本文件原將已討論的產品方向轉成可拆票的執行方案；現況：schema／migration、`features/membership` 服務與 API、auth gate（`databaseHooks.user.create.before`）、`/join`／`/membership`／`/membership/review`／`/admin/membership` UI、mail outbox worker、`membership:bootstrap`／`membership:backfill-legacy` CLI、E2E fixture 遷移均已實作並測試。尚未定案／未實作：正式 mail provider（僅有介面與本機 test transport）、outbox worker 的排程部署方式、Google 受邀新戶的完整UI流程（目前只有 databaseHooks veto，沒有專屬的 join-context 整合）、正式環境 cutover 演練。詳見 [ADR 0001](adr/0001-membership-invitation-auth-transaction-boundary.md) 與各章節內文。
 
 ## 1. 目標、已確認決策與建議預設

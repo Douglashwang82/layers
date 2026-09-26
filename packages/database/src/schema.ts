@@ -829,9 +829,7 @@ export const membershipNomination = pgTable(
     index("membership_nomination_email_idx").on(t.emailNormalized),
     uniqueIndex("membership_nomination_open_email")
       .on(t.emailNormalized)
-      .where(
-        sql`${t.status} IN ('pending_review', 'needs_info', 'approved')`,
-      ),
+      .where(sql`${t.status} IN ('pending_review', 'needs_info', 'approved')`),
     check(
       "membership_nomination_nominator_required",
       sql`${t.source} = 'operator_bootstrap' OR ${t.nominatorId} IS NOT NULL`,
@@ -917,8 +915,12 @@ export const membershipAudit = pgTable(
     id: id(),
     actorId: uuid("actor_id").references(() => user.id),
     action: text("action").notNull(),
-    nominationId: uuid("nomination_id").references(() => membershipNomination.id),
-    invitationId: uuid("invitation_id").references(() => membershipInvitation.id),
+    nominationId: uuid("nomination_id").references(
+      () => membershipNomination.id,
+    ),
+    invitationId: uuid("invitation_id").references(
+      () => membershipInvitation.id,
+    ),
     targetUserId: uuid("target_user_id").references(() => user.id),
     beforeState: jsonb("before_state").$type<Record<string, unknown>>(),
     afterState: jsonb("after_state").$type<Record<string, unknown>>(),
@@ -951,13 +953,17 @@ export const mailOutbox = pgTable(
       .defaultNow()
       .notNull(),
     leaseUntil: timestamp("lease_until", { withTimezone: true }),
+    /** Unique per worker claim; final updates must match it. */
+    leaseOwner: text("lease_owner"),
+    /** Set before the first provider call; bounds replay to the provider's idempotency window. */
+    firstAttemptAt: timestamp("first_attempt_at", { withTimezone: true }),
+    /** Sender frozen at the first attempt so retries repeat the same provider request. */
+    sender: text("sender"),
     providerMessageId: text("provider_message_id"),
     lastErrorCode: text("last_error_code"),
     ...timestamps(),
   },
-  (t) => [
-    index("mail_outbox_next_attempt_idx").on(t.status, t.nextAttemptAt),
-  ],
+  (t) => [index("mail_outbox_next_attempt_idx").on(t.status, t.nextAttemptAt)],
 );
 /** Actor-scoped idempotency for membership create/approve/direct-invite/reissue calls. */
 export const membershipRequest = pgTable(
@@ -1014,10 +1020,7 @@ export const placeSubject = pgTable(
     ...timestamps(),
   },
   (t) => [
-    index("place_subject_city_review_idx").on(
-      t.cityReviewStatus,
-      t.createdAt,
-    ),
+    index("place_subject_city_review_idx").on(t.cityReviewStatus, t.createdAt),
     check(
       "place_subject_city_review_status_check",
       sql`${t.cityReviewStatus} IN ('unreviewed', 'approved')`,
@@ -1057,7 +1060,10 @@ export const placeProviderReference = pgTable(
       .on(t.subjectId, t.provider)
       .where(sql`${t.state} = 'current'`),
     index("place_provider_reference_subject_idx").on(t.subjectId),
-    check("place_provider_reference_provider_check", sql`${t.provider} = 'google'`),
+    check(
+      "place_provider_reference_provider_check",
+      sql`${t.provider} = 'google'`,
+    ),
     check(
       "place_provider_reference_state_check",
       sql`${t.state} IN ('current', 'superseded')`,

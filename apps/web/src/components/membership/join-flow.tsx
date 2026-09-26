@@ -59,8 +59,15 @@ export function JoinFlow({ t, locale }: { t: Copy; locale: Locale }) {
     try {
       await api("membership/join/email/start", "POST", { acceptTerms: true });
       setStep("otp");
-    } catch {
-      setError(t.joinInvalid);
+    } catch (e) {
+      const code = (e as { code?: string }).code;
+      setError(
+        code === "RATE_LIMITED"
+          ? t.joinRateLimited
+          : code === "MAIL_UNAVAILABLE"
+            ? t.joinSendFailed
+            : t.joinInvalid,
+      );
     } finally {
       setBusy(false);
     }
@@ -116,7 +123,11 @@ export function JoinFlow({ t, locale }: { t: Copy; locale: Locale }) {
             })}
           </p>
           <p className="fine-print">{t.joinCommunityNote}</p>
-          <button className="button" disabled={busy} onClick={() => void sendOtp()}>
+          <button
+            className="button"
+            disabled={busy}
+            onClick={() => void sendOtp()}
+          >
             {t.joinAccept}
           </button>
         </div>
@@ -135,7 +146,11 @@ export function JoinFlow({ t, locale }: { t: Copy; locale: Locale }) {
               inputMode="numeric"
               autoComplete="one-time-code"
               value={otp}
-              onChange={(e) => setOtp(e.target.value)}
+              maxLength={6}
+              // Digits only, as a string so leading zeroes survive a paste.
+              onChange={(e) =>
+                setOtp(e.target.value.replace(/\D/g, "").slice(0, 6))
+              }
               {...fieldProps("join-otp", {})}
             />
           </Field>

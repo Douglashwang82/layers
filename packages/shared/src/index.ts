@@ -3,7 +3,6 @@ import { plainText } from "./text";
 import { selectionGrantToken } from "./place-subjects";
 export * from "./text";
 export * from "./membership";
-export * from "./mail";
 export * from "./place-subjects";
 export const placeCategories = [
   "Taiwanese",

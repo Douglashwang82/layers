@@ -78,7 +78,9 @@ export async function getOpenBatch(db: Queryable = pool) {
     name: string;
     capacity: number;
     status: string;
-  }>(`SELECT id, name, capacity, status FROM membership_batch WHERE status = 'open' LIMIT 1`);
+  }>(
+    `SELECT id, name, capacity, status FROM membership_batch WHERE status = 'open' LIMIT 1`,
+  );
   return result.rows[0] ?? null;
 }
 export async function listBatches() {
@@ -164,6 +166,26 @@ export async function getAdmission(userId: string, db: Queryable = pool) {
     admitted_at: Date;
   }>(`SELECT * FROM membership_admission WHERE user_id = $1`, [userId]);
   return result.rows[0] ?? null;
+}
+/** The application privilege boundary: a Better Auth session alone is not membership. */
+export async function isAdmitted(userId: string) {
+  const result = await pool.query(
+    `SELECT 1 FROM membership_admission WHERE user_id = $1`,
+    [userId],
+  );
+  return (result.rowCount ?? 0) > 0;
+}
+/**
+ * Returning-member eligibility. Deliberately not "user exists" or "has a live
+ * invitation": seed-only, invitation-only and partial-join accounts have no
+ * admission row and must finish joining through their invitation instead.
+ */
+export async function isAdmittedEmail(emailNormalized: string) {
+  const result = await pool.query(
+    `SELECT 1 FROM "user" u JOIN membership_admission m ON m.user_id = u.id WHERE u.email = $1`,
+    [emailNormalized],
+  );
+  return (result.rowCount ?? 0) > 0;
 }
 export async function getUserByEmail(emailNormalized: string) {
   const result = await pool.query<{

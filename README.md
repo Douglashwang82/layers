@@ -26,6 +26,8 @@ pnpm membership:bootstrap you@example.com
 pnpm admin:grant you@example.com
 ```
 
+Returning members sign in at `/sign-in` with an email code by default (password and Google remain for accounts that use them). Only admitted members receive a code, and application privileges require a membership admission, not just a session. Locally, with `MAIL_PROVIDER` unset, codes and invitations go to an in-memory test transport that nothing displays; read them from the test suites, or configure a real provider for manual testing.
+
 Visit `/admin` to approve pending events, places, sightings and notes; edit content; hide, reject or soft-delete content; and use `/admin/membership` to open batches, invite people directly, and grant/revoke reviewer access. Moderator roles can review and edit; only admins can soft-delete. Roles are never accepted from account creation or profile requests. See [docs/invitation-membership-implementation-plan.md](docs/invitation-membership-implementation-plan.md) for how membership works end to end.
 
 ## Stack and layout
@@ -67,8 +69,10 @@ See `.env.example` for the complete list.
 | `FEATURE_MAP_HOME`, `FEATURE_LAYER_WRITES`, `FEATURE_CONTENT`      | Map-first home (false restores the legacy entry screen), layer/group writes, local content |
 | `MEMBERSHIP_MODE`                                                  | `closed` (default; no new accounts) or `invite_only` to enable the invitation flow         |
 | `MEMBERSHIP_ISSUANCE_PAUSED`                                       | `true` pauses new approvals/invites without affecting already-issued ones                  |
-| `MAIL_PROVIDER`, `MAIL_FROM`                                       | No provider is wired up yet; unset uses the local test transport (dev/CI only)             |
+| `MAIL_PROVIDER`, `MAIL_FROM`, `RESEND_API_KEY`                     | `resend` with a verified sender and key; unset uses the local test transport (dev/CI only) |
 | `MAIL_OUTBOX_ENCRYPTION_KEY`                                       | 32 random bytes, base64-encoded, encrypting queued invitation email payloads at rest       |
+| `TRUSTED_CLIENT_IP_HEADER`                                         | Platform client-IP header for per-IP sign-in limits (Vercel: `x-vercel-forwarded-for`)     |
+| `MAIL_CAPTURE_DIR`                                                 | Browser tests only (`MAIL_PROVIDER=capture`); set by `playwright.config.ts`                |
 
 Mapbox/Google/S3 are optional for local startup. Missing Mapbox displays a clear fallback with external directions. Local uploads support JPEG, PNG and WebP up to 5 MB. Production must configure object storage to upload files; HTTPS image URLs can also be submitted. Untrusted image URLs are rendered directly, not fetched by the server image proxy.
 
@@ -80,10 +84,12 @@ pnpm typecheck
 pnpm test
 pnpm test:integration  # requires migrated and seeded Postgres
 pnpm exec playwright install chromium
-pnpm test:e2e          # starts dev server if needed
+pnpm test:e2e          # starts its own dev server (E2E_REUSE_SERVER=true to reuse one)
 pnpm build
 pnpm start
 ```
+
+Browser tests set their own origin (`BETTER_AUTH_URL`/`NEXT_PUBLIC_APP_URL` = `http://localhost:$E2E_PORT`) and membership/mail settings (invite-only mode, a fresh per-run capture mail directory under the OS temp directory removed by the global teardown, a test-only outbox key) for both the dev server and the test process, so local `.env` values never decide the result. Because a running server can't be shown to have those settings, an existing server is reused only when `E2E_REUSE_SERVER=true` and you started it with the same values.
 
 Use a dedicated database for integration/browser tests. Database tests clean up their own fixtures; browser tests intentionally leave contribution fixtures for inspection and may change scores. E2E captures desktop/mobile screenshots under ignored `test-results/`. CI provides a fresh PostGIS service, caches pnpm dependencies and runs every check above. Do not run `dev` and `start` on the same port. Stop dev before testing production startup.
 
@@ -97,6 +103,7 @@ Target Vercel plus Neon PostgreSQL with PostGIS enabled; any compatible PostgreS
 - [Architecture and boundaries](docs/architecture.md)
 - [Bright UI/UX modernization guide](docs/ui-ux-modernization-guide.md)
 - [Map-first, layer-led UI/UX migration guide](docs/map-first-layer-experience-guide.md)
+- [Mapbox + Google Places engineering implementation plan (planned)](docs/google-places-implementation-plan.md)
 - [Database and integrity](docs/database.md)
 - [HTTP API](docs/api.md)
 - [Deployment and launch checklist](docs/deployment.md)

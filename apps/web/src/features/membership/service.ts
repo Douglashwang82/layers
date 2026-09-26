@@ -18,15 +18,23 @@ import {
   joinContextInput,
   joinAcceptInput,
   joinEmailCompleteInput,
-  encryptOutboxPayload,
+  mailJobListInput,
   type Actor,
   type NominationStatus,
-  type MailKind,
 } from "@taiwanhub/shared";
-import { auth } from "@/lib/auth";
+import {
+  encryptOutboxPayload,
+  invitationEmail,
+  isAmbiguousMailError,
+  resolveMailer,
+  PROVIDER_IDEMPOTENCY_WINDOW_MS,
+  type MailErrorCode,
+} from "@taiwanhub/shared/mail";
+import { auth, codeDelivery } from "@/lib/auth";
 import { membershipMode, membershipIssuancePaused, appUrl } from "@/lib/config";
 import { requireReviewer, requireAdmin } from "./access";
 import { generateOpaqueToken, hashToken } from "./crypto";
+import { enforceCodeSendLimits, enforceJoinContextLimit } from "./rate-limit";
 import {
   getNominationById,
   listMyNominations,
@@ -35,11 +43,11 @@ import {
   getOpenBatch,
   listBatches as repoListBatches,
   getBatchSeats,
-  getInvitationById,
   getInvitationByTokenHash,
   getAdmission,
   getUserByEmail,
   isEffectiveReviewer,
+  type InvitationRow,
   type NominationRow,
 } from "./repository";
 const TERMS_VERSION = "2026-09-24";
@@ -123,25 +131,24 @@ async function audit(
     ],
   );
 }
-async function enqueueMail(
+/** Each token version is its own logical delivery: `invitation:{id}:v{tokenVersion}`. */
+async function enqueueInvitationMail(
   tx: PoolClient,
-  kind: MailKind,
   recipient: string,
   dedupeKey: string,
-  subject: string,
-  text: string,
+  token: string,
+  expiresAt: Date,
 ) {
   const { ciphertext, keyVersion } = encryptOutboxPayload({
-    kind,
+    kind: "membership_invitation",
     to: recipient,
-    subject,
-    text,
+    ...invitationEmail(`${appUrl}/join#invite=${token}`, expiresAt),
   });
   await tx.query(
     `INSERT INTO mail_outbox(kind, dedupe_key, recipient, payload_ciphertext, payload_key_version)
-     VALUES ($1,$2,$3,$4,$5)
+     VALUES ('membership_invitation',$1,$2,$3,$4)
      ON CONFLICT (dedupe_key) DO NOTHING`,
-    [kind, dedupeKey, recipient, ciphertext, keyVersion],
+    [dedupeKey, recipient, ciphertext, keyVersion],
   );
 }
 export async function getMembershipMe(actor: Actor | null) {
@@ -211,7 +218,10 @@ export async function createNomination(actor: Actor | null, body: unknown) {
     );
     return { nomination: nominationView(result.rows[0]), created: true };
   } catch (e) {
-    if (e instanceof Error && /membership_nomination_open_email/.test(e.message))
+    if (
+      e instanceof Error &&
+      /membership_nomination_open_email/.test(e.message)
+    )
       throw new AppError(
         409,
         "NOMINATION_UNAVAILABLE",
@@ -225,7 +235,8 @@ export async function listNominations(
   scope: "mine" | "review",
 ) {
   const a = requireActor(actor);
-  if (scope === "mine") return (await listMyNominations(a.id)).map(nominationView);
+  if (scope === "mine")
+    return (await listMyNominations(a.id)).map(nominationView);
   await requireReviewer(a);
   return (await listReviewQueue()).map(nominationView);
 }
@@ -312,7 +323,9 @@ export async function decideNomination(
 ) {
   const input = nominationDecisionInput.parse(body);
   const a =
-    input.decision === "reject" ? requireAdmin(actor) : await requireReviewer(actor);
+    input.decision === "reject"
+      ? requireAdmin(actor)
+      : await requireReviewer(actor);
   const target: NominationStatus =
     input.decision === "approve"
       ? "approved"
@@ -360,23 +373,22 @@ export async function decideNomination(
     if (!batchHasCapacity(batch.capacity, seats.redeemed, seats.active_issued))
       throw new AppError(503, "BATCH_FULL", "This batch is full.");
     const token = generateOpaqueToken();
-    const invitation = await tx.query<{ id: string }>(
+    const invitation = await tx.query<{ id: string; expires_at: Date }>(
       `INSERT INTO membership_invitation(nomination_id, batch_id, delivery, token_hash, expires_at)
        VALUES ($1,$2,'email',$3, now() + interval '14 days')
-       RETURNING id`,
+       RETURNING id, expires_at`,
       [id, batch.id, hashToken(token)],
     );
     await tx.query(
       `UPDATE membership_nomination SET status = 'approved', approved_by = $1, approved_at = now(), revision = revision + 1, updated_at = now() WHERE id = $2`,
       [a.id, id],
     );
-    await enqueueMail(
+    await enqueueInvitationMail(
       tx,
-      "membership_invitation",
       row.email_normalized,
       `invitation:${invitation.rows[0].id}:v1`,
-      "You're invited to TaiwanHub",
-      `${appUrl}/join#invite=${token}`,
+      token,
+      invitation.rows[0].expires_at,
     );
     await audit(tx, {
       actorId: a.id,
@@ -387,7 +399,11 @@ export async function decideNomination(
     return { status: "approved", invitationId: invitation.rows[0].id };
   });
 }
-async function requireInvitationActor(tx: PoolClient, invitationId: string, a: Actor) {
+async function requireInvitationActor(
+  tx: PoolClient,
+  invitationId: string,
+  a: Actor,
+) {
   const invitation = await tx.query<{
     id: string;
     nomination_id: string;
@@ -440,7 +456,10 @@ export async function revokeInvitation(
     return { revoked: true };
   });
 }
-export async function reissueInvitation(actor: Actor | null, invitationId: string) {
+export async function reissueInvitation(
+  actor: Actor | null,
+  invitationId: string,
+) {
   const a = requireActor(actor);
   return transaction(async (tx) => {
     const invitation = await requireInvitationActor(tx, invitationId, a);
@@ -451,16 +470,21 @@ export async function reissueInvitation(actor: Actor | null, invitationId: strin
         "Only a still-valid invitation can be reissued.",
       );
     const token = generateOpaqueToken();
-    const updated = await tx.query<{ token_version: number; delivery: string }>(
+    const updated = await tx.query<{
+      token_version: number;
+      delivery: string;
+      expires_at: Date;
+    }>(
       `UPDATE membership_invitation
        SET token_hash = $1, token_version = token_version + 1, expires_at = now() + interval '14 days', updated_at = now()
        WHERE id = $2
-       RETURNING token_version, delivery`,
+       RETURNING token_version, delivery, expires_at`,
       [hashToken(token), invitationId],
     );
-    await tx.query(`DELETE FROM membership_join_context WHERE invitation_id = $1`, [
-      invitationId,
-    ]);
+    await tx.query(
+      `DELETE FROM membership_join_context WHERE invitation_id = $1`,
+      [invitationId],
+    );
     await audit(tx, {
       actorId: a.id,
       action: "membership_invitation_reissued",
@@ -476,13 +500,12 @@ export async function reissueInvitation(actor: Actor | null, invitationId: strin
       `UPDATE mail_outbox SET status = 'superseded' WHERE dedupe_key LIKE $1 AND status = 'queued'`,
       [`invitation:${invitationId}:v%`],
     );
-    await enqueueMail(
+    await enqueueInvitationMail(
       tx,
-      "membership_invitation",
       nomination.rows[0].email_normalized,
       `invitation:${invitationId}:v${updated.rows[0].token_version}`,
-      "You're invited to TaiwanHub",
-      `${appUrl}/join#invite=${token}`,
+      token,
+      updated.rows[0].expires_at,
     );
     return { delivery: "email" as const };
   });
@@ -509,7 +532,11 @@ export async function adminDirectInvite(actor: Actor | null, body: unknown) {
       "This email already has an active nomination.",
     );
   return transaction(async (tx) => {
-    const batch = await tx.query<{ id: string; capacity: number; status: string }>(
+    const batch = await tx.query<{
+      id: string;
+      capacity: number;
+      status: string;
+    }>(
       `SELECT id, capacity, status FROM membership_batch WHERE id = $1 FOR UPDATE`,
       [input.batchId],
     );
@@ -521,7 +548,11 @@ export async function adminDirectInvite(actor: Actor | null, body: unknown) {
       );
     const seats = await getBatchSeats(batch.rows[0].id, tx);
     if (
-      !batchHasCapacity(batch.rows[0].capacity, seats.redeemed, seats.active_issued)
+      !batchHasCapacity(
+        batch.rows[0].capacity,
+        seats.redeemed,
+        seats.active_issued,
+      )
     )
       throw new AppError(503, "BATCH_FULL", "This batch is full.");
     const nomination = await tx.query<{ id: string }>(
@@ -531,11 +562,16 @@ export async function adminDirectInvite(actor: Actor | null, body: unknown) {
       [email, a.id],
     );
     const token = generateOpaqueToken();
-    const invitation = await tx.query<{ id: string }>(
+    const invitation = await tx.query<{ id: string; expires_at: Date }>(
       `INSERT INTO membership_invitation(nomination_id, batch_id, delivery, token_hash, expires_at)
        VALUES ($1,$2,$3,$4, now() + interval '14 days')
-       RETURNING id`,
-      [nomination.rows[0].id, batch.rows[0].id, input.delivery, hashToken(token)],
+       RETURNING id, expires_at`,
+      [
+        nomination.rows[0].id,
+        batch.rows[0].id,
+        input.delivery,
+        hashToken(token),
+      ],
     );
     await audit(tx, {
       actorId: a.id,
@@ -549,13 +585,12 @@ export async function adminDirectInvite(actor: Actor | null, body: unknown) {
         delivery: "manual" as const,
         link: `${appUrl}/join#invite=${token}`,
       };
-    await enqueueMail(
+    await enqueueInvitationMail(
       tx,
-      "membership_invitation",
       email,
       `invitation:${invitation.rows[0].id}:v1`,
-      "You're invited to TaiwanHub",
-      `${appUrl}/join#invite=${token}`,
+      token,
+      invitation.rows[0].expires_at,
     );
     return { invitationId: invitation.rows[0].id, delivery: "email" as const };
   });
@@ -568,7 +603,8 @@ export async function listReviewers(actor: Actor | null) {
 export async function lookupUserByEmail(actor: Actor | null, email: string) {
   requireAdmin(actor);
   const user = await getUserByEmail(normalizeEmail(email));
-  if (!user) throw new AppError(404, "NOT_FOUND", "No account with that email.");
+  if (!user)
+    throw new AppError(404, "NOT_FOUND", "No account with that email.");
   return { id: user.id };
 }
 export async function setReviewer(
@@ -655,7 +691,12 @@ export async function updateBatch(
            status = COALESCE($3, status),
            updated_at = now()
          WHERE id = $4`,
-        [input.name ?? null, input.capacity ?? null, input.status ?? null, batchId],
+        [
+          input.name ?? null,
+          input.capacity ?? null,
+          input.status ?? null,
+          batchId,
+        ],
       );
       if (!result.rowCount)
         throw new AppError(404, "NOT_FOUND", "This batch is unavailable.");
@@ -672,9 +713,13 @@ export async function updateBatch(
     return { updated: true };
   });
 }
-export async function createJoinContext(body: unknown) {
+export async function createJoinContext(
+  body: unknown,
+  clientIp: string | null = null,
+) {
   requireInviteOnly();
   const { token, returnTo } = joinContextInput.parse(body);
+  await enforceJoinContextLimit(clientIp);
   const invitation = await getInvitationByTokenHash(hashToken(token));
   if (
     !invitation ||
@@ -700,6 +745,14 @@ export async function createJoinContext(body: unknown) {
     returnTo: safeReturnTo(returnTo),
   };
 }
+type JoinContextRow = {
+  id: string;
+  invitation_id: string;
+  token_version: number;
+  consumed_at: Date | null;
+  terms_version: string | null;
+  terms_accepted_at: Date | null;
+};
 /**
  * `allowRedeemed` is for the post-OTP finalize step only: a client retrying
  * after a dropped response (AC09) must be able to re-run this with the same
@@ -707,49 +760,112 @@ export async function createJoinContext(body: unknown) {
  * invitation's redeemed_by is the real idempotency check at that point, not
  * consumed_at. Every other caller (joinEmailStart, the pre-OTP email lookup)
  * uses the default and only ever sees a still-issued invitation.
+ *
+ * `lock` serializes finalization against concurrent redemption, revocation
+ * and reissue. Rows are locked in the same order those operations use:
+ * invitation, then nomination, then the join context (which reissue deletes).
  */
 async function loadJoinContext(
   secret: string,
   tx: PoolClient | typeof pool = pool,
-  allowRedeemed = false,
+  options: { allowRedeemed?: boolean; lock?: boolean } = {},
 ) {
-  const result = await tx.query<{
-    id: string;
-    invitation_id: string;
-    token_version: number;
-    consumed_at: Date | null;
-    terms_version: string | null;
-    terms_accepted_at: Date | null;
-  }>(
-    `SELECT * FROM membership_join_context WHERE secret_hash = $1 AND expires_at > now()`,
+  const lock = options.lock ? " FOR UPDATE" : "";
+  const found = await tx.query<{ invitation_id: string }>(
+    `SELECT invitation_id FROM membership_join_context WHERE secret_hash = $1 AND expires_at > now()`,
     [hashToken(secret)],
   );
-  const context = result.rows[0];
+  if (!found.rows[0])
+    throw new AppError(
+      404,
+      "INVITE_INVALID",
+      "This invitation session has expired.",
+    );
+  const invitation = (
+    await tx.query<InvitationRow>(
+      `SELECT * FROM membership_invitation WHERE id = $1${lock}`,
+      [found.rows[0].invitation_id],
+    )
+  ).rows[0];
+  const nomination = invitation
+    ? await tx.query<{ email_normalized: string }>(
+        `SELECT email_normalized FROM membership_nomination WHERE id = $1${lock}`,
+        [invitation.nomination_id],
+      )
+    : null;
+  const context = (
+    await tx.query<JoinContextRow>(
+      `SELECT * FROM membership_join_context WHERE secret_hash = $1 AND expires_at > now()${lock}`,
+      [hashToken(secret)],
+    )
+  ).rows[0];
   if (!context)
-    throw new AppError(404, "INVITE_INVALID", "This invitation session has expired.");
-  const invitation = await getInvitationById(context.invitation_id, tx);
+    throw new AppError(
+      404,
+      "INVITE_INVALID",
+      "This invitation session has expired.",
+    );
   if (
     !invitation ||
-    (invitation.status !== "issued" && !(allowRedeemed && invitation.status === "redeemed")) ||
+    !nomination?.rows[0] ||
+    invitation.id !== context.invitation_id ||
+    (invitation.status !== "issued" &&
+      !(options.allowRedeemed && invitation.status === "redeemed")) ||
     invitation.token_version !== context.token_version ||
     invitation.expires_at.getTime() <= Date.now()
   )
-    throw new AppError(404, "INVITE_INVALID", "This invitation is no longer valid.");
-  const nomination = await tx.query<{ email_normalized: string }>(
-    `SELECT email_normalized FROM membership_nomination WHERE id = $1`,
-    [invitation.nomination_id],
-  );
+    throw new AppError(
+      404,
+      "INVITE_INVALID",
+      "This invitation is no longer valid.",
+    );
   return { context, invitation, email: nomination.rows[0].email_normalized };
 }
-export async function joinEmailStart(secret: string, body: unknown) {
+function requireAcceptedTerms(context: JoinContextRow) {
+  if (!context.terms_accepted_at || context.terms_version !== TERMS_VERSION)
+    throw new AppError(
+      409,
+      "TERMS_REQUIRED",
+      "Accept the invitation to continue.",
+    );
+}
+/**
+ * Inside an invitation context the recipient is the invitee themself, so a
+ * delivery failure is reported (actionably) instead of the generic answer the
+ * public sign-in route gives. Shares the send limits with that route.
+ */
+export async function joinEmailStart(
+  secret: string,
+  body: unknown,
+  clientIp: string | null = null,
+) {
   requireInviteOnly();
   joinAcceptInput.parse(body);
   const { context, email } = await loadJoinContext(secret);
+  try {
+    resolveMailer();
+  } catch {
+    throw new AppError(
+      503,
+      "MAIL_UNAVAILABLE",
+      "Email delivery is unavailable right now. Please try again later.",
+    );
+  }
+  await enforceCodeSendLimits(email, clientIp);
   await pool.query(
     `UPDATE membership_join_context SET terms_version = $1, terms_accepted_at = now() WHERE id = $2`,
     [TERMS_VERSION, context.id],
   );
-  await auth.api.sendVerificationOTP({ body: { email, type: "sign-in" } });
+  const delivery: { error?: MailErrorCode } = {};
+  await codeDelivery.run(delivery, () =>
+    auth.api.sendVerificationOTP({ body: { email, type: "sign-in" } }),
+  );
+  if (delivery.error)
+    throw new AppError(
+      503,
+      "MAIL_UNAVAILABLE",
+      "We couldn't send your code. Please try again in a minute.",
+    );
   return { sent: true };
 }
 export async function joinEmailComplete(
@@ -759,8 +875,17 @@ export async function joinEmailComplete(
 ) {
   requireInviteOnly();
   const input = joinEmailCompleteInput.parse(body);
-  const { email } = await loadJoinContext(secret, pool, true);
-  let otpResult: { headers: Headers; response: { token: string; user: { id: string } } };
+  const {
+    email,
+    context: preContext,
+    invitation: preInvitation,
+  } = await loadJoinContext(secret, pool, { allowRedeemed: true });
+  // Never let an OTP create an account for someone who hasn't accepted.
+  if (preInvitation.status === "issued") requireAcceptedTerms(preContext);
+  let otpResult: {
+    headers: Headers;
+    response: { token: string; user: { id: string } };
+  };
   try {
     otpResult = (await auth.api.signInEmailOTP({
       // Only used if this call creates a brand-new user; ignored for an
@@ -769,12 +894,19 @@ export async function joinEmailComplete(
       returnHeaders: true,
     })) as typeof otpResult;
   } catch {
-    throw new AppError(400, "OTP_INVALID", "That code was incorrect or expired.");
+    throw new AppError(
+      400,
+      "OTP_INVALID",
+      "That code was incorrect or expired.",
+    );
   }
   const userId = otpResult.response.user.id;
   try {
     const outcome = await transaction(async (tx) => {
-      const { context, invitation } = await loadJoinContext(secret, tx, true);
+      const { context, invitation } = await loadJoinContext(secret, tx, {
+        allowRedeemed: true,
+        lock: true,
+      });
       if (invitation.status === "redeemed") {
         if (invitation.redeemed_by === userId) return { alreadyJoined: true };
         throw new AppError(
@@ -783,6 +915,7 @@ export async function joinEmailComplete(
           "This invitation was already redeemed.",
         );
       }
+      requireAcceptedTerms(context);
       const existingAdmission = await getAdmission(userId, tx);
       if (existingAdmission) {
         await tx.query(
@@ -809,7 +942,12 @@ export async function joinEmailComplete(
       await tx.query(
         `INSERT INTO membership_admission(user_id, source, invitation_id, terms_version, terms_accepted_at)
          VALUES ($1,'invitation',$2,$3,$4)`,
-        [userId, invitation.id, context.terms_version, context.terms_accepted_at],
+        [
+          userId,
+          invitation.id,
+          context.terms_version,
+          context.terms_accepted_at,
+        ],
       );
       await tx.query(
         `UPDATE membership_invitation SET status = 'redeemed', redeemed_by = $1, redeemed_at = now() WHERE id = $2`,
@@ -839,21 +977,176 @@ export async function joinEmailComplete(
     return outcome;
   } catch (e) {
     await pool
-      .query('DELETE FROM "session" WHERE token = $1', [otpResult.response.token])
+      .query('DELETE FROM "session" WHERE token = $1', [
+        otpResult.response.token,
+      ])
       .catch(() => {});
     throw e;
   }
 }
-export async function retryMail(actor: Actor | null, mailId: string) {
-  requireAdmin(actor);
-  const result = await pool.query(
-    `UPDATE mail_outbox SET status = 'queued', next_attempt_at = now(), lease_until = NULL
-     WHERE id = $1 AND status IN ('failed','queued')`,
-    [mailId],
+type MailJobRow = {
+  id: string;
+  kind: string;
+  dedupe_key: string;
+  recipient: string;
+  status: string;
+  attempts: number;
+  next_attempt_at: Date;
+  lease_until: Date | null;
+  first_attempt_at: Date | null;
+  provider_message_id: string | null;
+  last_error_code: string | null;
+  created_at: Date;
+};
+function invitationIdFromDedupeKey(dedupeKey: string) {
+  return /^invitation:([0-9a-f-]{36}):v(\d+)$/.exec(dedupeKey);
+}
+/**
+ * Past the provider's idempotency window any earlier attempt may have been
+ * accepted without the provider still deduplicating it, so a replay could
+ * deliver twice. Such a job needs reconciliation or a reissue.
+ */
+function needsReconciliation(row: MailJobRow) {
+  return (
+    !!row.first_attempt_at &&
+    Date.now() - row.first_attempt_at.getTime() >=
+      PROVIDER_IDEMPOTENCY_WINDOW_MS
   );
-  if (!result.rowCount)
+}
+function mailJobView(row: MailJobRow) {
+  const leased = !!row.lease_until && row.lease_until.getTime() > Date.now();
+  return {
+    id: row.id,
+    kind: row.kind,
+    recipient: maskEmail(row.recipient),
+    status: row.status,
+    attempts: row.attempts,
+    nextAttemptAt: row.next_attempt_at.toISOString(),
+    firstAttemptAt: row.first_attempt_at?.toISOString() ?? null,
+    createdAt: row.created_at.toISOString(),
+    providerMessageId: row.provider_message_id,
+    errorCode: row.last_error_code,
+    leased,
+    /** A failed attempt that may nonetheless have been accepted by the provider. */
+    ambiguous:
+      row.status === "failed" && isAmbiguousMailError(row.last_error_code),
+    reconciliationRequired: row.status === "failed" && needsReconciliation(row),
+    retryable: row.status === "failed" && !leased && !needsReconciliation(row),
+  };
+}
+/** ADMIN-only delivery visibility: masked recipients and redacted codes, never payloads or tokens. */
+export async function listMailJobs(
+  actor: Actor | null,
+  query: Record<string, string>,
+) {
+  requireAdmin(actor);
+  const { status, page, pageSize } = mailJobListInput.parse(query);
+  const [rows, counts, oldestDue] = await Promise.all([
+    pool.query<MailJobRow>(
+      `SELECT id, kind, dedupe_key, recipient, status, attempts, next_attempt_at, lease_until,
+              first_attempt_at, provider_message_id, last_error_code, created_at
+       FROM mail_outbox WHERE status = $1
+       ORDER BY created_at, id
+       LIMIT $2 OFFSET $3`,
+      [status, pageSize, (page - 1) * pageSize],
+    ),
+    pool.query<{ status: string; count: number }>(
+      `SELECT status, count(*)::int AS count FROM mail_outbox GROUP BY status`,
+    ),
+    pool.query<{ oldest: Date | null }>(
+      `SELECT min(next_attempt_at) AS oldest FROM mail_outbox WHERE status = 'queued' AND next_attempt_at <= now()`,
+    ),
+  ]);
+  return {
+    status,
+    page,
+    pageSize,
+    counts: Object.fromEntries(counts.rows.map((r) => [r.status, r.count])),
+    oldestDueAt: oldestDue.rows[0]?.oldest?.toISOString() ?? null,
+    jobs: rows.rows.map(mailJobView),
+  };
+}
+/**
+ * Requeues one failed job with a fresh retry budget. Refused for queued (and
+ * possibly leased), accepted and superseded jobs, for invitations that are no
+ * longer redeemable (reissue instead), and for ambiguous attempts past the
+ * provider idempotency window (reconcile with the provider or reissue).
+ * Audited. The job keeps its dedupe key, first-attempt time and frozen
+ * sender, so an in-window replay repeats the same idempotent provider request.
+ */
+export async function retryMail(actor: Actor | null, mailId: string) {
+  const a = requireAdmin(actor);
+  if (!/^[0-9a-f-]{36}$/i.test(mailId))
     throw new AppError(404, "NOT_FOUND", "This mail job is unavailable.");
-  return { retried: true };
+  return transaction(async (tx) => {
+    const row = (
+      await tx.query<MailJobRow>(
+        `SELECT * FROM mail_outbox WHERE id = $1 FOR UPDATE`,
+        [mailId],
+      )
+    ).rows[0];
+    if (!row)
+      throw new AppError(404, "NOT_FOUND", "This mail job is unavailable.");
+    if (
+      row.status !== "failed" ||
+      (row.lease_until && row.lease_until.getTime() > Date.now())
+    )
+      throw new AppError(
+        409,
+        "MAIL_RETRY_UNAVAILABLE",
+        "Only a failed, idle mail job can be retried.",
+      );
+    const invitationKey = invitationIdFromDedupeKey(row.dedupe_key);
+    if (invitationKey) {
+      // A plain read: the worker rechecks right before sending, and not locking
+      // here avoids inverting reissue's invitation-then-outbox lock order.
+      const invitation = await tx.query<{
+        status: string;
+        token_version: number;
+        expires_at: Date;
+      }>(
+        `SELECT status, token_version, expires_at FROM membership_invitation WHERE id = $1`,
+        [invitationKey[1]],
+      );
+      const current = invitation.rows[0];
+      if (
+        !current ||
+        current.status !== "issued" ||
+        current.token_version !== Number(invitationKey[2]) ||
+        current.expires_at.getTime() <= Date.now()
+      )
+        throw new AppError(
+          409,
+          "INVITE_INVALID",
+          "This invitation is no longer valid. Reissue it instead.",
+        );
+    }
+    if (needsReconciliation(row))
+      throw new AppError(
+        409,
+        "MAIL_RECONCILIATION_REQUIRED",
+        "This email may already have been accepted. Check the provider log or reissue the invitation.",
+      );
+    await tx.query(
+      `UPDATE mail_outbox SET status = 'queued', attempts = 0, next_attempt_at = now(),
+         lease_owner = NULL, lease_until = NULL, updated_at = now()
+       WHERE id = $1`,
+      [mailId],
+    );
+    await audit(tx, {
+      actorId: a.id,
+      action: "membership_mail_retried",
+      invitationId: invitationKey?.[1] ?? null,
+      before: {
+        mailId,
+        status: row.status,
+        attempts: row.attempts,
+        errorCode: row.last_error_code,
+      },
+      after: { mailId, status: "queued" },
+    });
+    return { retried: true };
+  });
 }
 export async function getNomination(actor: Actor | null, id: string) {
   const a = requireActor(actor);
