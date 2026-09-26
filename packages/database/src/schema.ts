@@ -763,7 +763,7 @@ export const userMapPreference = pgTable("user_map_preference", {
    Invitation-only membership. No public sign-up: an admin bootstraps the first
    members directly; everyone after that is nominated by an existing member and
    approved by a reviewer (a capability, not a role). Platform admission is
-   independent of group invitations. See docs/invitation-membership-implementation-plan.md
+   independent of group invitations. See docs/plans/invitation-membership-implementation-plan.md
    and docs/adr/0001-membership-invitation-auth-transaction-boundary.md.
    --------------------------------------------------------------------------- */
 export const membershipReviewer = pgTable("membership_reviewer", {
@@ -996,7 +996,7 @@ export const membershipRequest = pgTable(
    subject is either a lazily created wrapper around a catalog place or an
    external business known only by a provider reference. Only provider IDs are
    stored — never provider names, addresses, photos, ratings or coordinates.
-   See docs/google-places-implementation-plan.md section 5.
+   See docs/plans/google-places-implementation-plan.md section 5.
    --------------------------------------------------------------------------- */
 export const placeSubject = pgTable(
   "place_subject",

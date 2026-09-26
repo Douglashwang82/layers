@@ -301,7 +301,7 @@ The [mail workflow](../.github/workflows/mail-outbox.yml) targets every five min
 | `pnpm exec playwright install chromium` then `pnpm test:e2e`                   | Browser flows; configured test DB, test mail capture, and a managed dev server. |
 | `pnpm build`                                                                   | Production Next.js build; use for framework/bundling changes.                   |
 | `pnpm start`                                                                   | Serve an already built application; do not share its port with a dev server.    |
-| `pnpm exec prettier --check docs/user-guide.md docs/engineering-onboarding.md` | Example documentation-scoped formatting check.                                  |
+| `pnpm exec prettier --check docs/guides/user-guide.md docs/guides/engineering-onboarding.md` | Example documentation-scoped formatting check.                    |
 
 CI provisions `postgis/postgis:17-3.5`, installs with the frozen lockfile, migrates/seeds, then runs lint, typecheck, unit, integration, Chromium E2E, and build. It uploads browser failure artifacts. Existing tests cover domain validation, membership/auth boundaries, capacity/concurrency, layer/group visibility, ingestion/extraction, scoped reviews, and user flows; their presence is not proof a particular checkout passed them.
 

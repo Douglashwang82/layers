@@ -4,7 +4,7 @@ import { plainText } from "./text";
    Daily Pick: one shared place per city and city-local date. Selection is a
    pure, deterministic function of the eligible catalog and the city's pick
    history; the server job persists the result with the reasons that actually
-   decided it. See docs/daily-pick-layer-design.md and docs/daily-pick.md.
+   decided it. See docs/plans/daily-pick-layer-design.md and docs/guides/daily-pick.md.
    --------------------------------------------------------------------------- */
 export const dailyPickSelectionVersion = 1;
 /** Repeat windows tried in order; the catalog must be very small to reach 7. */

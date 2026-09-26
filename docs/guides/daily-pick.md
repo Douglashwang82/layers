@@ -1,6 +1,6 @@
 # Daily Pick: implementation and operations
 
-Implements the first release of [the Daily Pick design](daily-pick-layer-design.md): one shared pick per city and city-local day. Personalization and AI-written copy are not part of this release.
+Implements the first release of [the Daily Pick design](../plans/daily-pick-layer-design.md): one shared pick per city and city-local day. Personalization and AI-written copy are not part of this release.
 
 ## Where it lives
 

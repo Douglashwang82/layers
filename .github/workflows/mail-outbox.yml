@@ -1,5 +1,5 @@
 name: Invitation mail outbox
-# Best-effort dispatch of queued invitation email (docs/deployment.md,
+# Best-effort dispatch of queued invitation email (docs/guides/deployment.md,
 # "Invitation mail worker"). GitHub may delay or skip scheduled runs; five
 # minutes is a dispatch target, not a delivery SLA. Sign-in codes are sent
 # immediately by the web app and never depend on this workflow.

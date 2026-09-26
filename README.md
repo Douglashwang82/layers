@@ -4,8 +4,8 @@ Life in North America, through Taiwanese eyes. A Houston-first discovery platfor
 
 ## Start with the guides
 
-- [User guide and use-case catalog](docs/user-guide.md): step-by-step workflows for guests, members, group owners, reviewers, and administrators.
-- [Engineering onboarding](docs/engineering-onboarding.md): implemented stack, local setup, architecture, data flows, permissions, and verification workflow.
+- [User guide and use-case catalog](docs/guides/user-guide.md): step-by-step workflows for guests, members, group owners, reviewers, and administrators.
+- [Engineering onboarding](docs/guides/engineering-onboarding.md): implemented stack, local setup, architecture, data flows, permissions, and verification workflow.
 
 ## Run locally
 
@@ -33,7 +33,7 @@ pnpm admin:grant you@example.com
 
 Returning members sign in at `/sign-in` with an email code by default (password and Google remain for accounts that use them). Only admitted members receive a code, and application privileges require a membership admission, not just a session. Locally, with `MAIL_PROVIDER` unset, codes and invitations go to an in-memory test transport that nothing displays; read them from the test suites, or configure a real provider for manual testing.
 
-Visit `/admin` to approve pending events, places, sightings and notes; edit content; hide, reject or soft-delete content; and use `/admin/membership` to open batches, invite people directly, and grant/revoke reviewer access. Moderator roles can review and edit; only admins can soft-delete. Roles are never accepted from account creation or profile requests. See [docs/invitation-membership-implementation-plan.md](docs/invitation-membership-implementation-plan.md) for how membership works end to end.
+Visit `/admin` to approve pending events, places, sightings and notes; edit content; hide, reject or soft-delete content; and use `/admin/membership` to open batches, invite people directly, and grant/revoke reviewer access. Moderator roles can review and edit; only admins can soft-delete. Roles are never accepted from account creation or profile requests. See [docs/plans/invitation-membership-implementation-plan.md](docs/plans/invitation-membership-implementation-plan.md) for how membership works end to end.
 
 ## Stack and layout
 
@@ -100,19 +100,21 @@ Use a dedicated database for integration/browser tests. Database tests clean up 
 
 ## Deployment
 
-Target Vercel plus Neon PostgreSQL with PostGIS enabled; any compatible PostgreSQL/PostGIS provider also works. Run migrations with an appropriately privileged direct database connection before deploying. Never migrate on every request. Set the Vercel project root to `apps/web`, enable access to workspace files outside that directory, use `pnpm install --frozen-lockfile` at workspace root and `pnpm --filter @taiwanhub/web build`. See [deployment instructions](docs/deployment.md).
+Target Vercel plus Neon PostgreSQL with PostGIS enabled; any compatible PostgreSQL/PostGIS provider also works. Run migrations with an appropriately privileged direct database connection before deploying. Never migrate on every request. Set the Vercel project root to `apps/web`, enable access to workspace files outside that directory, use `pnpm install --frozen-lockfile` at workspace root and `pnpm --filter @taiwanhub/web build`. See [deployment instructions](docs/guides/deployment.md).
 
 ## Documentation
 
-- [Product scope and assumptions](docs/product.md)
-- [Architecture and boundaries](docs/architecture.md)
-- [Bright UI/UX modernization guide](docs/ui-ux-modernization-guide.md)
-- [Map-first, layer-led UI/UX migration guide](docs/map-first-layer-experience-guide.md)
-- [Mapbox + Google Places engineering implementation plan (planned)](docs/google-places-implementation-plan.md)
-- [Database and integrity](docs/database.md)
-- [HTTP API](docs/api.md)
-- [Deployment and launch checklist](docs/deployment.md)
-- [Future roadmap](docs/future-roadmap.md)
-- [Daily content collection and source onboarding](docs/daily-content-ingestion.md)
-- [Daily Pick layer: design](docs/daily-pick-layer-design.md) and [implementation and operations](docs/daily-pick.md)
-- [Implementation checkpoints](docs/checkpoints.md)
+Docs are grouped by scope: `docs/reference/` (stable contracts and specs), `docs/guides/` (how-to and architecture-direction guides), `docs/plans/` (implementation plans and design proposals), `docs/adr/` (accepted architecture decisions), and `docs/design/` (design system assets).
+
+- [Product scope and assumptions](docs/reference/product.md)
+- [Architecture and boundaries](docs/reference/architecture.md)
+- [Bright UI/UX modernization guide](docs/guides/ui-ux-modernization-guide.md)
+- [Map-first, layer-led UI/UX migration guide](docs/guides/map-first-layer-experience-guide.md)
+- [Mapbox + Google Places engineering implementation plan (planned)](docs/plans/google-places-implementation-plan.md)
+- [Database and integrity](docs/reference/database.md)
+- [HTTP API](docs/reference/api.md)
+- [Deployment and launch checklist](docs/guides/deployment.md)
+- [Future roadmap](docs/reference/future-roadmap.md)
+- [Daily content collection and source onboarding](docs/guides/daily-content-ingestion.md)
+- [Daily Pick layer: design](docs/plans/daily-pick-layer-design.md) and [implementation and operations](docs/guides/daily-pick.md)
+- [Implementation checkpoints](docs/reference/checkpoints.md)

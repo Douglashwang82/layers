@@ -3,7 +3,7 @@ import { z } from "zod";
    Place subjects: local identity for catalog places and provider-referenced
    (external) businesses. Provider IDs are untrusted input — proof of neither
    existence, city, ownership nor verification. See
-   docs/google-places-implementation-plan.md sections 5–7.
+   docs/plans/google-places-implementation-plan.md sections 5–7.
    --------------------------------------------------------------------------- */
 export const placeProviders = ["google"] as const;
 export type PlaceProvider = (typeof placeProviders)[number];

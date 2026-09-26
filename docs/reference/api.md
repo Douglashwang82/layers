@@ -63,7 +63,7 @@ Codes are six digits, valid five minutes, three verification attempts, stored ha
 
 ## Daily Pick
 
-One shared place per city and city-local day; see [docs/daily-pick.md](daily-pick.md). Every read re-checks that the place is still approved, non-demo and in the city.
+One shared place per city and city-local day; see [docs/daily-pick.md](../guides/daily-pick.md). Every read re-checks that the place is still approved, non-demo and in the city.
 
 | Method | Path                                        | Notes                                                                                                                                                                                                                                    |
 | ------ | ------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |

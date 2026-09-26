@@ -3,7 +3,7 @@ import { pool } from "./index";
 /**
  * Only-local, only-CLI tool for a brand-new environment that has no ADMIN
  * yet. It never runs over HTTP and never accepts a client-supplied field; the
- * only input is the operator's own command line (docs/invitation-membership-implementation-plan.md
+ * only input is the operator's own command line (docs/plans/invitation-membership-implementation-plan.md
  * section 9). Once the resulting invitation is redeemed, grant that account
  * ADMIN with the existing `pnpm admin:grant <email>`.
  */

@@ -9,7 +9,7 @@ export type LegacyCandidate = {
 /**
  * Genuine pre-membership accounts that still lack an admission row. Run with
  * --dry-run and review every candidate before the admission gate is enforced
- * (docs/membership-beta-readiness-plan.md section 7, step 3).
+ * (docs/plans/membership-beta-readiness-plan.md section 7, step 3).
  *
  * A candidate must:
  * - have at least one account (login credential) row - seed/demo users never

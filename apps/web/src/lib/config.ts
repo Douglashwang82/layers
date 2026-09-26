@@ -8,7 +8,7 @@ export const flags = {
   layerWrites: process.env.FEATURE_LAYER_WRITES !== "false",
   /** General local content (posts) in layers and results. */
   content: process.env.FEATURE_CONTENT !== "false",
-  /* Google Places / external place work (docs/google-places-implementation-plan.md).
+  /* Google Places / external place work (docs/plans/google-places-implementation-plan.md).
      Off unless explicitly enabled; existing authorized reads and removals stay available. */
   /** Provider-backed discovery and resolving provider references. */
   googlePlacesDiscovery: process.env.FEATURE_GOOGLE_PLACES_DISCOVERY === "true",

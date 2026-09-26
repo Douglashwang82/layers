@@ -4,7 +4,7 @@ import { hashPassword } from "better-auth/crypto";
 import { pool } from "../../packages/database/src";
 /**
  * Public sign-up is gone (invitation-only membership, see
- * docs/invitation-membership-implementation-plan.md); these specs don't test
+ * docs/plans/invitation-membership-implementation-plan.md); these specs don't test
  * that path, they just need a working account. Creating one via direct DB
  * setup - a real password hash Better Auth can verify, plus a legacy
  * admission row - matches the plan's "createInvitedMember"-style fixture
