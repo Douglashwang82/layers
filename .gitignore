@@ -7,7 +7,6 @@ coverage/
 playwright-report/
 test-results/
 apps/web/public/uploads/
-
 .vercel
 .env*
 supabase/.temp
@@ -17,3 +16,6 @@ supabase/.temp
 .claude/settings.local.json
 .claude/scheduled_tasks.lock
 .claude/scratch/
+
+# Human-only working notes (see AGENTS.md); not for agent edits.
+docs/dev-notes.md
