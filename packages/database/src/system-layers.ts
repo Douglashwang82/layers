@@ -25,6 +25,16 @@ export const systemLayerDefinitions = [
     schedule: "rolling_today",
   },
   {
+    kind: "daily_pick",
+    slug: (city: string) => `daily-pick-${city}`,
+    title: () => "Daily Pick",
+    titleChinese: () => "每日精選",
+    description:
+      "One place to discover each day, with a little context on why it's worth exploring.",
+    descriptionChinese: "每天介紹一個值得探索的地點，並說明推薦的原因。",
+    schedule: "rolling_today",
+  },
+  {
     kind: "weekend",
     slug: (city: string) => `weekend-${city}`,
     title: () => "This weekend",

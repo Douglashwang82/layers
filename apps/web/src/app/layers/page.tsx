@@ -28,7 +28,8 @@ function groupDiscover(entries: LayerWithAccess[]) {
   };
   for (const entry of entries) {
     const kind = entry.layer.rule?.kind;
-    if (kind === "today" || kind === "discover") groups.today.push(entry);
+    if (kind === "today" || kind === "discover" || kind === "daily_pick")
+      groups.today.push(entry);
     else if (kind === "food") groups.food.push(entry);
     else if (kind === "weekend") groups.weekend.push(entry);
     else if (kind === "community") groups.community.push(entry);

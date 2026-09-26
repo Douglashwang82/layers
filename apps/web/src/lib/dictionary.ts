@@ -634,6 +634,30 @@ export const en = {
   closeBusiness: "Close business details",
   openPlacePage: "Open place page",
   leaveDraft: "You have an unsaved review. Leave anyway?",
+  dailyPick: "Daily Pick",
+  dailyPickIntro:
+    "One place to discover each day, with a little context on why it's worth exploring.",
+  dailyPickAbout: "About this place",
+  dailyPickWhy: "Why we picked it",
+  dailyPickDetails: "Practical details",
+  dailyPickAddress: "Address",
+  dailyPickPrice: "Price",
+  dailyPickWebsite: "Official website",
+  dailyPickEditorial: "Editorial selection",
+  dailyPickNotReady: "Today's pick isn't ready yet.",
+  dailyPickPrevious: "Previous pick · {date}",
+  dailyPickHistory: "Previous picks",
+  dailyPickHistoryIntro:
+    "Earlier Daily Picks for {city}, with the reasons recorded on the day.",
+  dailyPickNoHistory: "No previous picks yet.",
+  dailyPickViewPlace: "View place",
+  dailyPickShowOnMap: "Show on map",
+  dailyPickFiltered:
+    "Today's pick is outside the current map area or hidden by your filters.",
+  dailyPickShowToday: "Show today's pick",
+  dailyPickOpenNote:
+    "Being featured doesn't mean it's open today. Check hours before you go.",
+  dailyPickToday: "Today's pick",
 };
 export type Copy = typeof en;
 export const zh: Copy = {
@@ -1235,6 +1259,26 @@ export const zh: Copy = {
   closeBusiness: "關閉商家資訊",
   openPlacePage: "開啟地點頁面",
   leaveDraft: "你有尚未儲存的評論，確定要離開嗎？",
+  dailyPick: "每日精選",
+  dailyPickIntro: "每天介紹一個值得探索的地點，並說明推薦的原因。",
+  dailyPickAbout: "關於這個地點",
+  dailyPickWhy: "為什麼選它",
+  dailyPickDetails: "實用資訊",
+  dailyPickAddress: "地址",
+  dailyPickPrice: "價位",
+  dailyPickWebsite: "官方網站",
+  dailyPickEditorial: "編輯精選",
+  dailyPickNotReady: "今天的精選還沒準備好。",
+  dailyPickPrevious: "上一次精選．{date}",
+  dailyPickHistory: "過去的精選",
+  dailyPickHistoryIntro: "{city}過去的每日精選，以及當天記錄的推薦原因。",
+  dailyPickNoHistory: "還沒有過去的精選。",
+  dailyPickViewPlace: "查看地點",
+  dailyPickShowOnMap: "在地圖上顯示",
+  dailyPickFiltered: "今天的精選不在目前的地圖範圍內，或被篩選條件隱藏。",
+  dailyPickShowToday: "顯示今天的精選",
+  dailyPickOpenNote: "被選為精選不代表今天有營業，出發前請先確認營業時間。",
+  dailyPickToday: "今天的精選",
 };
 export function localized(
   item: { name: string; nameChinese: string },

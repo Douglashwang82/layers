@@ -13,6 +13,13 @@ export const clientEventNames = [
   "business_selected",
   "places_component_loaded",
   "places_component_failed",
+  // Daily Pick outcomes (city slug only). Shown is context; actions measure usefulness.
+  "daily_pick_shown",
+  "daily_pick_place_opened",
+  "daily_pick_saved",
+  "daily_pick_directions",
+  "daily_pick_show_on_map",
+  "daily_pick_history_opened",
 ] as const;
 export type ClientEventName = (typeof clientEventNames)[number];
 export function track(

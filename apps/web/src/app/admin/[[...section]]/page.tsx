@@ -16,6 +16,9 @@ import {
   ExtractionPageControls,
 } from "@/components/extraction-controls";
 import { MembershipAdminPanel } from "@/components/membership/admin-panel";
+import { DailyPickAdmin } from "@/components/daily-pick/daily-pick-admin";
+import { listAdminDailyPicks } from "@/features/daily-pick/service";
+import { getActiveCity } from "@/lib/city";
 import {
   listBatches,
   listMailJobs,
@@ -49,6 +52,10 @@ export default async function Admin({
       })
     : null;
   const extraction = kind === "extraction" ? await listExtractionPages() : [];
+  const dailyPicks =
+    kind === "daily-picks"
+      ? await listAdminDailyPicks(actor, (await getActiveCity()).city.slug)
+      : null;
   const ingestion =
     kind === "ingestion"
       ? await Promise.all(
@@ -142,6 +149,12 @@ export default async function Admin({
         >
           Collected content ({ingestionCount})
         </Link>
+        <Link
+          href="/admin/daily-picks"
+          aria-current={kind === "daily-picks" ? "page" : undefined}
+        >
+          {t.dailyPick}
+        </Link>
         {admin && (
           <Link
             href="/admin/extraction"
@@ -168,7 +181,14 @@ export default async function Admin({
           </Link>
         ))}
       </nav>
-      {kind === "membership" ? (
+      {dailyPicks ? (
+        <DailyPickAdmin
+          city={dailyPicks.city}
+          today={dailyPicks.today}
+          picks={dailyPicks.picks}
+          places={dailyPicks.places}
+        />
+      ) : kind === "membership" ? (
         <MembershipAdminPanel
           t={t}
           batches={membershipBatches}

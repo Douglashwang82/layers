@@ -24,6 +24,10 @@ import {
   resolveLayers,
 } from "../layers/repository";
 import { flags } from "@/lib/config";
+import {
+  type DailyPickView,
+  loadDailyPickView,
+} from "../daily-pick/repository";
 export type MapCity = {
   id: string;
   slug: string;
@@ -94,6 +98,8 @@ export type MapQueryResult = {
   unmapped: number;
   truncated: boolean;
   searchScope: "layers" | "city";
+  /** Present when a Daily Pick layer of this city is applied. */
+  dailyPick: DailyPickView | null;
 };
 type Row = Record<string, unknown>;
 const iso = (v: unknown) =>
@@ -457,10 +463,27 @@ export async function runMapQuery(
         "",
       ).map((item) => ({ ...item, layers: [] })),
     );
-  else {
+  let dailyPick: DailyPickView | null = null;
+  const dailyPickLayer = resolved.find(
+    (r) =>
+      r.layer.ownerKind === "system" && r.layer.rule?.kind === "daily_pick",
+  )?.layer;
+  if (dailyPickLayer) {
+    // The stored city-wide pick, resolved independently of truncated or filtered candidates.
+    const loaded = await loadDailyPickView(city, actor, now);
+    dailyPick = { ...loaded.view, layer: dailyPickLayer.slug };
+    if (loaded.row && !searchAll) {
+      const key = itemKey("place", String(loaded.row.id));
+      const item =
+        candidates.places.find((p) => p.key === key) ?? placeItem(loaded.row);
+      groups.push([{ ...item, layers: [dailyPickLayer.slug] }]);
+    }
+  }
+  if (!searchAll) {
     for (const { layer } of resolved) {
       if (layer.rule?.kind === "saves" && actor)
         groups.push(await savedMembers(actor, candidates, layer.slug));
+      else if (layer.rule?.kind === "daily_pick") continue;
       else if (layer.ownerKind === "system")
         groups.push(ruleMembers(layer, candidates, city.timezone, now));
     }
@@ -579,5 +602,10 @@ export async function runMapQuery(
     unmapped: items.length - mapped,
     truncated: candidates.truncated || filtered.length > maxMapPoints,
     searchScope: searchAll ? "city" : "layers",
+    dailyPick: dailyPick && {
+      ...dailyPick,
+      inResults:
+        !!dailyPick.pick && items.some((i) => i.key === dailyPick!.pick!.key),
+    },
   };
 }

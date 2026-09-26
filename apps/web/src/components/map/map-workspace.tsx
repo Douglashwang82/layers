@@ -47,6 +47,7 @@ import { MapToolbar } from "./map-toolbar";
 import { ActiveLayersPanel } from "./active-layers-panel";
 import { MapResults } from "./map-results";
 import { ItemPreview } from "./item-preview";
+import { DailyPickCard } from "@/components/daily-pick/daily-pick-card";
 import { track } from "@/lib/track";
 import { mapSessionKey } from "@/lib/map-session";
 type Sheet = "peek" | "half" | "expanded";
@@ -513,7 +514,12 @@ export function MapWorkspace({
       timeZone={city.timezone}
       citySlug={city.slug}
       onClose={closeDetail}
-      onRefresh={() => loadDetail(selected.key)}
+      onRefresh={() => {
+        loadDetail(selected.key);
+        // The Daily Pick card shows the same place's save state; re-query it too.
+        if (result.dailyPick?.pick?.key === selected.key)
+          setForce((n) => n + 1);
+      }}
       layerWrites={layerWrites}
       backLabel={t.backToResults}
     />
@@ -627,8 +633,40 @@ export function MapWorkspace({
         </div>
       </div>
     ) : null;
+  const dailyPick = result.dailyPick && (
+    <DailyPickCard
+      key={`${result.dailyPick.pick?.id ?? "none"}:${result.dailyPick.saved}`}
+      view={result.dailyPick}
+      cityName={city.name}
+      citySlug={city.slug}
+      t={t}
+      locale={locale}
+      authenticated={authenticated}
+      onShow={select}
+      onChanged={() => {
+        // Authoritative refresh: the card's saved state and any open detail for the same place.
+        setForce((n) => n + 1);
+        const key = result.dailyPick?.pick?.key;
+        if (key && detail.key === key) loadDetail(key);
+      }}
+      onShowToday={(key) => {
+        // Explain-and-offer, never a silent substitute: clear only what hides the pick.
+        commit({
+          area: undefined,
+          types: [...itemTypes],
+          q: "",
+          scope: "layers",
+          item: key,
+        });
+        pushedSelection.current = true;
+        setPendingArea(null);
+        setSheet("half");
+      }}
+    />
+  );
   const resultsPanel = (
     <>
+      {dailyPick}
       {summary}
       {emptyState ?? (
         <MapResults

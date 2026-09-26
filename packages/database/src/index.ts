@@ -40,3 +40,14 @@ export {
   type ExtractionPage,
 } from "./extraction";
 export { ensureSystemLayers, systemLayerDefinitions } from "./system-layers";
+export {
+  generateDailyPick,
+  insertDailyPick,
+  loadDailyPickCandidate,
+  lockDailyPickSlot,
+  lockedPublishedPick,
+  runDailyPickGeneration,
+  withdrawDailyPick,
+  type DailyPickGenerateOptions,
+  type DailyPickRunResult,
+} from "./daily-pick";

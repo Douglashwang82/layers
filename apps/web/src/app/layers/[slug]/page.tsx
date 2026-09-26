@@ -132,6 +132,14 @@ export default async function LayerPage({ params }: Props) {
             />
           )}
           <ShareLayerButton layer={layer} t={t} />
+          {layer.rule?.kind === "daily_pick" && (
+            <Link
+              className="button secondary"
+              href={`/daily-pick?city=${encodeURIComponent(layer.citySlug)}`}
+            >
+              {t.dailyPickHistory}
+            </Link>
+          )}
         </div>
         {flags.layerWrites && (
           <OwnerActions layer={layer} access={access} t={t} locale={locale} />

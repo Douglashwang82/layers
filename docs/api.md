@@ -61,6 +61,21 @@ Codes are six digits, valid five minutes, three verification attempts, stored ha
 | POST / DELETE  | `/api/v1/content/{uuid}/save`                               | Save/unsave content                                                                                 |
 | POST           | `/api/v1/analytics`                                         | Guest outcome events, allowlisted names only                                                        |
 
+## Daily Pick
+
+One shared place per city and city-local day; see [docs/daily-pick.md](daily-pick.md). Every read re-checks that the place is still approved, non-demo and in the city.
+
+| Method | Path                                        | Notes                                                                                                                                                                                                                                    |
+| ------ | ------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| GET    | `/api/v1/daily-pick?city=`                  | `{layer,date,pick,previous,inResults:false,saved}`; `pick` is null when today's pick isn't published, and `previous` is then the latest earlier pick with its date                                                                       |
+| GET    | `/api/v1/daily-pick/history?city=`          | `{items}`: visible published picks through the city's local today, newest first (at most 30)                                                                                                                                             |
+| GET    | `/api/v1/admin/daily-picks?city=`           | Moderator; slots from 14 days ago to 90 days ahead (including withdrawn rows) and eligible places                                                                                                                                        |
+| POST   | `/api/v1/admin/daily-picks`                 | Moderator; `{city,date,placeId,reason,note?,noteChinese?,expectedPickId}` schedules an editorial pick (today to +90 days) or replaces the published one. `409 PICK_CHANGED` when `expectedPickId` is stale, `400 INELIGIBLE`/`PAST_DATE` |
+| POST   | `/api/v1/admin/daily-picks/{uuid}/withdraw` | Moderator; `{reason}` withdraws without a replacement                                                                                                                                                                                    |
+| POST   | `/api/v1/admin/daily-picks/generate`        | Moderator; `{city}` runs the idempotent automatic selection for the city's local today                                                                                                                                                   |
+
+`GET /api/v1/map` includes `dailyPick` (the same shape, with `inResults` telling whether the pick survived the current filters and area) when the city's `daily-pick-{city}` layer is applied, otherwise `null`. Moderator actions are recorded in `moderation_action` with `entity_type='daily_picks'`.
+
 ## Place subjects
 
 Local identity for catalog places and external (Google-referenced) businesses; part of the staged [Google Places plan](google-places-implementation-plan.md). Responses are `Cache-Control: private, no-store`. Missing and unauthorized subjects are indistinguishable (`404 NOT_FOUND` / `{subjectId:null}`). Only provider place IDs are ever accepted or returned — no provider display data.

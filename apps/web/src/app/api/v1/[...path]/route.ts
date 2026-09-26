@@ -12,6 +12,7 @@ import {
   AppError,
   kinds,
   listInput,
+  localDate,
   requireActor,
   requireModerator,
   plainText,
@@ -83,6 +84,16 @@ import { flags, appUrl } from "@/lib/config";
 import { trackEvent } from "@/lib/analytics";
 import { clientEventNames } from "@/lib/track";
 import { handleMembershipRoute } from "@/features/membership/router";
+import {
+  listDailyPickHistory,
+  loadDailyPickView,
+} from "@/features/daily-pick/repository";
+import {
+  generateTodayPick,
+  listAdminDailyPicks,
+  scheduleDailyPick,
+  withdrawPick,
+} from "@/features/daily-pick/service";
 import {
   handleAdminPlaceSubjectRoute,
   handlePlaceSubjectRoute,
@@ -158,6 +169,22 @@ async function handler(
       }
       if (id) throw new AppError(404, "NOT_FOUND", "Endpoint not found.");
       return ok(result);
+    }
+    if (method === "GET" && resource === "daily-pick") {
+      const { city } = await getActiveCity(query.city);
+      if (id === "history")
+        return ok({
+          items: await listDailyPickHistory(
+            city,
+            localDate(new Date(), city.timezone),
+          ),
+        });
+      if (id) throw new AppError(404, "NOT_FOUND", "Endpoint not found.");
+      return ok((await loadDailyPickView(city, actor)).view);
+    }
+    if (method === "GET" && resource === "admin" && id === "daily-picks") {
+      const { city } = await getActiveCity(query.city);
+      return ok(await listAdminDailyPicks(actor, city.slug));
     }
     if (method === "GET" && resource === "layers") {
       const { city } = await getActiveCity(query.city);
@@ -309,6 +336,16 @@ async function handler(
         } catch (error) {
           throw new AppError(409, "INGESTION_CONFLICT", String(error));
         }
+      }
+      // Daily Pick scheduling, replacement, withdrawal and manual generation. Moderators only.
+      if (resource === "admin" && id === "daily-picks" && method === "POST") {
+        const [, , pickId, pickAction] = path;
+        if (!pickId) return ok(await scheduleDailyPick(a, body), 201);
+        if (pickId === "generate" && !pickAction)
+          return ok(await generateTodayPick(a, body));
+        if (pickAction === "withdraw")
+          return ok(await withdrawPick(a, pickId, body));
+        throw new AppError(404, "NOT_FOUND", "Endpoint not found.");
       }
       // Extraction source pages. Administrators only: adding one asserts a
       // permission to read and republish that page.

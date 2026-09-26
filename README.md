@@ -2,6 +2,11 @@
 
 Life in North America, through Taiwanese eyes. A Houston-first discovery platform for places, weekend events, community groups, and Taiwanese product sightings.
 
+## Start with the guides
+
+- [User guide and use-case catalog](docs/user-guide.md): step-by-step workflows for guests, members, group owners, reviewers, and administrators.
+- [Engineering onboarding](docs/engineering-onboarding.md): implemented stack, local setup, architecture, data flows, permissions, and verification workflow.
+
 ## Run locally
 
 Requirements: Node.js 22, pnpm 10.15+, Docker Desktop with Linux containers.
@@ -109,4 +114,5 @@ Target Vercel plus Neon PostgreSQL with PostGIS enabled; any compatible PostgreS
 - [Deployment and launch checklist](docs/deployment.md)
 - [Future roadmap](docs/future-roadmap.md)
 - [Daily content collection and source onboarding](docs/daily-content-ingestion.md)
+- [Daily Pick layer: design](docs/daily-pick-layer-design.md) and [implementation and operations](docs/daily-pick.md)
 - [Implementation checkpoints](docs/checkpoints.md)

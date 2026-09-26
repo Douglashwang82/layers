@@ -13,6 +13,7 @@ import {
   geometry,
   check,
   date,
+  type AnyPgColumn,
 } from "drizzle-orm/pg-core";
 import { sql } from "drizzle-orm";
 const timestamps = () => ({
@@ -1193,5 +1194,72 @@ export const placeReviewRevision = pgTable(
   },
   (t) => [
     uniqueIndex("place_review_revision_identity").on(t.reviewId, t.revision),
+  ],
+);
+/**
+ * Daily Pick publication slots: at most one published pick per city and
+ * city-local date, enforced by a partial unique index so concurrent runs cannot
+ * publish different picks. Description and reasons are dated snapshots; the
+ * place is always re-checked for visibility on read. Replacements withdraw the
+ * previous row and link to it; human actions are also in moderation_action.
+ */
+export const dailyPick = pgTable(
+  "daily_pick",
+  {
+    id: id(),
+    cityId: uuid("city_id")
+      .notNull()
+      .references(() => city.id),
+    pickDate: date("pick_date").notNull(),
+    placeId: uuid("place_id")
+      .notNull()
+      .references(() => place.id),
+    status: text("status", { enum: ["published", "withdrawn"] })
+      .default("published")
+      .notNull(),
+    selectionKind: text("selection_kind", {
+      enum: ["automatic", "editorial"],
+    }).notNull(),
+    selectionVersion: integer("selection_version").notNull(),
+    description: text("description").notNull(),
+    descriptionChinese: text("description_chinese").default("").notNull(),
+    /** Structured reasons that decided the selection (see @taiwanhub/shared dailyPickReason). */
+    reasons: jsonb("reasons").$type<unknown[]>().default([]).notNull(),
+    reasonText: text("reason_text").notNull(),
+    reasonTextChinese: text("reason_text_chinese").notNull(),
+    evidence: jsonb("evidence")
+      .$type<Record<string, unknown>>()
+      .default({})
+      .notNull(),
+    replacesId: uuid("replaces_id").references((): AnyPgColumn => dailyPick.id),
+    /** Null for the scheduled job; the moderator for editorial picks. */
+    createdBy: uuid("created_by").references(() => user.id, {
+      onDelete: "set null",
+    }),
+    withdrawnAt: timestamp("withdrawn_at", { withTimezone: true }),
+    withdrawnBy: uuid("withdrawn_by").references(() => user.id, {
+      onDelete: "set null",
+    }),
+    withdrawalReason: text("withdrawal_reason"),
+    ...timestamps(),
+  },
+  (t) => [
+    uniqueIndex("daily_pick_city_date_published")
+      .on(t.cityId, t.pickDate)
+      .where(sql`${t.status} = 'published'`),
+    index("daily_pick_city_date_idx").on(t.cityId, t.pickDate),
+    index("daily_pick_place_idx").on(t.placeId),
+    check(
+      "daily_pick_status_check",
+      sql`${t.status} IN ('published', 'withdrawn')`,
+    ),
+    check(
+      "daily_pick_selection_kind_check",
+      sql`${t.selectionKind} IN ('automatic', 'editorial')`,
+    ),
+    check(
+      "daily_pick_withdrawal_check",
+      sql`(${t.status} = 'withdrawn') = (${t.withdrawnAt} IS NOT NULL)`,
+    ),
   ],
 );

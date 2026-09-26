@@ -4,6 +4,7 @@ import { selectionGrantToken } from "./place-subjects";
 export * from "./text";
 export * from "./membership";
 export * from "./place-subjects";
+export * from "./daily-pick";
 export const placeCategories = [
   "Taiwanese",
   "Bubble Tea",
@@ -256,6 +257,7 @@ export const systemRuleKinds = [
   "food",
   "community",
   "saves",
+  "daily_pick",
 ] as const;
 export type SystemRuleKind = (typeof systemRuleKinds)[number];
 export const systemRule = z.object({

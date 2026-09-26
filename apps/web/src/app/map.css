@@ -1178,3 +1178,75 @@
 .map-panel:focus {
   outline: none;
 }
+/* Daily Pick card: map panel, bottom sheet and the /daily-pick page. */
+.daily-pick-card {
+  display: grid;
+  gap: 8px;
+  padding: 14px;
+  margin-bottom: 12px;
+  border: 1px solid var(--th-divider);
+  border-left: 4px solid var(--th-sun);
+  border-radius: var(--th-radius-card);
+  background: var(--th-surface);
+}
+.daily-pick-card p,
+.daily-pick-card h3,
+.daily-pick-card h4 {
+  margin: 0;
+}
+.daily-pick-header h2 {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin: 0;
+  font-size: 16px;
+  line-height: 24px;
+}
+.daily-pick-name {
+  font-size: 20px;
+  line-height: 28px;
+}
+.daily-pick-card h4 {
+  font-size: 14px;
+  color: var(--th-muted);
+}
+.daily-pick-card .eyebrow {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+  margin: 0;
+}
+.daily-pick-facts {
+  margin: 0;
+}
+.daily-pick-facts a {
+  overflow-wrap: anywhere;
+}
+.daily-pick-actions {
+  flex-wrap: wrap;
+}
+.daily-pick-card .notice {
+  display: grid;
+  gap: 8px;
+}
+.daily-pick-history-link a {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+.daily-pick-page {
+  display: grid;
+  gap: 24px;
+  max-width: 720px;
+}
+.daily-pick-history {
+  display: grid;
+  gap: 16px;
+  padding: 0;
+  list-style: none;
+}
+.daily-pick-history li {
+  border-bottom: 1px solid var(--th-divider);
+  padding-bottom: 12px;
+}
