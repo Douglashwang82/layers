@@ -1,8 +1,0 @@
-<!-- This file can only be modified by the human developer but can be reviewd by the LLM services -->
-
-# TO-DO
-  - [ ] daily collection works
-  - [ ] UI detailing
-  - [ ] design a invitation base membership
-  - [ ] integrate with Google apis
-  - [ ] review and rating layer
