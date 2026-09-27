@@ -242,11 +242,18 @@ export type RestaurantCandidateInput = {
   hasIndependentEvidence: boolean;
 };
 
-/** A committed feature elsewhere in the rotation window (published or a future reservation). */
+/**
+ * A committed feature elsewhere in the rotation window: published, withdrawn
+ * (withdrawal never resets rotation), or a future reservation. `foodType` is
+ * null for legacy version 1 history or any feature whose food type was never
+ * classified; such a row still consumes the restaurant-repeat window but
+ * cannot produce a food-type-recent conflict, since there is nothing honest
+ * to compare it against.
+ */
 export type CommittedFeature = {
   date: string;
   canonicalId: string;
-  foodType: string;
+  foodType: string | null;
   /** Excluded from conflict checks: the slot being replaced. */
   pickId: string;
 };

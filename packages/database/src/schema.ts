@@ -1625,6 +1625,14 @@ export const dailyPickRunCandidate = pgTable(
     score: doublePrecision("score"),
     primaryReasonCode: text("primary_reason_code").notNull(),
     reasonCodes: jsonb("reason_codes").$type<string[]>().default([]).notNull(),
+    /**
+     * A snapshot fingerprint (subject/candidate/evidence state) captured when
+     * this row was written, used only for the picked row: publication
+     * recomputes the same fingerprint from live data and refuses to commit on
+     * a mismatch, so evidence or review state that changed after the report
+     * was written can never be silently published.
+     */
+    fingerprint: text("fingerprint"),
     ...timestamps(),
   },
   (t) => [
@@ -1658,7 +1666,13 @@ export const dailyPickLayerMembership = pgTable(
   },
   (t) => [
     uniqueIndex("daily_pick_layer_membership_pick_unique").on(t.pickId),
-    uniqueIndex("daily_pick_layer_membership_item_unique").on(t.layerItemId),
+    // Intentionally NOT unique: the same restaurant can win again after its
+    // rotation window, contributing a second membership row to the SAME
+    // shared layer_item (see daily-pick-restaurant-run.ts publishRestaurantPick).
+    // A unique constraint here previously made a repeat winner impossible to
+    // publish (its layer_item already had one membership row) and made
+    // ON CONFLICT re-publication silently overwrite the earlier pick's row.
+    index("daily_pick_layer_membership_item_idx").on(t.layerItemId),
     index("daily_pick_layer_membership_layer_idx").on(t.layerId),
   ],
 );
