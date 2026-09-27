@@ -56,6 +56,8 @@ export function LayerEditor({
   groupId,
   canSuggestPlace = false,
   canCreatePlaces = false,
+  mapToken,
+  cityCenter = { latitude: 29.7604, longitude: -95.3698 },
 }: {
   mode: "create" | "edit";
   layer?: LayerRecord;
@@ -71,6 +73,10 @@ export function LayerEditor({
   canSuggestPlace?: boolean;
   /** Custom places are enabled: editors create places here without review. */
   canCreatePlaces?: boolean;
+  /** Public Mapbox token for the drop-a-pin map in the place form. */
+  mapToken?: string;
+  /** The layer city's centre, where the pin map starts. */
+  cityCenter?: { latitude: number; longitude: number };
 }) {
   const router = useRouter();
   const [draft, setDraft] = useState<Draft>(
@@ -574,6 +580,8 @@ export function LayerEditor({
               layerId={layer.id}
               layerSlug={layer.slug}
               cityName={city.name}
+              mapToken={mapToken}
+              cityCenter={cityCenter}
               editing={editingPlace}
               canSuggest={canSuggestPlace}
               t={t}
@@ -654,6 +662,8 @@ export function LayerEditor({
               layerId={layer.id}
               layerSlug={layer.slug}
               cityName={city.name}
+              mapToken={mapToken}
+              cityCenter={cityCenter}
               initialName={newPlaceName}
               t={t}
               onCancel={() => setNewPlaceName(null)}

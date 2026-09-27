@@ -7,6 +7,7 @@ import type { CustomPlace } from "@/features/custom-places/repository";
 import type { MapItem } from "@/features/map/query";
 import { customMapItem } from "@/lib/custom-places";
 import { SuggestPlace } from "./suggest-place";
+import { PinPicker } from "./pin-picker";
 import { type Copy, format } from "@/lib/dictionary";
 type Feedback = { tone: "success" | "error"; text: string } | null;
 type Outcome =
@@ -28,6 +29,8 @@ export function NewPlaceForm({
   onSaved,
   onDeleted,
   canSuggest = false,
+  mapToken,
+  cityCenter,
   onCancel,
 }: {
   layerId: string;
@@ -41,6 +44,10 @@ export function NewPlaceForm({
   onCancel: () => void;
   /** Place submissions are enabled: offer "Suggest to TaiwanHub" when editing. */
   canSuggest?: boolean;
+  /** Mapbox public token for the drop-a-pin map; omitted hides it. */
+  mapToken?: string;
+  /** Where the pin map starts when the place has no location yet. */
+  cityCenter: Pin;
 }) {
   const id = editing ? "edit-place" : "new-place";
   /** The edited place after a suggestion, so its status updates in place. */
@@ -71,7 +78,7 @@ export function NewPlaceForm({
       : editing.locationStatus === "exact"
         ? t.locationExact
         : editing.locationStatus === "approximate"
-          ? t.locationPinned
+          ? t.locationApproximate
           : t.locationNone;
   const outcomeText = (outcome: Outcome, matched = "") =>
     outcome === "matched"
@@ -257,6 +264,21 @@ export function NewPlaceForm({
               </button>
             )}
         </div>
+        <PinPicker
+          token={mapToken}
+          center={
+            editing?.latitude != null && editing.longitude != null
+              ? { latitude: editing.latitude, longitude: editing.longitude }
+              : cityCenter
+          }
+          value={pin}
+          onChange={(next) => {
+            setPin(next);
+            setClearLocation(false);
+            setLocationFeedback({ tone: "success", text: t.pinDropped });
+          }}
+          t={t}
+        />
         <div aria-live="polite">
           <StatusMessage feedback={locationFeedback} />
         </div>

@@ -229,6 +229,7 @@ export const en = {
   placeDeleted: "Place deleted.",
   locationExact: "Located from the address.",
   locationNone: "Not on the map yet.",
+  locationApproximate: "Pinned on the map (approximate location).",
   removeLocation: "Remove map location",
   suggestToTaiwanHub: "Suggest to TaiwanHub",
   suggestHelp:
@@ -243,6 +244,12 @@ export const en = {
   suggestionApproved: "Approved: now a public TaiwanHub place.",
   suggestionRejected:
     "Moderators didn't accept this suggestion. You can suggest it again.",
+  dropPin: "Drop a pin on the map",
+  hideMap: "Hide map",
+  pinHelp:
+    "Click the map or drag the pin. With a keyboard, move the map with the arrow keys, then choose Use map center.",
+  useMapCenter: "Use map center",
+  pinDropped: "Pin placed on the map (approximate).",
   noPlacesBody:
     "No places match these filters. Clear a filter or try another neighborhood.",
   noEventsBody:
@@ -929,6 +936,7 @@ export const zh: Copy = {
   placeDeleted: "已刪除地點。",
   locationExact: "已依地址定位。",
   locationNone: "尚未顯示在地圖上。",
+  locationApproximate: "已在地圖上標示（大約位置）。",
   removeLocation: "移除地圖位置",
   suggestToTaiwanHub: "推薦給 TaiwanHub",
   suggestHelp:
@@ -941,6 +949,12 @@ export const zh: Copy = {
   suggestionPending: "已推薦給 TaiwanHub，等待管理員審核。",
   suggestionApproved: "已通過：現在是公開的 TaiwanHub 地點。",
   suggestionRejected: "管理員未接受此推薦，你可以再推薦一次。",
+  dropPin: "在地圖上放置圖釘",
+  hideMap: "隱藏地圖",
+  pinHelp:
+    "點選地圖或拖曳圖釘。使用鍵盤時，可用方向鍵移動地圖，再選擇「使用地圖中心」。",
+  useMapCenter: "使用地圖中心",
+  pinDropped: "已在地圖上放置圖釘（大約位置）。",
   noPlacesBody: "沒有符合的店家，請清除篩選或換個地區。",
   noEventsBody: "目前沒有符合的活動，試試「即將舉行」或其他日期。",
   eventCancelled: "活動已取消。",

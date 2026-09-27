@@ -40,7 +40,7 @@ test("a layer owner creates, edits and deletes a custom place", async ({
     "Uncle Chen Scallion Pancakes",
   );
   await expect(
-    page.getByText("Pinned to your current location (approximate)."),
+    page.getByText("Pinned on the map (approximate location)."),
   ).toBeVisible();
   await page.getByLabel("Place name").fill("Uncle Chen Pancakes");
   await page.getByLabel("A short note (optional)").fill("Saturday mornings");
@@ -113,4 +113,41 @@ test("a private place can be suggested to TaiwanHub for review", async ({
   await expect(
     page.getByRole("button", { name: "Suggest to TaiwanHub", exact: true }),
   ).toHaveCount(0);
+});
+test("a place can be pinned on the map picker", async ({ page }) => {
+  // The picker needs no tiles: map requests are blocked, so nothing is billed.
+  await page.route(/mapbox\.com\//, (route) => route.abort());
+  await page.goto("/layers/new");
+  const email = `pin-${Date.now()}@example.test`;
+  await createTestAccount("Pin Dropper", email);
+  await submitSignIn(page, email);
+  await expect(page).toHaveURL(/\/layers\/new/);
+  await page.getByLabel("Title", { exact: true }).fill(`Pins ${Date.now()}`);
+  await page.getByRole("button", { name: "Create layer", exact: true }).click();
+  await expect(page).toHaveURL(/\/edit/);
+  await page.getByRole("button", { name: "New place", exact: true }).click();
+  const dropPin = page.getByRole("button", { name: "Drop a pin on the map" });
+  test.skip(
+    (await dropPin.count()) === 0,
+    "No Mapbox token configured; the pin map is hidden by design.",
+  );
+  await page.getByLabel("Place name").fill("Riverside Picnic Spot");
+  await dropPin.click();
+  await expect(
+    page.getByRole("application", { name: "Drop a pin on the map" }),
+  ).toBeVisible();
+  const useCenter = page.getByRole("button", { name: "Use map center" });
+  await expect(useCenter).toBeEnabled();
+  await useCenter.click();
+  await expect(
+    page.getByText("Pin placed on the map (approximate)."),
+  ).toBeVisible();
+  await page.getByRole("button", { name: "Save place" }).click();
+  await expect(page.getByText("Place added to this layer.")).toBeVisible();
+  await page
+    .getByRole("button", { name: "Edit place: Riverside Picnic Spot" })
+    .click();
+  await expect(
+    page.getByText("Pinned on the map (approximate location)."),
+  ).toBeVisible();
 });

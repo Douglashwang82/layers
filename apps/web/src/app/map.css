@@ -796,6 +796,18 @@
 .new-place-form h3 {
   margin: 0;
 }
+.pin-picker {
+  display: grid;
+  gap: 8px;
+  justify-items: start;
+}
+.pin-picker-map {
+  width: 100%;
+  height: 240px;
+  border: 1px solid var(--th-divider);
+  border-radius: var(--th-radius-input);
+  overflow: hidden;
+}
 .suggest-place {
   margin-top: var(--th-space-4);
   padding-top: var(--th-space-4);

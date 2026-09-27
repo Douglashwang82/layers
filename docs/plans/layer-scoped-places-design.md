@@ -1,6 +1,6 @@
 # Layer-scoped places: add places freely to private and group layers
 
-Status: in progress. C0–C2 shipped (flag off). C3+C4 (editor search sections and new-place form, map/list/detail rendering) implemented and tested locally. Not yet built: the drop-a-pin map in the form (members use "Find on map" or "Use my current location"), catalog dedupe via `catalog_place_id` (lands with C6), and C5–C6. Decisions below were made by the product owner on 2026-09-27.
+Status: implemented and live (FEATURE_LAYER_CUSTOM_PLACES enabled in production 2026-09-27). C0–C6 shipped: editor empty-search state, custom place schema/access/API (migration 0015), server geocoding, editor create/edit/delete with address lookup, current location and a drop-a-pin map, map/list/detail rendering, Google places in private/group layers without city review, and opt-in Suggest to TaiwanHub with catalog merge on approval. Open questions below remain. Decisions were made by the product owner on 2026-09-27.
 
 ## Problem
 
