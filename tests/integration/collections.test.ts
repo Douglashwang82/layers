@@ -117,13 +117,41 @@ afterAll(async () => {
   await pool.end();
 });
 describe("external places in layers", () => {
-  it("requires a reviewed city before an external place joins a layer", async () => {
+  it("takes an unreviewed external place into a private layer but not a public one", async () => {
+    // Private and group layers need no moderation (layer-scoped places, C5).
+    const unreviewed = await external();
+    const privateLayer = (
+      await createLayer(alice, {
+        title: "Private external test",
+        city: "houston",
+      })
+    ).layer.id;
+    layers.push(privateLayer);
     await expect(
-      addLayerItem(alice, layerId, {
+      addLayerItem(alice, privateLayer, {
+        key: `subject:${unreviewed.subjectId}`,
+        selectionGrant: unreviewed.selectionGrant,
+      }),
+    ).resolves.toMatchObject({ added: true });
+    const publicLayer = (
+      await createLayer(alice, {
+        title: "Public external test",
+        city: "houston",
+      })
+    ).layer.id;
+    layers.push(publicLayer);
+    await pool.query(
+      "UPDATE layer SET audience='public', review_status='approved', lifecycle='active' WHERE id=$1",
+      [publicLayer],
+    );
+    await expect(
+      addLayerItem(alice, publicLayer, {
         key: `subject:${subjectId}`,
         selectionGrant: grant,
       }),
     ).rejects.toMatchObject({ status: 409, code: "CITY_REVIEW_REQUIRED" });
+  });
+  it("keeps a reviewed external place in its own city", async () => {
     await approveCity(subjectId, otherCity);
     await expect(
       addLayerItem(alice, layerId, {

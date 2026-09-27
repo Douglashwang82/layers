@@ -374,16 +374,25 @@ async function subjectTarget(
   }
   if (!flags.externalPlaceCollections)
     throw new AppError(404, "DISABLED", "Adding this place is unavailable.");
-  const city = await tx.query<{ city_id: string | null }>(
-    "SELECT city_id FROM place_subject WHERE id=$1 AND city_review_status='approved'",
-    [subject.id],
-  );
-  if (!city.rows[0])
-    throw new AppError(
-      409,
-      "CITY_REVIEW_REQUIRED",
-      "Saved — city review needed before adding to a layer.",
-    );
+  const city = await tx.query<{
+    city_id: string | null;
+    city_review_status: string;
+  }>("SELECT city_id,city_review_status FROM place_subject WHERE id=$1", [
+    subject.id,
+  ]);
+  const reviewed = city.rows[0]?.city_review_status === "approved";
+  // Moderation guards what is public: private and group layers take an
+  // unreviewed place as-is (public viewers never see unreviewed subjects);
+  // a public layer still needs a moderator's city review first.
+  if (!reviewed) {
+    if (found.layer.audience === "public")
+      throw new AppError(
+        409,
+        "CITY_REVIEW_REQUIRED",
+        "Saved — city review needed before adding to a layer.",
+      );
+    return { column: "subject_id", id: subject.id, external: true };
+  }
   if (city.rows[0].city_id !== found.layer.cityId)
     throw new AppError(
       400,
