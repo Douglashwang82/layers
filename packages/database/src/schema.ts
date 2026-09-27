@@ -1285,9 +1285,15 @@ export const dailyPick = pgTable(
       .notNull()
       .references(() => city.id),
     pickDate: date("pick_date").notNull(),
-    placeId: uuid("place_id")
-      .notNull()
-      .references(() => place.id),
+    /** Nullable for a version 2 external-subject pick; version 1 catalog picks keep it. */
+    placeId: uuid("place_id").references(() => place.id),
+    /** Version 2 canonical identity; null for legacy version 1 catalog-only picks. */
+    subjectId: uuid("subject_id").references(() => placeSubject.id),
+    /** Reviewed primary food type snapshot at publication (version 2 only). */
+    foodType: text("food_type"),
+    foodTypeVersion: integer("food_type_version"),
+    runId: uuid("run_id").references((): AnyPgColumn => dailyPickRun.id),
+    copyId: uuid("copy_id").references((): AnyPgColumn => restaurantCopy.id),
     status: text("status", { enum: ["published", "withdrawn"] })
       .default("published")
       .notNull(),
@@ -1323,6 +1329,7 @@ export const dailyPick = pgTable(
       .where(sql`${t.status} = 'published'`),
     index("daily_pick_city_date_idx").on(t.cityId, t.pickDate),
     index("daily_pick_place_idx").on(t.placeId),
+    index("daily_pick_subject_idx").on(t.subjectId),
     check(
       "daily_pick_status_check",
       sql`${t.status} IN ('published', 'withdrawn')`,
@@ -1335,5 +1342,323 @@ export const dailyPick = pgTable(
       "daily_pick_withdrawal_check",
       sql`(${t.status} = 'withdrawn') = (${t.withdrawnAt} IS NOT NULL)`,
     ),
+    /** Every pick needs an identity: a version 1 catalog place, a version 2 subject, or both. */
+    check(
+      "daily_pick_identity_check",
+      sql`num_nonnulls(${t.placeId}, ${t.subjectId}) >= 1`,
+    ),
+  ],
+);
+
+/* ---------------------------------------------------------------------------
+   Daily restaurant recommendation (version 2), additive to the tables above.
+   See docs/plans/daily-restaurant-recommendation-implementation-plan.md
+   section 9. Provider content is never cached wholesale here: candidates and
+   evidence hold only durable, permission-scoped facts and local decisions,
+   never raw provider payloads.
+   --------------------------------------------------------------------------- */
+/** One area/city configuration for the restaurant pipeline; immutable per config version. */
+export const restaurantDiscoveryArea = pgTable(
+  "restaurant_discovery_area",
+  {
+    id: id(),
+    citySlug: text("city_slug").notNull(),
+    layerSlug: text("layer_slug").notNull(),
+    timezone: text("timezone").notNull(),
+    configVersion: integer("config_version").default(1).notNull(),
+    /** Boundary version, included communities, query groups, budgets and rule thresholds. */
+    config: jsonb("config")
+      .$type<Record<string, unknown>>()
+      .default({})
+      .notNull(),
+    /** Master gate: discovery/evaluation never runs for a disabled area. */
+    enabled: boolean("enabled").default(false).notNull(),
+    ...timestamps(),
+  },
+  (t) => [
+    uniqueIndex("restaurant_discovery_area_city_unique").on(t.citySlug),
+    check(
+      "restaurant_discovery_area_config_version_check",
+      sql`${t.configVersion} >= 1`,
+    ),
+  ],
+);
+export const restaurantCandidateStates = [
+  "discovered",
+  "reviewing",
+  "approved",
+  "excluded",
+] as const;
+/** One restaurant discovered for an area; a candidate is not automatically public. */
+export const restaurantCandidate = pgTable(
+  "restaurant_candidate",
+  {
+    id: id(),
+    areaId: uuid("area_id")
+      .notNull()
+      .references(() => restaurantDiscoveryArea.id),
+    subjectId: uuid("subject_id")
+      .notNull()
+      .references(() => placeSubject.id),
+    state: text("state", { enum: restaurantCandidateStates })
+      .default("discovered")
+      .notNull(),
+    /** One reviewed primary food type; an LLM may suggest it, a moderator approves it. */
+    foodType: text("food_type"),
+    foodTypeVersion: integer("food_type_version"),
+    foodTypeSource: text("food_type_source", {
+      enum: ["llm_suggested", "moderator"],
+    }),
+    excludedReason: text("excluded_reason"),
+    reviewedBy: uuid("reviewed_by").references(() => user.id, {
+      onDelete: "set null",
+    }),
+    reviewedAt: timestamp("reviewed_at", { withTimezone: true }),
+    ...timestamps(),
+  },
+  (t) => [
+    uniqueIndex("restaurant_candidate_area_subject_unique").on(
+      t.areaId,
+      t.subjectId,
+    ),
+    index("restaurant_candidate_area_state_idx").on(t.areaId, t.state),
+    check(
+      "restaurant_candidate_state_check",
+      sql`${t.state} IN ('discovered', 'reviewing', 'approved', 'excluded')`,
+    ),
+    check(
+      "restaurant_candidate_food_source_check",
+      sql`${t.foodTypeSource} IS NULL OR ${t.foodTypeSource} IN ('llm_suggested', 'moderator')`,
+    ),
+  ],
+);
+/** Permission-compatible independent facts backing a candidate's recommendation. */
+export const restaurantEvidence = pgTable(
+  "restaurant_evidence",
+  {
+    id: id(),
+    candidateId: uuid("candidate_id")
+      .notNull()
+      .references(() => restaurantCandidate.id, { onDelete: "cascade" }),
+    label: text("label").notNull(),
+    sourceUrl: text("source_url"),
+    approvedForCopy: boolean("approved_for_copy").default(false).notNull(),
+    approvedBy: uuid("approved_by").references(() => user.id, {
+      onDelete: "set null",
+    }),
+    approvedAt: timestamp("approved_at", { withTimezone: true }),
+    revision: integer("revision").default(1).notNull(),
+    ...timestamps(),
+  },
+  (t) => [
+    index("restaurant_evidence_candidate_idx").on(t.candidateId),
+    check(
+      "restaurant_evidence_label_length",
+      sql`char_length(${t.label}) BETWEEN 1 AND 200`,
+    ),
+    check("restaurant_evidence_revision_check", sql`${t.revision} >= 1`),
+  ],
+);
+export const restaurantDiscoveryRunStatuses = [
+  "queued",
+  "running",
+  "success",
+  "partial",
+  "failed",
+] as const;
+/** One discovery attempt for an area/day; leased so a recovered worker can't double-run. */
+export const restaurantDiscoveryRun = pgTable(
+  "restaurant_discovery_run",
+  {
+    id: id(),
+    areaId: uuid("area_id")
+      .notNull()
+      .references(() => restaurantDiscoveryArea.id),
+    runDate: date("run_date").notNull(),
+    attempt: integer("attempt").default(1).notNull(),
+    status: text("status", { enum: restaurantDiscoveryRunStatuses })
+      .default("queued")
+      .notNull(),
+    leaseOwner: text("lease_owner"),
+    leaseExpiresAt: timestamp("lease_expires_at", { withTimezone: true }),
+    requestCount: integer("request_count").default(0).notNull(),
+    discoveredCount: integer("discovered_count").default(0).notNull(),
+    /** Sanitized query-group outcomes and truncation/failure notes; never raw payloads. */
+    errors: jsonb("errors").$type<unknown[]>().default([]).notNull(),
+    ...timestamps(),
+  },
+  (t) => [
+    uniqueIndex("restaurant_discovery_run_identity").on(
+      t.areaId,
+      t.runDate,
+      t.attempt,
+    ),
+    index("restaurant_discovery_run_area_date_idx").on(t.areaId, t.runDate),
+    check(
+      "restaurant_discovery_run_status_check",
+      sql`${t.status} IN ('queued', 'running', 'success', 'partial', 'failed')`,
+    ),
+    check("restaurant_discovery_run_attempt_check", sql`${t.attempt} >= 1`),
+  ],
+);
+/** Validated, moderator-reviewed bilingual copy for one candidate/run, pending approval. */
+export const restaurantCopy = pgTable(
+  "restaurant_copy",
+  {
+    id: id(),
+    candidateId: uuid("candidate_id")
+      .notNull()
+      .references(() => restaurantCandidate.id),
+    runId: uuid("run_id").references((): AnyPgColumn => dailyPickRun.id),
+    /** RestaurantCopySentence[] from @taiwanhub/shared: { text, factIds }. */
+    enSentences: jsonb("en_sentences").$type<unknown[]>().notNull(),
+    zhSentences: jsonb("zh_sentences").$type<unknown[]>().notNull(),
+    promptVersion: text("prompt_version").notNull(),
+    modelVersion: text("model_version").notNull(),
+    reviewStatus: text("review_status", {
+      enum: ["pending", "approved", "rejected"],
+    })
+      .default("pending")
+      .notNull(),
+    reviewedBy: uuid("reviewed_by").references(() => user.id, {
+      onDelete: "set null",
+    }),
+    reviewedAt: timestamp("reviewed_at", { withTimezone: true }),
+    ...timestamps(),
+  },
+  (t) => [
+    index("restaurant_copy_candidate_idx").on(t.candidateId),
+    index("restaurant_copy_run_idx").on(t.runId),
+    check(
+      "restaurant_copy_review_status_check",
+      sql`${t.reviewStatus} IN ('pending', 'approved', 'rejected')`,
+    ),
+  ],
+);
+export const dailyPickRunStatuses = [
+  "queued",
+  "discovering",
+  "evaluating",
+  "writing",
+  "ready_for_review",
+  "ready_to_publish",
+  "published",
+  "empty",
+  "partial",
+  "failed",
+  "superseded",
+  "canceled",
+] as const;
+/** One selection attempt for an area/day: lifecycle, evaluated scope, and the final pick. */
+export const dailyPickRun = pgTable(
+  "daily_pick_run",
+  {
+    id: id(),
+    areaId: uuid("area_id")
+      .notNull()
+      .references(() => restaurantDiscoveryArea.id),
+    runDate: date("run_date").notNull(),
+    attempt: integer("attempt").default(1).notNull(),
+    status: text("status", { enum: dailyPickRunStatuses })
+      .default("queued")
+      .notNull(),
+    configVersion: integer("config_version").notNull(),
+    rulesConfig: jsonb("rules_config")
+      .$type<Record<string, unknown>>()
+      .notNull(),
+    evaluatedCount: integer("evaluated_count").default(0).notNull(),
+    eligibleCount: integer("eligible_count").default(0).notNull(),
+    excludedCount: integer("excluded_count").default(0).notNull(),
+    copyStatus: text("copy_status", {
+      enum: ["pending", "approved", "rejected", "not_needed"],
+    })
+      .default("pending")
+      .notNull(),
+    reviewedBy: uuid("reviewed_by").references(() => user.id, {
+      onDelete: "set null",
+    }),
+    finalPickId: uuid("final_pick_id").references(
+      (): AnyPgColumn => dailyPick.id,
+    ),
+    leaseOwner: text("lease_owner"),
+    leaseExpiresAt: timestamp("lease_expires_at", { withTimezone: true }),
+    /** Safe, non-sensitive failure classification; never a raw provider/model error string. */
+    errorCode: text("error_code"),
+    ...timestamps(),
+  },
+  (t) => [
+    uniqueIndex("daily_pick_run_identity").on(t.areaId, t.runDate, t.attempt),
+    index("daily_pick_run_area_date_idx").on(t.areaId, t.runDate),
+    check("daily_pick_run_attempt_check", sql`${t.attempt} >= 1`),
+    check(
+      "daily_pick_run_status_check",
+      sql`${t.status} IN ('queued', 'discovering', 'evaluating', 'writing', 'ready_for_review', 'ready_to_publish', 'published', 'empty', 'partial', 'failed', 'superseded', 'canceled')`,
+    ),
+    check(
+      "daily_pick_run_copy_status_check",
+      sql`${t.copyStatus} IN ('pending', 'approved', 'rejected', 'not_needed')`,
+    ),
+  ],
+);
+export const dailyPickRunCandidateDecisions = [
+  "picked",
+  "eligible_not_picked",
+  "excluded",
+] as const;
+/** One report row: this run's evaluated pool, not a global top-ten of the city. */
+export const dailyPickRunCandidate = pgTable(
+  "daily_pick_run_candidate",
+  {
+    id: id(),
+    runId: uuid("run_id")
+      .notNull()
+      .references(() => dailyPickRun.id, { onDelete: "cascade" }),
+    subjectId: uuid("subject_id")
+      .notNull()
+      .references(() => placeSubject.id),
+    baseRank: integer("base_rank").notNull(),
+    eligibleRank: integer("eligible_rank"),
+    reportPosition: integer("report_position").notNull(),
+    decision: text("decision", {
+      enum: dailyPickRunCandidateDecisions,
+    }).notNull(),
+    score: doublePrecision("score"),
+    primaryReasonCode: text("primary_reason_code").notNull(),
+    reasonCodes: jsonb("reason_codes").$type<string[]>().default([]).notNull(),
+    ...timestamps(),
+  },
+  (t) => [
+    uniqueIndex("daily_pick_run_candidate_identity").on(t.runId, t.subjectId),
+    index("daily_pick_run_candidate_report_idx").on(t.runId, t.reportPosition),
+    check(
+      "daily_pick_run_candidate_decision_check",
+      sql`${t.decision} IN ('picked', 'eligible_not_picked', 'excluded')`,
+    ),
+  ],
+);
+/**
+ * Provenance linking a published external-subject pick to its Discover
+ * layer_item row, so a withdrawal or catalog link can find and remove exactly
+ * that membership without touching independently-added items.
+ */
+export const dailyPickLayerMembership = pgTable(
+  "daily_pick_layer_membership",
+  {
+    id: id(),
+    pickId: uuid("pick_id")
+      .notNull()
+      .references(() => dailyPick.id, { onDelete: "cascade" }),
+    layerId: uuid("layer_id")
+      .notNull()
+      .references(() => layer.id),
+    layerItemId: uuid("layer_item_id")
+      .notNull()
+      .references(() => layerItem.id, { onDelete: "cascade" }),
+    ...timestamps(),
+  },
+  (t) => [
+    uniqueIndex("daily_pick_layer_membership_pick_unique").on(t.pickId),
+    uniqueIndex("daily_pick_layer_membership_item_unique").on(t.layerItemId),
+    index("daily_pick_layer_membership_layer_idx").on(t.layerId),
   ],
 );
