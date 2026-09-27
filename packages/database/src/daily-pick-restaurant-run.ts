@@ -1034,41 +1034,51 @@ export async function publishRestaurantPickRun(
     const pickId = pickInsert.rows[0].id;
 
     // A catalog-linked subject is already surfaced by Discover's rule-derived
-    // catalog query; adding a layer_item would duplicate it on the map/list.
+    // catalog query, and by the version 1 daily-pick card/history queries
+    // (now subject-aware, see apps/web/src/features/daily-pick/repository.ts)
+    // directly from daily_pick.place_id — adding a layer_item would duplicate
+    // it on the map/list. An external (non-catalog) winner has no such
+    // rule-derived path, so it needs an explicit layer_item in BOTH its
+    // area's Discover layer and the city's own separate Daily Pick layer
+    // (the latter is what the Daily Pick layer's external-reference list
+    // falls back to, since there is no server-stored coordinate to place a
+    // map pin at).
     if (!freshCandidate.catalog_place_id) {
-      const layerRow = await client.query<{ id: string }>(
-        "SELECT id FROM layer WHERE slug = $1",
-        [restaurantArea.layerSlug],
+      const layers = await client.query<{ id: string; slug: string }>(
+        `SELECT id, slug FROM layer WHERE slug = ANY($1::text[])`,
+        [[restaurantArea.layerSlug, `daily-pick-${restaurantArea.citySlug}`]],
       );
-      const layerId = layerRow.rows[0]?.id;
-      if (!layerId)
+      if (!layers.rows.some((l) => l.slug === restaurantArea.layerSlug))
         throw new Error(
           `Discover layer not found: ${restaurantArea.layerSlug}`,
         );
-      const existingItem = await client.query<{ id: string }>(
-        `SELECT id FROM layer_item WHERE layer_id=$1 AND subject_id=$2`,
-        [layerId, winnerRow.subject_id],
-      );
-      let layerItemId = existingItem.rows[0]?.id;
-      if (layerItemId)
-        // Only ever move visibility earlier, never later: an existing valid
-        // (possibly independently-curated) item must never be hidden by a
-        // later reservation's valid_from.
+      for (const layer of layers.rows) {
+        const existingItem = await client.query<{ id: string }>(
+          `SELECT id FROM layer_item WHERE layer_id=$1 AND subject_id=$2`,
+          [layer.id, winnerRow.subject_id],
+        );
+        let layerItemId = existingItem.rows[0]?.id;
+        if (layerItemId)
+          // Only ever move visibility earlier, never later: an existing valid
+          // (possibly independently-curated) item must never be hidden by a
+          // later reservation's valid_from.
+          await client.query(
+            `UPDATE layer_item SET valid_from = LEAST(COALESCE(valid_from, $2), $2) WHERE id=$1`,
+            [layerItemId, validFrom],
+          );
+        else {
+          const inserted = await client.query<{ id: string }>(
+            `INSERT INTO layer_item(layer_id, subject_id, note, valid_from) VALUES($1,$2,'',$3) RETURNING id`,
+            [layer.id, winnerRow.subject_id, validFrom],
+          );
+          layerItemId = inserted.rows[0].id;
+        }
         await client.query(
-          `UPDATE layer_item SET valid_from = LEAST(COALESCE(valid_from, $2), $2) WHERE id=$1`,
-          [layerItemId, validFrom],
+          `INSERT INTO daily_pick_layer_membership(pick_id, layer_id, layer_item_id) VALUES($1,$2,$3)
+           ON CONFLICT (pick_id, layer_id) DO NOTHING`,
+          [pickId, layer.id, layerItemId],
         );
-      else {
-        const inserted = await client.query<{ id: string }>(
-          `INSERT INTO layer_item(layer_id, subject_id, note, valid_from) VALUES($1,$2,'',$3) RETURNING id`,
-          [layerId, winnerRow.subject_id, validFrom],
-        );
-        layerItemId = inserted.rows[0].id;
       }
-      await client.query(
-        `INSERT INTO daily_pick_layer_membership(pick_id, layer_id, layer_item_id) VALUES($1,$2,$3)`,
-        [pickId, layerId, layerItemId],
-      );
     }
 
     if (actorId)
@@ -1112,11 +1122,13 @@ export async function publishRestaurantPickRun(
 
 /**
  * Withdraw a published version 2 pick: remove only this pick's own
- * daily_pick_layer_membership row, then delete the shared layer_item only if
- * (a) no other pick's membership still references it and (b) it was never
- * independently curated (`added_by IS NULL`, i.e. created solely by the
- * publish step above) — preserving both a moderator's own curation and any
- * other historical pick that still needs the same item visible.
+ * daily_pick_layer_membership row(s) — there can be more than one, since an
+ * external winner contributes to both its area's Discover layer and the
+ * city's separate Daily Pick layer — then delete each shared layer_item only
+ * if (a) no other pick's membership still references it and (b) it was
+ * never independently curated (`added_by IS NULL`, i.e. created solely by
+ * the publish step above) — preserving both a moderator's own curation and
+ * any other historical pick that still needs the same item visible.
  */
 export async function withdrawRestaurantPick(
   pickId: string,
@@ -1134,8 +1146,7 @@ export async function withdrawRestaurantPick(
       `UPDATE daily_pick SET status='withdrawn', withdrawn_at=now(), withdrawn_by=$2, withdrawal_reason=$3, updated_at=now() WHERE id=$1 AND status='published'`,
       [pickId, actorId, reason],
     );
-    const layerItemId = membership.rows[0]?.layer_item_id;
-    if (layerItemId)
+    for (const { layer_item_id: layerItemId } of membership.rows)
       await client.query(
         `DELETE FROM layer_item WHERE id=$1 AND added_by IS NULL
            AND NOT EXISTS (SELECT 1 FROM daily_pick_layer_membership WHERE layer_item_id=$1)`,

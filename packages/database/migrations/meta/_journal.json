@@ -127,6 +127,13 @@
       "when": 1790531759004,
       "tag": "0017_sweet_the_anarchist",
       "breakpoints": true
+    },
+    {
+      "idx": 18,
+      "version": "7",
+      "when": 1790539119661,
+      "tag": "0018_next_power_pack",
+      "breakpoints": true
     }
   ]
 }

@@ -288,11 +288,15 @@ describe("Daily restaurant recommendation (version 2) worker", () => {
     });
     expect(pickRow.rows[0].copy_id).toBe(prepared.copyId);
 
-    const membership = await pool.query<{ layer_item_id: string }>(
-      "SELECT layer_item_id FROM daily_pick_layer_membership WHERE pick_id=$1",
+    // An external winner contributes to both its area's Discover layer and
+    // the city's own separate Daily Pick layer.
+    const membership = await pool.query<{ slug: string }>(
+      `SELECT l.slug FROM daily_pick_layer_membership m JOIN layer l ON l.id=m.layer_id WHERE m.pick_id=$1`,
       [published.pickId],
     );
-    expect(membership.rows).toHaveLength(1);
+    expect(membership.rows.map((r) => r.slug).sort()).toEqual(
+      [discoverSlug(), `daily-pick-${city.slug}`].sort(),
+    );
 
     const run = await pool.query<{
       status: string;
@@ -357,6 +361,25 @@ describe("Daily restaurant recommendation (version 2) worker", () => {
       loser.subjectId,
     );
 
+    // The city's own separate Daily Pick layer must also surface the
+    // winner, not just Discover — the worker publishes a layer_item into
+    // both, since that layer's external-reference branch queries its own
+    // layer_item rows.
+    const dailyPickState = {
+      ...parseMapQuery({ city: city.slug }),
+      layers: [`daily-pick-${city.slug}`],
+    };
+    const dailyPickReferences = await listExternalReferences(
+      dailyPickState,
+      city,
+      null,
+      0,
+      new Date(),
+    );
+    expect(dailyPickReferences.references.map((r) => r.subjectId)).toContain(
+      winner.subjectId,
+    );
+
     await withdrawRestaurantPick(
       published.pickId,
       "test withdrawal",
@@ -377,6 +400,16 @@ describe("Daily restaurant recommendation (version 2) worker", () => {
     expect(referencesAfter.references.map((r) => r.subjectId)).not.toContain(
       winner.subjectId,
     );
+    const dailyPickReferencesAfter = await listExternalReferences(
+      dailyPickState,
+      city,
+      null,
+      0,
+      new Date(),
+    );
+    expect(
+      dailyPickReferencesAfter.references.map((r) => r.subjectId),
+    ).not.toContain(winner.subjectId);
   });
 
   it("rejects a stale publish when evidence changed after the report was written", async () => {
@@ -567,8 +600,8 @@ describe("Daily restaurant recommendation (version 2) worker", () => {
     );
     expect(published2.status).toBe("created");
 
-    const items = await pool.query<{ id: string }>(
-      "SELECT DISTINCT layer_item_id AS id FROM daily_pick_layer_membership WHERE pick_id = ANY($1::uuid[])",
+    const items = await pool.query<{ layer_id: string; id: string }>(
+      "SELECT DISTINCT layer_id, layer_item_id AS id FROM daily_pick_layer_membership WHERE pick_id = ANY($1::uuid[])",
       [
         [
           published1.status === "created" ? published1.pickId : "",
@@ -576,9 +609,12 @@ describe("Daily restaurant recommendation (version 2) worker", () => {
         ],
       ],
     );
-    // Both picks share exactly one layer_item row (no unique-constraint failure,
-    // no orphaned duplicate item for the same restaurant/layer).
-    expect(items.rows).toHaveLength(1);
+    // Each of the two layers (Discover + Daily Pick) has exactly one shared
+    // layer_item reused by both picks (no unique-constraint failure, no
+    // orphaned duplicate item for the same restaurant/layer).
+    expect(items.rows).toHaveLength(2);
+    const byLayer = new Map(items.rows.map((r) => [r.layer_id, r.id]));
+    expect(byLayer.size).toBe(2);
   });
 
   it("withdrawal preserves an independently-curated layer_item", async () => {

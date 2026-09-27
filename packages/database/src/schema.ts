@@ -1665,7 +1665,13 @@ export const dailyPickLayerMembership = pgTable(
     ...timestamps(),
   },
   (t) => [
-    uniqueIndex("daily_pick_layer_membership_pick_unique").on(t.pickId),
+    // One row per (pick, layer): an external winner contributes to both its
+    // area's Discover layer AND the city's separate Daily Pick layer, so a
+    // single pick can legitimately have more than one membership row.
+    uniqueIndex("daily_pick_layer_membership_pick_layer_unique").on(
+      t.pickId,
+      t.layerId,
+    ),
     // Intentionally NOT unique: the same restaurant can win again after its
     // rotation window, contributing a second membership row to the SAME
     // shared layer_item (see daily-pick-restaurant-run.ts publishRestaurantPick).

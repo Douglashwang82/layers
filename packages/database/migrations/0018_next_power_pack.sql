@@ -1,0 +1,2 @@
+DROP INDEX "daily_pick_layer_membership_pick_unique";--> statement-breakpoint
+CREATE UNIQUE INDEX "daily_pick_layer_membership_pick_layer_unique" ON "daily_pick_layer_membership" USING btree ("pick_id","layer_id");
