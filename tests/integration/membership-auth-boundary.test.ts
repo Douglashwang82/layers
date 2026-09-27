@@ -84,11 +84,11 @@ function codesSentTo(email: string) {
 function wrongCode(code: string) {
   return code === "000000" ? "111111" : "000000";
 }
-async function makeUser(email: string, admitted: boolean) {
+async function makeUser(email: string, admitted: boolean, verified = true) {
   const id = crypto.randomUUID();
   await pool.query(
-    'INSERT INTO "user"(id,name,email,email_verified,role) VALUES($1,$2,$3,true,$4)',
-    [id, "Boundary Test", email, "USER"],
+    'INSERT INTO "user"(id,name,email,email_verified,role) VALUES($1,$2,$3,$4,$5)',
+    [id, "Boundary Test", email, verified, "USER"],
   );
   if (admitted)
     await pool.query(
@@ -351,6 +351,25 @@ describe("returning-member sign-in", () => {
         )
       )?.id,
     ).toBe(userId);
+  });
+  it("signs in an admitted legacy member whose email was never verified", async () => {
+    // Better Auth's first-proof cleanup reserves a verification row with a
+    // non-UUID id; this failed in production while verification.id was uuid.
+    const email = testEmail("unverified");
+    const userId = await makeUser(email, true, false);
+    await insertCredentialAccount(userId);
+    await requestCode(email);
+    const [code] = codesSentTo(email);
+    const response = await verifyCode(email, code);
+    expect(response.status).toBe(200);
+    expect(
+      (await resolveActor(new Headers({ cookie: cookieHeader(response) })))?.id,
+    ).toBe(userId);
+    const user = await pool.query<{ email_verified: boolean }>(
+      'SELECT email_verified FROM "user" WHERE id = $1',
+      [userId],
+    );
+    expect(user.rows[0].email_verified).toBe(true);
   });
   it("rejects a wrong, replayed or exhausted code", async () => {
     const email = testEmail("wrong");

@@ -87,7 +87,11 @@ export const account = pgTable(
   (t) => [uniqueIndex("account_provider_idx").on(t.providerId, t.accountId)],
 );
 export const verification = pgTable("verification", {
-  id: id(),
+  // text, not uuid: Better Auth writes its own non-UUID ids here (e.g. the
+  // email-OTP cleanup lock from reserveVerificationValue), bypassing generateId.
+  id: text("id")
+    .default(sql`gen_random_uuid()::text`)
+    .primaryKey(),
   identifier: text("identifier").notNull(),
   value: text("value").notNull(),
   expiresAt: timestamp("expires_at").notNull(),
