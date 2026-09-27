@@ -32,6 +32,9 @@ const s3: ImageStorage = {
     const client = new S3Client({
       region: process.env.IMAGE_STORAGE_REGION ?? "auto",
       endpoint: process.env.IMAGE_STORAGE_ENDPOINT,
+      // S3-compatible endpoints (Supabase Storage requires it; R2 accepts it)
+      // use path-style addressing; plain AWS keeps virtual-hosted style.
+      forcePathStyle: !!process.env.IMAGE_STORAGE_ENDPOINT,
       credentials:
         process.env.IMAGE_STORAGE_ACCESS_KEY_ID &&
         process.env.IMAGE_STORAGE_SECRET_ACCESS_KEY
