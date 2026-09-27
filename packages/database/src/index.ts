@@ -73,11 +73,18 @@ export {
   type RestaurantQualitySnapshot,
 } from "./restaurant-providers";
 export {
+  approveRestaurantCopy,
+  areaRuleConfig,
   loadApprovedCandidates,
   loadCommittedFeatures,
   loadRestaurantArea,
-  runRestaurantPick,
+  prepareRestaurantPickRun,
+  publishRestaurantPickRun,
+  rejectRestaurantCopy,
+  RunBusy,
+  RunLeaseLost,
   withdrawRestaurantPick,
+  type PrepareRunOutcome,
+  type PublishOutcome,
   type RestaurantArea,
-  type RestaurantRunResult,
 } from "./daily-pick-restaurant-run";

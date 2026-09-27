@@ -3,7 +3,7 @@ import { readFile } from "node:fs/promises";
 import { pool } from "./index";
 import {
   loadRestaurantArea,
-  runRestaurantPick,
+  prepareRestaurantPickRun,
 } from "./daily-pick-restaurant-run";
 import {
   createFakeCopyAdapter,
@@ -27,6 +27,16 @@ import {
  * environment-scoped step that requires the Phase 0 ADR, a server API key
  * and an explicitly enabled area; this file intentionally has no flag that
  * reaches them.
+ *
+ * This CLI can only ever reach `prepareRestaurantPickRun`, which never
+ * publishes — it stops at `ready_for_review` (or `empty`/`failed`) and
+ * leaves a pending, human-unreviewed `restaurant_copy` row. There is no
+ * function this file calls, and no flag it accepts, that can turn that into
+ * a live public recommendation: only `publishRestaurantPickRun`, called
+ * separately by an authenticated moderator action after
+ * `approveRestaurantCopy`, can do that. As defense in depth, this CLI also
+ * refuses outright when NODE_ENV=production, since a fake-adapter run has no
+ * legitimate reason to execute against a production database at all.
  *
  * Fixtures file shape (keyed by provider place ID, matching
  * place_provider_reference.provider_place_id):
@@ -93,6 +103,10 @@ async function loadFixtures(path: string | undefined) {
 }
 
 async function main() {
+  if (process.env.NODE_ENV === "production")
+    throw new Error(
+      "Refusing to run the fake-adapter CLI with NODE_ENV=production. This command has no path to real adapters or to publication; it should not run against a production database at all.",
+    );
   const { citySlug, date, fixturesPath } = parseArgs(process.argv.slice(2));
   const area = await loadRestaurantArea(pool, citySlug);
   if (!area) throw new Error(`Unknown restaurant discovery area: ${citySlug}`);
@@ -104,13 +118,13 @@ async function main() {
   const qualification = createFakeQualificationAdapter(fixtures);
   const copy = createFakeCopyAdapter();
   const targetDate = date ?? localDate(new Date(), area.timezone);
-  const result = await runRestaurantPick(area, targetDate, {
+  const result = await prepareRestaurantPickRun(area, targetDate, {
     qualification,
     copy,
   });
   console.log(
     JSON.stringify({
-      event: "restaurant_pick_run",
+      event: "restaurant_pick_prepare",
       citySlug,
       date: targetDate,
       fixturesPath: fixturesPath ?? null,
