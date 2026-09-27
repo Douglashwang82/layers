@@ -16,7 +16,7 @@ export default async function SubmitPage({
   searchParams,
 }: {
   params: Promise<{ kind: string }>;
-  searchParams: Promise<{ product?: string }>;
+  searchParams: Promise<{ product?: string; name?: string }>;
 }) {
   const { kind } = await params;
   if (
@@ -27,15 +27,19 @@ export default async function SubmitPage({
   )
     notFound();
   const query = await searchParams;
-  if (!(await currentActor()))
+  // Prefill only: the form still validates the submitted name.
+  const initialName =
+    typeof query.name === "string" ? query.name.trim().slice(0, 120) : "";
+  if (!(await currentActor())) {
+    const next = new URLSearchParams();
+    if (query.product) next.set("product", query.product);
+    if (initialName) next.set("name", initialName);
+    const search = next.toString();
     redirect(
       "/sign-in?next=" +
-        encodeURIComponent(
-          "/submit/" +
-            kind +
-            (query.product ? "?product=" + query.product : ""),
-        ),
+        encodeURIComponent("/submit/" + kind + (search ? "?" + search : "")),
     );
+  }
   if (kind === "content") {
     const [t, { city }] = await Promise.all([getCopy(), getActiveCity()]);
     const [places, events] = await Promise.all([
@@ -79,6 +83,7 @@ export default async function SubmitPage({
           products={products.items}
           stores={stores.items}
           productId={query.product}
+          initialName={initialName}
         />
       </div>
     </div>

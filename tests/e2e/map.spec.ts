@@ -170,6 +170,13 @@ test("sign-in return keeps the selected item; personal layer creation, add, appl
   await expect(
     page.locator(".editor-results .result-row", { hasText: noodleHouse }),
   ).toContainText("Added");
+  // A search with no catalog match explains itself and offers a prefilled suggestion.
+  await page.getByRole("searchbox", { name: "Search" }).fill("Zzyzx Tea Lab");
+  await page.getByRole("button", { name: "Search", exact: true }).click();
+  await expect(page.getByText("No results for “Zzyzx Tea Lab”.")).toBeVisible();
+  await expect(
+    page.getByRole("link", { name: "Suggest “Zzyzx Tea Lab” as a new place" }),
+  ).toHaveAttribute("href", "/submit/place?name=Zzyzx%20Tea%20Lab");
   await page.getByRole("button", { name: "Done" }).click();
   await expect(page).toHaveURL(/\/layers\/weekend-plan-[a-z0-9-]+$/);
   await expect(

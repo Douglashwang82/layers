@@ -24,6 +24,7 @@ export function SubmissionForm({
   products,
   stores,
   productId,
+  initialName = "",
 }: {
   kind: "place" | "event" | "product-sighting";
   t: Copy;
@@ -32,6 +33,7 @@ export function SubmissionForm({
   products: Option[];
   stores: Option[];
   productId?: string;
+  initialName?: string;
 }) {
   const [feedback, setFeedback] = useState<{
     tone: "success" | "error";
@@ -48,6 +50,7 @@ export function SubmissionForm({
     defaultValues: {
       cityId: cities[0]?.id,
       productId,
+      name: initialName,
       observedAt: new Date().toISOString().slice(0, 10),
       latitude: "29.7604",
       longitude: "-95.3698",

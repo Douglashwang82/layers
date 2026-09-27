@@ -51,6 +51,7 @@ export default async function EditLayerPage({
           timezone: layer.timezone,
         }}
         groups={[]}
+        canSuggestPlace={flags.submissions}
         t={t}
         locale={locale}
       />

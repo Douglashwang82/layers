@@ -191,6 +191,9 @@ export const en = {
   noResults: "No results for “{q}”.",
   noResultsBody:
     "Check the spelling or try a broader term in English or Chinese.",
+  suggestPlaceNamed: "Suggest “{q}” as a new place",
+  suggestPlaceBody:
+    "Suggested places can be added here once a moderator approves them.",
   noPlacesBody:
     "No places match these filters. Clear a filter or try another neighborhood.",
   noEventsBody:
@@ -845,6 +848,8 @@ export const zh: Copy = {
   pagination: "分頁",
   noResults: "找不到「{q}」的結果。",
   noResultsBody: "請確認拼字，或試試更廣泛的中英文關鍵字。",
+  suggestPlaceNamed: "推薦「{q}」為新地點",
+  suggestPlaceBody: "推薦的地點經管理員審核通過後，就能加入這裡。",
   noPlacesBody: "沒有符合的店家，請清除篩選或換個地區。",
   noEventsBody: "目前沒有符合的活動，試試「即將舉行」或其他日期。",
   eventCancelled: "活動已取消。",

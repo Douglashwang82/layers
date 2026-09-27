@@ -51,6 +51,7 @@ export function LayerEditor({
   addKey,
   next,
   groupId,
+  canSuggestPlace = false,
 }: {
   mode: "create" | "edit";
   layer?: LayerRecord;
@@ -62,6 +63,8 @@ export function LayerEditor({
   addKey?: string;
   next?: string;
   groupId?: string;
+  /** Place submissions are enabled: offer "suggest a place" when search finds nothing. */
+  canSuggestPlace?: boolean;
 }) {
   const router = useRouter();
   const [draft, setDraft] = useState<Draft>(
@@ -77,6 +80,8 @@ export function LayerEditor({
   const [pendingKey, setPendingKey] = useState<string | null>(null);
   const [query, setQuery] = useState("");
   const [results, setResults] = useState<MapItem[]>([]);
+  /** The query the current results belong to; null before the first search. */
+  const [searched, setSearched] = useState<string | null>(null);
   const [searching, setSearching] = useState(false);
   const searchSeq = useRef(0);
   const update = (patch: Partial<Draft>) => {
@@ -255,6 +260,7 @@ export function LayerEditor({
       if (id !== searchSeq.current) return;
       if (json.error) throw new Error(json.error.message);
       setResults((json.data as { items: MapItem[] }).items.slice(0, 30));
+      setSearched(q);
     } catch (err) {
       setItemFeedback({ tone: "error", text: (err as Error).message });
     } finally {
@@ -545,6 +551,25 @@ export function LayerEditor({
               {t.search}
             </button>
           </form>
+          {searched !== null && results.length === 0 && !searching && (
+            <div className="empty editor-no-results" role="status">
+              <p>{format(t.noResults, { q: searched })}</p>
+              {canSuggestPlace ? (
+                <>
+                  <p className="fine-print">{t.suggestPlaceBody}</p>
+                  <Link
+                    className="button secondary small"
+                    href={`/submit/place?name=${encodeURIComponent(searched)}`}
+                  >
+                    <Plus size={14} aria-hidden="true" />
+                    {format(t.suggestPlaceNamed, { q: searched })}
+                  </Link>
+                </>
+              ) : (
+                <p className="fine-print">{t.noResultsBody}</p>
+              )}
+            </div>
+          )}
           {results.length > 0 && (
             <ul className="layer-contents editor-results">
               {results.map((item) => (
