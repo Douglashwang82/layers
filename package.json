@@ -22,6 +22,7 @@
     "membership:backfill-legacy": "tsx packages/database/src/membership-legacy-backfill.ts",
     "mail:worker": "tsx packages/database/src/mail-worker.ts",
     "daily-pick:generate": "tsx packages/database/src/daily-pick-cli.ts",
+    "daily-pick:restaurant:worker": "tsx packages/database/src/daily-pick-restaurant-cli.ts",
     "ingest": "tsx packages/database/src/ingestion-cli.ts",
     "db:sync-demo-flags": "tsx packages/database/src/sync-demo-flags.ts",
     "agent:run": "tsx packages/database/src/feed-agent.ts"

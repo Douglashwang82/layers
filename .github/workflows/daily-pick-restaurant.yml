@@ -1,0 +1,82 @@
+name: Daily restaurant recommendation (version 2)
+# Scaffolding for the daily restaurant pipeline
+# (docs/plans/daily-restaurant-recommendation-implementation-plan.md, Phase
+# 6). Structurally disabled the same way as mail-outbox.yml, with the same
+# two explicit gates:
+# 1. Repository variable RESTAURANT_WORKER_ENVIRONMENTS: a JSON array of
+#    GitHub environment names, e.g. ["staging"]. Unset = the job never starts.
+# 2. Environment variable RESTAURANT_WORKER_ENABLED=true in each listed
+#    environment.
+#
+# IMPORTANT: `pnpm daily-pick:restaurant:worker` currently only supports the
+# deterministic fake discovery/qualification/copy adapters (see
+# packages/database/src/restaurant-providers.ts and
+# daily-pick-restaurant-cli.ts) — there is no code path from this workflow to
+# the real Google Places or Anthropic adapters yet. Do not enable this
+# workflow against any real database: it would publish fabricated content as
+# a live public recommendation. Enabling it is authorized only after (a) the
+# Phase 0 provider/retention ADR is approved, (b) the CLI/worker is wired to
+# the real adapters behind an explicit flag, and (c) the target
+# restaurant_discovery_area row is deliberately set to enabled=true.
+on:
+  schedule:
+    - cron: "15 6 * * *"
+    - cron: "15 12 * * *"
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: GitHub environment to run against
+        required: true
+        type: string
+      citySlug:
+        description: City slug to run the pipeline for
+        required: true
+        type: string
+permissions:
+  contents: read
+jobs:
+  dispatch:
+    if: >-
+      (github.event_name == 'schedule' && vars.RESTAURANT_WORKER_ENVIRONMENTS != '') ||
+      github.event_name == 'workflow_dispatch'
+    strategy:
+      fail-fast: false
+      matrix:
+        environment: ${{ fromJSON(github.event_name == 'workflow_dispatch' && format('["{0}"]', inputs.environment) || vars.RESTAURANT_WORKER_ENVIRONMENTS || '[]') }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    environment: ${{ matrix.environment }}
+    concurrency:
+      group: taiwanhub-daily-pick-restaurant-${{ matrix.environment }}
+      cancel-in-progress: false
+    steps:
+      - name: Require explicit enablement
+        id: gate
+        env:
+          RESTAURANT_WORKER_ENABLED: ${{ vars.RESTAURANT_WORKER_ENABLED }}
+        run: |
+          if [ "$RESTAURANT_WORKER_ENABLED" = "true" ]; then
+            echo "enabled=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "RESTAURANT_WORKER_ENABLED is not true for this environment; nothing to do."
+          fi
+      - if: steps.gate.outputs.enabled == 'true'
+        uses: actions/checkout@v4
+      - if: steps.gate.outputs.enabled == 'true'
+        uses: pnpm/action-setup@v4
+        with:
+          version: 10.15.0
+      - if: steps.gate.outputs.enabled == 'true'
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+      - if: steps.gate.outputs.enabled == 'true'
+        run: pnpm install --frozen-lockfile
+      - name: Run the restaurant pick worker (fake adapters only)
+        if: steps.gate.outputs.enabled == 'true'
+        env:
+          NODE_ENV: production
+          DATABASE_URL: ${{ secrets.RESTAURANT_WORKER_DATABASE_URL }}
+          FEATURE_RESTAURANT_DISCOVERY_WORKER: ${{ vars.FEATURE_RESTAURANT_DISCOVERY_WORKER }}
+        run: pnpm daily-pick:restaurant:worker "${{ inputs.citySlug || vars.RESTAURANT_WORKER_CITY_SLUG }}"
