@@ -21,6 +21,16 @@ export const flags = {
   layerCustomPlaces: process.env.FEATURE_LAYER_CUSTOM_PLACES === "true",
   /** Presentation-only map selection effects. */
   mapEffects: process.env.FEATURE_MAP_EFFECTS === "true",
+  /* Daily restaurant recommendation, version 2
+     (docs/plans/daily-restaurant-recommendation-implementation-plan.md).
+     All off unless explicitly enabled; each requires the Phase 0 provider/
+     retention ADR and a per-area `restaurant_discovery_area.enabled` row
+     before any live run, regardless of these flags. */
+  /** Runs the discovery/qualification worker at all (still per-area gated). */
+  restaurantDiscoveryWorker:
+    process.env.FEATURE_RESTAURANT_DISCOVERY_WORKER === "true",
+  /** Publishes a run's winner automatically instead of requiring moderator publish. */
+  restaurantAutoPublish: process.env.FEATURE_RESTAURANT_AUTO_PUBLISH === "true",
 };
 export const appUrl =
   process.env.NEXT_PUBLIC_APP_URL ?? "http://localhost:3000";

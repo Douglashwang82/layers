@@ -77,7 +77,29 @@ export async function listExternalReferences(
       for (const row of saves.rows) add({ ...row, slug: layer.slug });
       continue;
     }
-    if (layer.ownerKind === "system") continue;
+    if (layer.ownerKind === "system") {
+      // Every other system layer (today/weekend/food/community/daily_pick's
+      // own catalog rendering) is rule-derived from the public catalog and
+      // never carries external-subject layer_item rows. Discover and Daily
+      // Pick are the two exceptions: a published version 2 external winner
+      // is attached as an ordinary layer_item so it is included here, but
+      // only ever as public, reviewed, currently-valid content — never a
+      // moderator-only or future-reservation view, since `member` is
+      // unconditionally false for a system layer.
+      if (layer.rule?.kind !== "discover" && layer.rule?.kind !== "daily_pick")
+        continue;
+      const rows = await pool.query(
+        `SELECT s.id AS subject_id,${provider},i.note,s.city_review_status
+         FROM layer_item i JOIN place_subject s ON s.id=i.subject_id
+         WHERE i.layer_id=$1 AND s.status='active' AND s.catalog_place_id IS NULL
+           AND s.city_review_status='approved'
+           AND (i.valid_from IS NULL OR i.valid_from <= $2) AND (i.valid_until IS NULL OR i.valid_until > $2)
+         ORDER BY i.position, i.id`,
+        [layer.id, now],
+      );
+      for (const row of rows.rows) add({ ...row, slug: layer.slug });
+      continue;
+    }
     // Public viewers see only city-reviewed external places; owners and members see their own curation.
     const member = access.role !== "public";
     const rows = await pool.query(
