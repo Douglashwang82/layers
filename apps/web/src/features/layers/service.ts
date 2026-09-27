@@ -57,7 +57,7 @@ export function slugify(title: string, id: string) {
     .slice(0, 48);
   return `${base || "layer"}-${id.slice(0, 8)}`;
 }
-function notProjected(found: LayerWithAccess) {
+export function notProjected(found: LayerWithAccess) {
   if (found.layer.ownerKind === "system" || found.layer.slug === mySavesSlug)
     throw new AppError(
       403,
@@ -222,9 +222,11 @@ export async function addLayerItem(
   const found = await requireEditableLayer(id, a);
   notProjected(found);
   return transaction(async (tx) => {
-    let target: { column: string; id: string; external: boolean };
+    let target: LayerItemTarget;
     if (ref.type === "subject")
       target = await subjectTarget(tx, a, found, ref.id, input.selectionGrant);
+    else if (ref.type === "custom")
+      target = await customPlaceTarget(tx, found, ref.id);
     else {
       const table =
         ref.type === "place"
@@ -248,23 +250,12 @@ export async function addLayerItem(
         );
       target = { column: itemColumns[ref.type], id: ref.id, external: false };
     }
-    const result = await tx.query(
-      `INSERT INTO layer_item(layer_id,${target.column},note,position,added_by) VALUES($1,$2,$3,(SELECT COALESCE(max(position),-1)+1 FROM layer_item WHERE layer_id=$1),$4) ON CONFLICT DO NOTHING`,
-      [found.layer.id, target.id, input.note, a.id],
-    );
-    const added = (result.rowCount ?? 0) > 0;
-    if (added) {
-      await tx.query(
-        "UPDATE layer SET updated_by=$2,updated_at=now() WHERE id=$1",
-        [found.layer.id, a.id],
-      );
-      // A reviewed public layer never publishes an unchecked external place.
-      if (target.external) await requirePublicationReview(tx, found, a.id);
+    const added = await attachLayerItem(tx, a.id, found, target, input.note);
+    if (added)
       await record(tx, a.id, "layer_item_added", {
         layerId: found.layer.id,
         type: ref.type,
       });
-    }
     const key = target.column === "place_id" ? `place:${target.id}` : input.key;
     return { added, key };
   });
@@ -275,7 +266,77 @@ const itemColumns = {
   event: "event_id",
   content: "content_id",
   subject: "subject_id",
+  custom: "custom_place_id",
 } as const;
+export type LayerItemTarget = {
+  column: (typeof itemColumns)[keyof typeof itemColumns];
+  id: string;
+  /** Not moderated on its own: adding it to a reviewed public layer re-queues review. */
+  external: boolean;
+};
+/**
+ * Appends an already-authorized target to the layer inside the caller's
+ * transaction. Idempotent; returns whether a row was added.
+ */
+export async function attachLayerItem(
+  tx: PoolClient,
+  actorId: string,
+  found: LayerWithAccess,
+  target: LayerItemTarget,
+  note: string,
+) {
+  const result = await tx.query(
+    `INSERT INTO layer_item(layer_id,${target.column},note,position,added_by) VALUES($1,$2,$3,(SELECT COALESCE(max(position),-1)+1 FROM layer_item WHERE layer_id=$1),$4) ON CONFLICT DO NOTHING`,
+    [found.layer.id, target.id, note, actorId],
+  );
+  const added = (result.rowCount ?? 0) > 0;
+  if (added) {
+    await tx.query(
+      "UPDATE layer SET updated_by=$2,updated_at=now() WHERE id=$1",
+      [found.layer.id, actorId],
+    );
+    // A reviewed public layer never publishes an unchecked external place.
+    if (target.external)
+      await requirePublicationReview(tx, found.layer.id, actorId);
+  }
+  return added;
+}
+/**
+ * Custom places join only layers owned by the same user or group, in the same
+ * city, while active. This keeps a private place out of every other scope.
+ */
+async function customPlaceTarget(
+  tx: PoolClient,
+  found: LayerWithAccess,
+  placeId: string,
+): Promise<LayerItemTarget> {
+  if (!flags.layerCustomPlaces)
+    throw new AppError(404, "DISABLED", "Adding this place is unavailable.");
+  const row = await tx.query<{
+    owner_user_id: string | null;
+    owner_group_id: string | null;
+    city_id: string;
+  }>(
+    "SELECT owner_user_id,owner_group_id,city_id FROM custom_place WHERE id=$1 AND status='active' FOR SHARE",
+    [placeId],
+  );
+  const place = row.rows[0];
+  const sameScope =
+    !!place &&
+    (found.layer.ownerKind === "user"
+      ? place.owner_user_id === found.layer.ownerUserId
+      : found.layer.ownerKind === "group" &&
+        place.owner_group_id === found.layer.ownerGroupId);
+  if (!sameScope)
+    throw new AppError(404, "NOT_FOUND", "This item is unavailable.");
+  if (place.city_id !== found.layer.cityId)
+    throw new AppError(
+      400,
+      "CITY_MISMATCH",
+      "This layer belongs to a different city.",
+    );
+  return { column: "custom_place_id", id: placeId, external: true };
+}
 /**
  * External places join a layer only when active, visible to the actor (or just
  * resolved under a selection grant) and curated into the layer's city. A
@@ -287,7 +348,7 @@ async function subjectTarget(
   found: LayerWithAccess,
   subjectId: string,
   selectionGrant: string | undefined,
-) {
+): Promise<LayerItemTarget> {
   const subject = await requireActionableSubject(
     tx,
     actor,
@@ -331,14 +392,15 @@ async function subjectTarget(
     );
   return { column: "subject_id", id: subject.id, external: true };
 }
-async function requirePublicationReview(
+/** Sends an approved public layer back to moderation after unreviewed content changes. */
+export async function requirePublicationReview(
   tx: PoolClient,
-  found: LayerWithAccess,
+  layerId: string,
   actorId: string,
 ) {
   const layer = await tx.query<{ review_status: string; audience: string }>(
     "SELECT review_status,audience FROM layer WHERE id=$1 FOR UPDATE",
-    [found.layer.id],
+    [layerId],
   );
   if (
     layer.rows[0]?.audience !== "public" ||
@@ -346,11 +408,11 @@ async function requirePublicationReview(
   )
     return;
   await tx.query("UPDATE layer SET review_status='pending' WHERE id=$1", [
-    found.layer.id,
+    layerId,
   ]);
   await tx.query(
     "INSERT INTO submission(user_id,entity_type,entity_id) VALUES($1,'layers',$2)",
-    [actorId, found.layer.id],
+    [actorId, layerId],
   );
 }
 export async function removeLayerItem(

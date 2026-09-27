@@ -691,6 +691,68 @@ export const layer = pgTable(
     ),
   ],
 );
+/* ---------------------------------------------------------------------------
+   Custom places: member-created places owned by a user or a group, visible only
+   through that owner's layers. Never part of the public catalog.
+   See docs/plans/layer-scoped-places-design.md.
+   --------------------------------------------------------------------------- */
+export const customPlace = pgTable(
+  "custom_place",
+  {
+    id: id(),
+    ownerUserId: uuid("owner_user_id").references(() => user.id, {
+      onDelete: "cascade",
+    }),
+    ownerGroupId: uuid("owner_group_id").references(() => group.id, {
+      onDelete: "cascade",
+    }),
+    cityId: uuid("city_id")
+      .notNull()
+      .references(() => city.id),
+    name: text("name").notNull(),
+    nameChinese: text("name_chinese").default("").notNull(),
+    address: text("address").default("").notNull(),
+    /** exact = geocoded address; approximate = member-dropped pin; unspecified = list only. */
+    locationStatus: text("location_status", {
+      enum: ["exact", "approximate", "unspecified"],
+    })
+      .default("unspecified")
+      .notNull(),
+    latitude: doublePrecision("latitude"),
+    longitude: doublePrecision("longitude"),
+    location: geometry("location", { type: "point", mode: "xy", srid: 4326 }),
+    categoryId: uuid("category_id").references(() => placeCategory.id),
+    website: text("website").default("").notNull(),
+    note: text("note").default("").notNull(),
+    /** Set when an opt-in suggestion is approved into the catalog; used for dedupe. */
+    catalogPlaceId: uuid("catalog_place_id").references(() => place.id, {
+      onDelete: "set null",
+    }),
+    status: text("status", { enum: ["active", "hidden", "deleted"] })
+      .default("active")
+      .notNull(),
+    createdBy: uuid("created_by").references(() => user.id, {
+      onDelete: "set null",
+    }),
+    ...timestamps(),
+  },
+  (t) => [
+    index("custom_place_owner_user_idx").on(t.ownerUserId),
+    index("custom_place_owner_group_idx").on(t.ownerGroupId),
+    check(
+      "custom_place_one_owner",
+      sql`num_nonnulls(${t.ownerUserId}, ${t.ownerGroupId}) = 1`,
+    ),
+    check(
+      "custom_place_location_check",
+      sql`(${t.locationStatus} = 'unspecified') = (${t.latitude} IS NULL AND ${t.longitude} IS NULL) AND num_nonnulls(${t.latitude}, ${t.longitude}) <> 1`,
+    ),
+    check(
+      "custom_place_status_check",
+      sql`${t.status} IN ('active', 'hidden', 'deleted')`,
+    ),
+  ],
+);
 export const layerItem = pgTable(
   "layer_item",
   {
@@ -709,6 +771,10 @@ export const layerItem = pgTable(
     }),
     /** External (provider-referenced) place; subjects are soft-deleted, never cascaded. */
     subjectId: uuid("subject_id").references(() => placeSubject.id),
+    /** Member-created place scoped to the layer's owner; soft-deleted in normal use. */
+    customPlaceId: uuid("custom_place_id").references(() => customPlace.id, {
+      onDelete: "cascade",
+    }),
     note: text("note").default("").notNull(),
     position: integer("position").default(0).notNull(),
     validFrom: timestamp("valid_from", { withTimezone: true }),
@@ -733,9 +799,13 @@ export const layerItem = pgTable(
       .on(t.layerId, t.subjectId)
       .where(sql`${t.subjectId} IS NOT NULL`),
     index("layer_item_subject_idx").on(t.subjectId),
+    uniqueIndex("layer_item_custom_place_unique")
+      .on(t.layerId, t.customPlaceId)
+      .where(sql`${t.customPlaceId} IS NOT NULL`),
+    index("layer_item_custom_place_idx").on(t.customPlaceId),
     check(
       "layer_item_one_entity",
-      sql`num_nonnulls(${t.placeId}, ${t.eventId}, ${t.contentId}, ${t.subjectId}) = 1`,
+      sql`num_nonnulls(${t.placeId}, ${t.eventId}, ${t.contentId}, ${t.subjectId}, ${t.customPlaceId}) = 1`,
     ),
   ],
 );

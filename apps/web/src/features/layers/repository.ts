@@ -402,8 +402,9 @@ export async function listLayerItemRefs(layerId: string) {
     event_id: string | null;
     content_id: string | null;
     subject_id: string | null;
+    custom_place_id: string | null;
   }>(
-    "SELECT id,place_id,event_id,content_id,subject_id FROM layer_item WHERE layer_id=$1 ORDER BY position, created_at",
+    "SELECT id,place_id,event_id,content_id,subject_id,custom_place_id FROM layer_item WHERE layer_id=$1 ORDER BY position, created_at",
     [layerId],
   );
   return result.rows.map((r) => ({
@@ -414,7 +415,9 @@ export async function listLayerItemRefs(layerId: string) {
         ? `event:${r.event_id}`
         : r.subject_id
           ? `subject:${r.subject_id}`
-          : `content:${r.content_id}`,
+          : r.custom_place_id
+            ? `custom:${r.custom_place_id}`
+            : `content:${r.content_id}`,
   }));
 }
 export async function getMapPreference(userId?: string) {

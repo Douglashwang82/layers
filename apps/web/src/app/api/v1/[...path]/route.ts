@@ -98,6 +98,15 @@ import {
   handleAdminPlaceSubjectRoute,
   handlePlaceSubjectRoute,
 } from "@/features/place-subjects/router";
+import {
+  getVisibleCustomPlace,
+  listScopePlaces,
+} from "@/features/custom-places/repository";
+import {
+  createCustomPlaceInLayer,
+  deleteCustomPlace,
+  updateCustomPlace,
+} from "@/features/custom-places/service";
 export const dynamic = "force-dynamic";
 async function handler(
   request: NextRequest,
@@ -186,6 +195,14 @@ async function handler(
       const { city } = await getActiveCity(query.city);
       return ok(await listAdminDailyPicks(actor, city.slug));
     }
+    if (method === "GET" && resource === "custom-places" && id && !action) {
+      if (!flags.layerCustomPlaces)
+        throw new AppError(404, "DISABLED", "Feature unavailable.");
+      const place = await getVisibleCustomPlace(z.uuid().parse(id), actor);
+      if (!place)
+        throw new AppError(404, "NOT_FOUND", "This place is unavailable.");
+      return ok({ place });
+    }
     if (method === "GET" && resource === "layers") {
       const { city } = await getActiveCity(query.city);
       if (id) {
@@ -194,6 +211,15 @@ async function handler(
           throw new AppError(404, "NOT_FOUND", "This layer is unavailable.");
         if (action === "items")
           return ok({ items: await listLayerItemRefs(found.layer.id) });
+        if (action === "places") {
+          // The layer owner's custom places, for the editor; editors only.
+          if (!flags.layerCustomPlaces)
+            throw new AppError(404, "DISABLED", "Feature unavailable.");
+          if (!found.access.edit)
+            throw new AppError(403, "FORBIDDEN", "You cannot edit this layer.");
+          const q = z.string().trim().max(120).catch("").parse(query.q);
+          return ok({ places: await listScopePlaces(found.layer, q) });
+        }
         return ok(found);
       }
       const scope = z
@@ -460,6 +486,8 @@ async function handler(
           return ok(await addLayerItem(a, id, body), 201);
         if (id && action === "items" && method === "DELETE")
           return ok(await removeLayerItem(a, id, String(query.key ?? "")));
+        if (id && action === "places" && method === "POST")
+          return ok(await createCustomPlaceInLayer(a, id, body), 201);
         if (
           id &&
           action === "follow" &&
@@ -472,6 +500,12 @@ async function handler(
           (method === "POST" || method === "DELETE")
         )
           return ok(await publishLayer(a, id, method === "POST"));
+      }
+      if (resource === "custom-places" && id && !action) {
+        const placeId = z.uuid().parse(id);
+        if (method === "PATCH")
+          return ok(await updateCustomPlace(a, placeId, body));
+        if (method === "DELETE") return ok(await deleteCustomPlace(a, placeId));
       }
       if (resource === "reports" && method === "POST") {
         const v = z

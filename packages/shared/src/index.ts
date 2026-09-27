@@ -579,12 +579,13 @@ export const layerPatchInput = z.object({
 export type LayerPatchInput = z.infer<typeof layerPatchInput>;
 /**
  * Layer membership keys: visible item keys plus `subject:{uuid}` for external
- * places. Map items keep `itemKeyPattern`; only layer membership accepts subjects.
+ * places and `custom:{uuid}` for member-created places. Map items keep
+ * `itemKeyPattern`; only layer membership accepts subjects and custom places.
  */
 export const layerItemKeyPattern =
-  /^(place|event|content|subject):([0-9a-f-]{36})$/;
+  /^(place|event|content|subject|custom):([0-9a-f-]{36})$/;
 export type LayerItemRef = {
-  type: ItemType | "subject";
+  type: ItemType | "subject" | "custom";
   id: string;
 };
 export function parseLayerItemKey(
@@ -601,6 +602,44 @@ export const layerItemInput = z.object({
   /** Lets a member add a business they just resolved but cannot otherwise see yet. */
   selectionGrant: selectionGrantToken.optional(),
 });
+/**
+ * A member-created place in a private or group layer. Coordinates are only a
+ * member-dropped pin here (stored as approximate); geocoded addresses are set
+ * server-side. Latitude and longitude come together or not at all.
+ */
+const customPlaceFields = {
+  name: plainText(120),
+  nameChinese: z.string().trim().max(120).default(""),
+  address: z.string().trim().max(300).default(""),
+  pin: z
+    .object({
+      latitude: z.number().min(-90).max(90),
+      longitude: z.number().min(-180).max(180),
+    })
+    .nullable()
+    .optional(),
+  categoryId: z.uuid().nullable().optional(),
+  website: z.union([z.literal(""), z.url({ protocol: /^https$/ })]).default(""),
+  note: z.string().trim().max(300).default(""),
+};
+export const customPlaceInput = z.object(customPlaceFields);
+export type CustomPlaceInput = z.infer<typeof customPlaceInput>;
+export const customPlacePatchInput = z
+  .object({
+    name: customPlaceFields.name.optional(),
+    nameChinese: z.string().trim().max(120).optional(),
+    address: z.string().trim().max(300).optional(),
+    pin: customPlaceFields.pin,
+    categoryId: customPlaceFields.categoryId,
+    website: z
+      .union([z.literal(""), z.url({ protocol: /^https$/ })])
+      .optional(),
+    note: z.string().trim().max(300).optional(),
+  })
+  .refine((v) => Object.values(v).some((x) => x !== undefined), {
+    message: "Nothing to update.",
+  });
+export type CustomPlacePatchInput = z.infer<typeof customPlacePatchInput>;
 const httpsUrl = z.union([z.literal(""), z.url({ protocol: /^https?$/ })]);
 /**
  * General content v1: short text, optional image, optional source link and an

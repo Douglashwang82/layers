@@ -1,6 +1,6 @@
 # Layer-scoped places: add places freely to private and group layers
 
-Status: proposed design; not implemented. Decisions below were made by the product owner on 2026-09-27.
+Status: in progress. C0 (editor empty-search state) shipped; C1 (schema, access rules, API behind `FEATURE_LAYER_CUSTOM_PLACES`, migration 0015) implemented and tested locally. Decisions below were made by the product owner on 2026-09-27.
 
 ## Problem
 

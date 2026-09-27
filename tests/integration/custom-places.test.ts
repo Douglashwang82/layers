@@ -1,0 +1,293 @@
+import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import { pool } from "../../packages/database/src";
+import {
+  createCustomPlaceInLayer,
+  deleteCustomPlace,
+  updateCustomPlace,
+} from "../../apps/web/src/features/custom-places/service";
+import {
+  getVisibleCustomPlace,
+  listScopePlaces,
+} from "../../apps/web/src/features/custom-places/repository";
+import {
+  addLayerItem,
+  createLayer,
+  publishLayer,
+} from "../../apps/web/src/features/layers/service";
+import {
+  getLayer,
+  listLayerItemRefs,
+} from "../../apps/web/src/features/layers/repository";
+import { createGroup } from "../../apps/web/src/features/groups/service";
+import { flags } from "../../apps/web/src/lib/config";
+import type { Actor } from "../../packages/shared/src";
+/*
+ * Custom places (docs/plans/layer-scoped-places-design.md, C1): created freely
+ * by editors of private and group layers, readable only by the owner scope and
+ * by viewers of a layer that contains them, and never crossing scopes.
+ */
+const alice: Actor = { id: crypto.randomUUID(), role: "USER" },
+  bob: Actor = { id: crypto.randomUUID(), role: "USER" },
+  editor: Actor = { id: crypto.randomUUID(), role: "USER" },
+  viewer: Actor = { id: crypto.randomUUID(), role: "USER" };
+const users = [alice, bob, editor, viewer];
+const pin = { latitude: 29.705, longitude: -95.55 };
+let groupId: string;
+let alicePrivate: string;
+let aliceSecond: string;
+let bobPrivate: string;
+let groupLayer: string;
+async function layerFor(actor: Actor, title: string, group?: string) {
+  const created = await createLayer(actor, {
+    title,
+    city: "houston",
+    ...(group ? { audience: "group", groupId: group } : {}),
+  });
+  return created.layer.id;
+}
+async function reviewStatus(layerId: string) {
+  const result = await pool.query<{ review_status: string }>(
+    "SELECT review_status FROM layer WHERE id=$1",
+    [layerId],
+  );
+  return result.rows[0].review_status;
+}
+beforeAll(async () => {
+  for (const actor of users)
+    await pool.query(
+      'INSERT INTO "user"(id,name,email,email_verified,role) VALUES($1,$2,$3,true,$4)',
+      [
+        actor.id,
+        "Custom Place Test",
+        `${actor.id}@custom-places-test.example`,
+        actor.role,
+      ],
+    );
+  flags.layerWrites = true;
+  flags.layerCustomPlaces = true;
+  const group = await createGroup(alice, {
+    name: "Custom Place Circle",
+    city: "houston",
+  });
+  groupId = group.group.id;
+  await pool.query(
+    "INSERT INTO group_member(group_id,user_id,role) VALUES($1,$2,'editor'),($1,$3,'viewer')",
+    [groupId, editor.id, viewer.id],
+  );
+  alicePrivate = await layerFor(alice, "Alice private list");
+  aliceSecond = await layerFor(alice, "Alice second list");
+  bobPrivate = await layerFor(bob, "Bob private list");
+  groupLayer = await layerFor(alice, "Circle list", groupId);
+});
+afterAll(async () => {
+  const ids = users.map((u) => u.id);
+  await pool.query("DELETE FROM submission WHERE user_id=ANY($1::uuid[])", [
+    ids,
+  ]);
+  await pool.query(
+    "DELETE FROM layer WHERE created_by=ANY($1::uuid[]) OR owner_user_id=ANY($1::uuid[]) OR owner_group_id=$2",
+    [ids, groupId],
+  );
+  await pool.query(
+    "DELETE FROM custom_place WHERE owner_user_id=ANY($1::uuid[]) OR owner_group_id=$2",
+    [ids, groupId],
+  );
+  await pool.query('DELETE FROM "group" WHERE id=$1', [groupId]);
+  await pool.query(
+    "DELETE FROM analytics_event WHERE user_id=ANY($1::uuid[])",
+    [ids],
+  );
+  await pool.query('DELETE FROM "user" WHERE id=ANY($1::uuid[])', [ids]);
+  await pool.end();
+});
+describe("custom places in private layers", () => {
+  let placeId: string;
+  it("creates a place with a dropped pin and adds it to the layer", async () => {
+    const created = await createCustomPlaceInLayer(alice, alicePrivate, {
+      name: "Grandma's dumpling spot",
+      address: "Bellaire Blvd",
+      pin,
+      website: "https://example.test/menu",
+    });
+    placeId = created.place.id;
+    expect(created.key).toBe(`custom:${placeId}`);
+    expect(created.place).toMatchObject({
+      ownerKind: "user",
+      locationStatus: "approximate",
+      latitude: pin.latitude,
+      longitude: pin.longitude,
+    });
+    const refs = await listLayerItemRefs(alicePrivate);
+    expect(refs.map((r) => r.key)).toContain(`custom:${placeId}`);
+    const geometry = await pool.query<{ lng: number; lat: number }>(
+      "SELECT ST_X(location) AS lng, ST_Y(location) AS lat FROM custom_place WHERE id=$1",
+      [placeId],
+    );
+    expect(geometry.rows[0]).toEqual({
+      lng: pin.longitude,
+      lat: pin.latitude,
+    });
+  });
+  it("saves without a pin as list-only", async () => {
+    const created = await createCustomPlaceInLayer(alice, alicePrivate, {
+      name: "Night market pop-up",
+    });
+    expect(created.place).toMatchObject({
+      locationStatus: "unspecified",
+      latitude: null,
+      longitude: null,
+    });
+  });
+  it("is visible to its owner only", async () => {
+    expect((await getVisibleCustomPlace(placeId, alice))?.id).toBe(placeId);
+    expect(await getVisibleCustomPlace(placeId, bob)).toBeNull();
+    expect(await getVisibleCustomPlace(placeId, null)).toBeNull();
+  });
+  it("can be reused in the owner's other layers and found by search", async () => {
+    const added = await addLayerItem(alice, aliceSecond, {
+      key: `custom:${placeId}`,
+    });
+    expect(added).toEqual({ added: true, key: `custom:${placeId}` });
+    const layer = (await getLayer(aliceSecond, alice))!.layer;
+    const found = await listScopePlaces(layer, "dumpling");
+    expect(found.map((p) => p.id)).toEqual([placeId]);
+    expect(await listScopePlaces(layer, "100%_match")).toEqual([]);
+  });
+  it("never enters another user's layer or a group layer", async () => {
+    await expect(
+      addLayerItem(bob, bobPrivate, { key: `custom:${placeId}` }),
+    ).rejects.toMatchObject({ status: 404 });
+    await expect(
+      addLayerItem(alice, groupLayer, { key: `custom:${placeId}` }),
+    ).rejects.toMatchObject({ status: 404 });
+  });
+  it("cannot be edited or deleted by someone else", async () => {
+    await expect(
+      updateCustomPlace(bob, placeId, { name: "Mine now" }),
+    ).rejects.toMatchObject({ status: 404 });
+    await expect(deleteCustomPlace(bob, placeId)).rejects.toMatchObject({
+      status: 404,
+    });
+  });
+  it("updates fields and clears the pin", async () => {
+    const updated = await updateCustomPlace(alice, placeId, {
+      nameChinese: "阿嬤水餃",
+      pin: null,
+    });
+    expect(updated.place).toMatchObject({
+      name: "Grandma's dumpling spot",
+      nameChinese: "阿嬤水餃",
+      locationStatus: "unspecified",
+      latitude: null,
+    });
+  });
+  it("rejects invalid input", async () => {
+    await expect(
+      createCustomPlaceInLayer(alice, alicePrivate, { name: "" }),
+    ).rejects.toThrow();
+    await expect(
+      createCustomPlaceInLayer(alice, alicePrivate, {
+        name: "Plain http",
+        website: "http://example.test",
+      }),
+    ).rejects.toThrow();
+    await expect(
+      createCustomPlaceInLayer(alice, alicePrivate, {
+        name: "Half pin",
+        pin: { latitude: 29.7 },
+      }),
+    ).rejects.toThrow();
+  });
+  it("soft-deletes and leaves every layer", async () => {
+    await deleteCustomPlace(alice, placeId);
+    const keys = [
+      ...(await listLayerItemRefs(alicePrivate)),
+      ...(await listLayerItemRefs(aliceSecond)),
+    ].map((r) => r.key);
+    expect(keys).not.toContain(`custom:${placeId}`);
+    expect(await getVisibleCustomPlace(placeId, alice)).toBeNull();
+    await expect(
+      addLayerItem(alice, alicePrivate, { key: `custom:${placeId}` }),
+    ).rejects.toMatchObject({ status: 404 });
+  });
+});
+describe("custom places in group layers", () => {
+  let placeId: string;
+  it("lets a group editor create a group-owned place", async () => {
+    const created = await createCustomPlaceInLayer(editor, groupLayer, {
+      name: "Circle picnic corner",
+      pin,
+    });
+    placeId = created.place.id;
+    expect(created.place.ownerKind).toBe("group");
+  });
+  it("keeps viewers read-only and outsiders out", async () => {
+    await expect(
+      createCustomPlaceInLayer(viewer, groupLayer, { name: "Viewer spot" }),
+    ).rejects.toMatchObject({ status: 403 });
+    await expect(
+      updateCustomPlace(viewer, placeId, { name: "Renamed" }),
+    ).rejects.toMatchObject({ status: 403 });
+    expect((await getVisibleCustomPlace(placeId, viewer))?.id).toBe(placeId);
+    expect(await getVisibleCustomPlace(placeId, bob)).toBeNull();
+    expect(await getVisibleCustomPlace(placeId, null)).toBeNull();
+  });
+  it("never enters a member's personal layer", async () => {
+    await expect(
+      addLayerItem(alice, alicePrivate, { key: `custom:${placeId}` }),
+    ).rejects.toMatchObject({ status: 404 });
+  });
+  it("lets the group owner edit it", async () => {
+    const updated = await updateCustomPlace(alice, placeId, {
+      note: "Bring a mat",
+    });
+    expect(updated.place.note).toBe("Bring a mat");
+  });
+});
+describe("custom places and public layers", () => {
+  it("stay hidden while a published layer awaits review", async () => {
+    const layerId = await layerFor(alice, "Alice going public");
+    const { place } = await createCustomPlaceInLayer(alice, layerId, {
+      name: "Hidden gem bakery",
+      pin,
+    });
+    await publishLayer(alice, layerId, true);
+    expect(await reviewStatus(layerId)).toBe("pending");
+    expect(await getVisibleCustomPlace(place.id, null)).toBeNull();
+    // A moderator's approval makes the layer, and so the place, public.
+    await pool.query(
+      "UPDATE layer SET review_status='approved', lifecycle='active' WHERE id=$1",
+      [layerId],
+    );
+    expect((await getVisibleCustomPlace(place.id, null))?.id).toBe(place.id);
+    expect((await getVisibleCustomPlace(place.id, bob))?.id).toBe(place.id);
+  });
+  it("re-queue an approved public layer's review when added or edited", async () => {
+    const layerId = await layerFor(alice, "Alice approved public");
+    await pool.query(
+      "UPDATE layer SET audience='public', review_status='approved', lifecycle='active' WHERE id=$1",
+      [layerId],
+    );
+    const { place } = await createCustomPlaceInLayer(alice, layerId, {
+      name: "New tea stand",
+    });
+    expect(await reviewStatus(layerId)).toBe("pending");
+    await pool.query("UPDATE layer SET review_status='approved' WHERE id=$1", [
+      layerId,
+    ]);
+    await updateCustomPlace(alice, place.id, { name: "Renamed tea stand" });
+    expect(await reviewStatus(layerId)).toBe("pending");
+  });
+});
+describe("feature flag", () => {
+  it("refuses custom place writes when disabled", async () => {
+    flags.layerCustomPlaces = false;
+    try {
+      await expect(
+        createCustomPlaceInLayer(alice, alicePrivate, { name: "Off" }),
+      ).rejects.toMatchObject({ status: 404, code: "DISABLED" });
+    } finally {
+      flags.layerCustomPlaces = true;
+    }
+  });
+});

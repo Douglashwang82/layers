@@ -17,6 +17,8 @@ export const flags = {
   /** New external-place saves and layer writes. */
   externalPlaceCollections:
     process.env.FEATURE_EXTERNAL_PLACE_COLLECTIONS === "true",
+  /** Member-created places in private/group layers (docs/plans/layer-scoped-places-design.md). */
+  layerCustomPlaces: process.env.FEATURE_LAYER_CUSTOM_PLACES === "true",
   /** Presentation-only map selection effects. */
   mapEffects: process.env.FEATURE_MAP_EFFECTS === "true",
 };
