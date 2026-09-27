@@ -56,6 +56,7 @@ export default defineConfig({
       FEATURE_GOOGLE_PLACES_DISCOVERY: "true",
       FEATURE_PLACE_REVIEW_WRITES: "true",
       FEATURE_EXTERNAL_PLACE_COLLECTIONS: "true",
+      FEATURE_LAYER_CUSTOM_PLACES: "true",
       NEXT_PUBLIC_GOOGLE_PLACES_UI_KIT_KEY: "fake",
       ...membershipEnv,
     },

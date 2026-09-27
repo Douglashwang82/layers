@@ -286,6 +286,17 @@ export function parseItemKey(value: string | undefined | null) {
   const match = value ? itemKeyPattern.exec(value) : null;
   return match ? { type: match[1] as ItemType, id: match[2] } : null;
 }
+/**
+ * Map selection also accepts `custom:{uuid}`: a member-created place shown only
+ * through an accessible layer. It renders as a place but has no catalog page.
+ */
+export type MapItemKey = ItemKey | `custom:${string}`;
+export const mapItemKeyPattern =
+  /^(place|event|content|custom):([0-9a-f-]{36})$/;
+export function customPlaceKey(value: string | undefined | null) {
+  const match = value ? /^custom:([0-9a-f-]{36})$/.exec(value) : null;
+  return match ? match[1] : null;
+}
 /** Canonical detail destination by item type; the old map popup always linked to places. */
 export function itemHref(type: ItemType, slug: string) {
   return type === "place"
@@ -363,7 +374,7 @@ export const mapQueryInput = z.object({
   area: z.preprocess(optionalString, bounds.optional()),
   item: z.preprocess(
     optionalString,
-    z.string().regex(itemKeyPattern).optional(),
+    z.string().regex(mapItemKeyPattern).optional(),
   ),
   view: z.enum(["map", "list"]).default("map"),
   page: z.coerce.number().int().min(1).max(500).default(1),

@@ -767,6 +767,8 @@
 .layer-editor-layout {
   display: grid;
   grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  /* Each panel keeps its own height; a tall contents panel must not stretch the form. */
+  align-items: start;
   gap: var(--th-space-8);
   margin-bottom: var(--th-space-16);
 }
@@ -782,6 +784,17 @@
   border: 1px solid var(--th-control-border);
   border-radius: var(--th-radius-input);
   font-size: 16px;
+}
+/* Inline "New place" form inside the layer editor's contents panel. */
+.new-place-form {
+  border: 1px solid var(--th-divider);
+  border-radius: var(--th-radius-card);
+  padding: var(--th-space-4);
+  margin-bottom: var(--th-space-4);
+  background: var(--th-surface-soft);
+}
+.new-place-form h3 {
+  margin: 0;
 }
 .editor-results {
   max-height: 480px;

@@ -52,6 +52,7 @@ export default async function EditLayerPage({
         }}
         groups={[]}
         canSuggestPlace={flags.submissions}
+        canCreatePlaces={flags.layerCustomPlaces}
         t={t}
         locale={locale}
       />

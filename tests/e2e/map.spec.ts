@@ -170,13 +170,36 @@ test("sign-in return keeps the selected item; personal layer creation, add, appl
   await expect(
     page.locator(".editor-results .result-row", { hasText: noodleHouse }),
   ).toContainText("Added");
-  // A search with no catalog match explains itself and offers a prefilled suggestion.
+  // No catalog match: create a private custom place in place, pinned to the
+  // (mocked) current location, so no geocoder request is made.
   await page.getByRole("searchbox", { name: "Search" }).fill("Zzyzx Tea Lab");
   await page.getByRole("button", { name: "Search", exact: true }).click();
   await expect(page.getByText("No results for “Zzyzx Tea Lab”.")).toBeVisible();
+  await page
+    .getByRole("button", { name: "Add “Zzyzx Tea Lab” as a new place" })
+    .click();
+  await expect(page.getByLabel("Place name")).toHaveValue("Zzyzx Tea Lab");
+  await page.context().grantPermissions(["geolocation"]);
+  await page.context().setGeolocation({ latitude: 29.705, longitude: -95.55 });
+  await page.getByRole("button", { name: "Use my current location" }).click();
   await expect(
-    page.getByRole("link", { name: "Suggest “Zzyzx Tea Lab” as a new place" }),
-  ).toHaveAttribute("href", "/submit/place?name=Zzyzx%20Tea%20Lab");
+    page.getByText("Pinned to your current location (approximate)."),
+  ).toBeVisible();
+  await page.getByRole("button", { name: "Save place" }).click();
+  await expect(page.getByText("Place added to this layer.")).toBeVisible();
+  const customRow = page.locator(".layer-contents .result-row", {
+    hasText: "Zzyzx Tea Lab",
+  });
+  await expect(customRow.first()).toContainText("Private place");
+  // A second search finds it under "Your places", already added.
+  await page.getByRole("searchbox", { name: "Search" }).fill("Zzyzx");
+  await page.getByRole("button", { name: "Search", exact: true }).click();
+  await expect(
+    page.getByRole("heading", { name: "Your places" }),
+  ).toBeVisible();
+  await expect(
+    page.locator(".editor-results .result-row", { hasText: "Zzyzx Tea Lab" }),
+  ).toContainText("Added");
   await page.getByRole("button", { name: "Done" }).click();
   await expect(page).toHaveURL(/\/layers\/weekend-plan-[a-z0-9-]+$/);
   await expect(
@@ -186,6 +209,8 @@ test("sign-in return keeps the selected item; personal layer creation, add, appl
     page.getByText("Private — only you can view").first(),
   ).toBeVisible();
   await expect(page.locator(".layer-contents")).toContainText(noodleHouse);
+  await expect(page.locator(".layer-contents")).toContainText("Zzyzx Tea Lab");
+  const layerUrl = page.url();
   await page.getByRole("button", { name: "Apply to map" }).first().click();
   await expect(page).toHaveURL(/layers=.*weekend-plan/);
   await page.getByRole("tab", { name: /Layers/ }).click();
@@ -203,6 +228,19 @@ test("sign-in return keeps the selected item; personal layer creation, add, appl
   await expect(page.locator(".picker-row", { hasText: title })).toContainText(
     "Already in this layer",
   );
+  // The custom place opens on the map as a place without catalog actions.
+  await page.goto(layerUrl);
+  await page
+    .locator(".layer-contents .result-row", { hasText: "Zzyzx Tea Lab" })
+    .click();
+  await expect(page).toHaveURL(/item=custom%3A/);
+  await expect(
+    page.getByRole("heading", { name: "Zzyzx Tea Lab", level: 2 }),
+  ).toBeVisible();
+  await expect(page.getByText(/^A private place:/)).toBeVisible();
+  await expect(
+    page.getByRole("button", { name: "Save", exact: true }),
+  ).toHaveCount(0);
   // Returning users get their layers restored without explicit URL state.
   await page.goto("/");
   await page.getByRole("tab", { name: /Layers/ }).click();

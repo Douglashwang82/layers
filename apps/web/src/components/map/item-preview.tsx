@@ -85,6 +85,9 @@ export function ItemPreview({
   const eventState = detail?.eventState ?? "open";
   const content = detail?.type === "content" ? detail.post : null;
   const full = detail?.item ?? null;
+  /** Member-created place: no catalog page, saves or votes. */
+  const custom = !!item.customScope;
+  const customWebsite = detail?.type === "custom" ? detail.place.website : "";
   async function perform(
     label: Pending,
     path: string,
@@ -146,6 +149,15 @@ export function ItemPreview({
       {item.type === "place" && item.address && (
         <p className="muted preview-line">
           <MapPin size={14} aria-hidden="true" /> {item.address}
+        </p>
+      )}
+      {custom && item.excerpt && <p>{item.excerpt}</p>}
+      {custom && customWebsite && (
+        <p className="preview-line">
+          <ExternalLink size={14} aria-hidden="true" />{" "}
+          <a href={customWebsite} target="_blank" rel="noreferrer">
+            {t.website} ↗
+          </a>
         </p>
       )}
       {item.type === "event" && item.startTime && item.endTime && (
@@ -279,22 +291,24 @@ export function ItemPreview({
             {t.directions} ↗
           </a>
         )}
-        <button
-          type="button"
-          className={`button secondary ${state.saved ? "active" : ""}`}
-          disabled={pending === "save" || loading}
-          aria-busy={pending === "save" || undefined}
-          onClick={() =>
-            perform(
-              "save",
-              `${kindPath}/${item.id}/save`,
-              state.saved ? "DELETE" : "POST",
-            )
-          }
-        >
-          <Bookmark size={16} aria-hidden="true" />
-          {pending === "save" ? t.saving : state.saved ? t.unsave : t.save}
-        </button>
+        {!custom && (
+          <button
+            type="button"
+            className={`button secondary ${state.saved ? "active" : ""}`}
+            disabled={pending === "save" || loading}
+            aria-busy={pending === "save" || undefined}
+            onClick={() =>
+              perform(
+                "save",
+                `${kindPath}/${item.id}/save`,
+                state.saved ? "DELETE" : "POST",
+              )
+            }
+          >
+            <Bookmark size={16} aria-hidden="true" />
+            {pending === "save" ? t.saving : state.saved ? t.unsave : t.save}
+          </button>
+        )}
         {layerWrites && (
           <AddToLayer
             itemKey={item.key}
@@ -308,7 +322,7 @@ export function ItemPreview({
           />
         )}
       </div>
-      {item.type === "place" && (
+      {item.type === "place" && !custom && (
         <div className="preview-recommend">
           <span className="muted">{t.recommend}</span>
           <div className="actions">
@@ -366,9 +380,15 @@ export function ItemPreview({
           {t.hours}: {full.hours}
         </p>
       )}
-      <Link className="button secondary full-details" href={item.href}>
-        {t.openFullDetails} →
-      </Link>
+      {custom ? (
+        <p className="fine-print">
+          {item.customScope === "group" ? t.groupPlaceHelp : t.privatePlaceHelp}
+        </p>
+      ) : (
+        <Link className="button secondary full-details" href={item.href}>
+          {t.openFullDetails} →
+        </Link>
+      )}
       {item.isDemo && <p className="fine-print">{t.demoDetail}</p>}
       {full && (
         <p className="fine-print">

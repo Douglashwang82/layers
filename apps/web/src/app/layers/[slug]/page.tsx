@@ -155,6 +155,14 @@ export default async function LayerPage({ params }: Props) {
                 ` · ${format(t.mappedSummary, { mapped: contents.mapped, unmapped: contents.unmapped })}`}
             </p>
           </div>
+          {access.edit && flags.layerWrites && contents.items.length > 0 && (
+            <Link
+              className="button secondary small"
+              href={`/layers/${layer.slug}/edit#add-items`}
+            >
+              {t.addItems}
+            </Link>
+          )}
         </div>
         {contents.items.length === 0 ? (
           <div className="empty">

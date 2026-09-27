@@ -1,6 +1,6 @@
 # Layer-scoped places: add places freely to private and group layers
 
-Status: in progress. C0 (editor empty-search state) shipped; C1 (schema, access rules, API behind `FEATURE_LAYER_CUSTOM_PLACES`, migration 0015) shipped with the flag off; C2 (shared Census geocoder in `packages/database/src/geocoder.ts`, geocode-on-save and preview) implemented and tested locally. Decisions below were made by the product owner on 2026-09-27.
+Status: in progress. C0–C2 shipped (flag off). C3+C4 (editor search sections and new-place form, map/list/detail rendering) implemented and tested locally. Not yet built: the drop-a-pin map in the form (members use "Find on map" or "Use my current location"), catalog dedupe via `catalog_place_id` (lands with C6), editing/deleting a custom place from the UI (API exists), and C5–C6. Decisions below were made by the product owner on 2026-09-27.
 
 ## Problem
 

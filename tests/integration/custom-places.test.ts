@@ -21,6 +21,9 @@ import {
   listLayerItemRefs,
 } from "../../apps/web/src/features/layers/repository";
 import { createGroup } from "../../apps/web/src/features/groups/service";
+import { runMapQuery } from "../../apps/web/src/features/map/query";
+import { getMapItemDetail } from "../../apps/web/src/features/map/detail";
+import { parseMapQuery } from "../../packages/shared/src";
 import { flags } from "../../apps/web/src/lib/config";
 import type { Actor } from "../../packages/shared/src";
 /*
@@ -403,5 +406,113 @@ describe("address geocoding (stubbed; no live geocoder call)", () => {
       previewGeocode(viewer, groupLayer, "9600 Bellaire Blvd"),
     ).rejects.toMatchObject({ status: 403 });
     await expect(previewGeocode(alice, alicePrivate, "")).rejects.toThrow();
+  });
+});
+describe("custom places on the map and in details", () => {
+  const houston = {
+    id: "00000000-0000-4000-8000-000000001001",
+    slug: "houston",
+    name: "Houston",
+    timezone: "America/Chicago",
+    latitude: 29.7604,
+    longitude: -95.3698,
+  };
+  const mapState = (params: Record<string, string>) => {
+    const parsed = parseMapQuery({ city: "houston", ...params });
+    return { ...parsed, layers: parsed.layers ?? "none" };
+  };
+  let layerSlug: string;
+  let placeId: string;
+  let groupPlaceId: string;
+  beforeAll(async () => {
+    const layerId = await layerFor(alice, "Alice map list");
+    layerSlug = (await getLayer(layerId, alice))!.layer.slug;
+    placeId = (
+      await createCustomPlaceInLayer(alice, layerId, {
+        name: "Qwertz Map Stall",
+        pin,
+      })
+    ).place.id;
+    groupPlaceId = (
+      await createCustomPlaceInLayer(editor, groupLayer, {
+        name: "Qwertz Circle Corner",
+        pin,
+      })
+    ).place.id;
+  });
+  it("appears through the owner's applied layer as a place", async () => {
+    const result = await runMapQuery(
+      mapState({ layers: layerSlug }),
+      houston,
+      alice,
+    );
+    const item = result.items.find((i) => i.key === `custom:${placeId}`);
+    expect(item).toMatchObject({
+      type: "place",
+      customScope: "user",
+      locationStatus: "approximate",
+      layers: [layerSlug],
+    });
+    expect(result.mapped).toBeGreaterThan(0);
+  });
+  it("never appears for others or in city-wide search", async () => {
+    const other = await runMapQuery(
+      mapState({ layers: layerSlug }),
+      houston,
+      bob,
+    );
+    expect(other.items.some((i) => i.key.startsWith("custom:"))).toBe(false);
+    for (const actor of [alice, null])
+      for (const layers of ["none", layerSlug]) {
+        const search = await runMapQuery(
+          mapState({ layers, scope: "city", q: "Qwertz" }),
+          houston,
+          actor,
+        );
+        const fromSearch = search.items.filter(
+          (i) => i.key.startsWith("custom:") && i.layers.length === 0,
+        );
+        expect(fromSearch).toEqual([]);
+      }
+  });
+  it("gives the owner a detail limited to same-owner layers", async () => {
+    const detail = await getMapItemDetail(`custom:${placeId}`, alice);
+    expect(detail.type).toBe("custom");
+    if (detail.type !== "custom") return;
+    expect(detail.canEdit).toBe(true);
+    expect(detail.editableLayers.length).toBeGreaterThan(0);
+    expect(detail.editableLayers.map((l) => l.id)).not.toContain(groupLayer);
+    expect(
+      detail.editableLayers.find((l) => l.slug === layerSlug)?.contains,
+    ).toBe(true);
+    await expect(
+      getMapItemDetail(`custom:${placeId}`, bob),
+    ).rejects.toMatchObject({ status: 404 });
+    await expect(
+      getMapItemDetail(`custom:${placeId}`, null),
+    ).rejects.toMatchObject({ status: 404 });
+  });
+  it("lets a group viewer read but not add or edit a group place", async () => {
+    const detail = await getMapItemDetail(`custom:${groupPlaceId}`, viewer);
+    expect(detail.type).toBe("custom");
+    if (detail.type !== "custom") return;
+    expect(detail.canEdit).toBe(false);
+    expect(detail.editableLayers).toEqual([]);
+  });
+  it("disappears from the map when the flag is off", async () => {
+    flags.layerCustomPlaces = false;
+    try {
+      const result = await runMapQuery(
+        mapState({ layers: layerSlug }),
+        houston,
+        alice,
+      );
+      expect(result.items.some((i) => i.key.startsWith("custom:"))).toBe(false);
+      await expect(
+        getMapItemDetail(`custom:${placeId}`, alice),
+      ).rejects.toMatchObject({ status: 404 });
+    } finally {
+      flags.layerCustomPlaces = true;
+    }
   });
 });

@@ -109,6 +109,15 @@ export async function getVisibleCustomPlace(id: string, actor: Actor | null) {
   }
   return null;
 }
+/** Active places by id. Callers must already have authorized the layers holding them. */
+export async function listActiveCustomPlaces(ids: string[]) {
+  if (!ids.length) return [];
+  const result = await pool.query<CustomPlaceRow>(
+    `SELECT ${columns} FROM custom_place WHERE id=ANY($1::uuid[]) AND status='active'`,
+    [ids],
+  );
+  return result.rows.map(toCustomPlace);
+}
 /** The layer owner's active places in the layer's city, for the editor's "Your places" search. */
 export async function listScopePlaces(layer: LayerRecord, q: string) {
   const owner =

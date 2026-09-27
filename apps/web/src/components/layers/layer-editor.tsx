@@ -9,6 +9,9 @@ import type { LayerRecord } from "@/features/layers/repository";
 import type { MapItem } from "@/features/map/query";
 import { type Copy, type Locale, format } from "@/lib/dictionary";
 import { itemTitle, ItemMeta } from "@/components/map/map-results";
+import type { CustomPlace } from "@/features/custom-places/repository";
+import { customMapItem } from "@/lib/custom-places";
+import { NewPlaceForm } from "./new-place-form";
 type Feedback = { tone: "success" | "error"; text: string } | null;
 type Draft = {
   title: string;
@@ -52,6 +55,7 @@ export function LayerEditor({
   next,
   groupId,
   canSuggestPlace = false,
+  canCreatePlaces = false,
 }: {
   mode: "create" | "edit";
   layer?: LayerRecord;
@@ -65,6 +69,8 @@ export function LayerEditor({
   groupId?: string;
   /** Place submissions are enabled: offer "suggest a place" when search finds nothing. */
   canSuggestPlace?: boolean;
+  /** Custom places are enabled: editors create places here without review. */
+  canCreatePlaces?: boolean;
 }) {
   const router = useRouter();
   const [draft, setDraft] = useState<Draft>(
@@ -80,6 +86,10 @@ export function LayerEditor({
   const [pendingKey, setPendingKey] = useState<string | null>(null);
   const [query, setQuery] = useState("");
   const [results, setResults] = useState<MapItem[]>([]);
+  /** The layer owner's custom places matching the search. */
+  const [yourResults, setYourResults] = useState<MapItem[]>([]);
+  /** Prefilled name while the new-place form is open; null when closed. */
+  const [newPlaceName, setNewPlaceName] = useState<string | null>(null);
   /** The query the current results belong to; null before the first search. */
   const [searched, setSearched] = useState<string | null>(null);
   const [searching, setSearching] = useState(false);
@@ -253,13 +263,24 @@ export function LayerEditor({
     const id = ++searchSeq.current;
     setSearching(true);
     try {
-      const response = await fetch(
-        `/api/v1/map?city=${city.slug}&layers=none&scope=city&q=${encodeURIComponent(q)}&date=upcoming`,
-      );
+      const [response, own] = await Promise.all([
+        fetch(
+          `/api/v1/map?city=${city.slug}&layers=none&scope=city&q=${encodeURIComponent(q)}&date=upcoming`,
+        ),
+        canCreatePlaces && layer
+          ? (api(
+              `layers/${layer.id}/places?q=${encodeURIComponent(q)}`,
+              "GET",
+            ) as Promise<{ places: CustomPlace[] }>)
+          : Promise.resolve({ places: [] as CustomPlace[] }),
+      ]);
       const json = await response.json();
       if (id !== searchSeq.current) return;
       if (json.error) throw new Error(json.error.message);
       setResults((json.data as { items: MapItem[] }).items.slice(0, 30));
+      setYourResults(
+        layer ? own.places.map((p) => customMapItem(p, layer.slug)) : [],
+      );
       setSearched(q);
     } catch (err) {
       setItemFeedback({ tone: "error", text: (err as Error).message });
@@ -551,63 +572,121 @@ export function LayerEditor({
               {t.search}
             </button>
           </form>
-          {searched !== null && results.length === 0 && !searching && (
-            <div className="empty editor-no-results" role="status">
-              <p>{format(t.noResults, { q: searched })}</p>
-              {canSuggestPlace ? (
-                <>
-                  <p className="fine-print">{t.suggestPlaceBody}</p>
-                  <Link
-                    className="button secondary small"
-                    href={`/submit/place?name=${encodeURIComponent(searched)}`}
-                  >
-                    <Plus size={14} aria-hidden="true" />
-                    {format(t.suggestPlaceNamed, { q: searched })}
-                  </Link>
-                </>
-              ) : (
-                <p className="fine-print">{t.noResultsBody}</p>
-              )}
+          {canCreatePlaces && newPlaceName === null && (
+            <div className="actions">
+              <button
+                type="button"
+                className="button secondary small"
+                onClick={() => setNewPlaceName(query.trim())}
+              >
+                <Plus size={14} aria-hidden="true" />
+                {t.newPlace}
+              </button>
             </div>
           )}
+          {canCreatePlaces && newPlaceName !== null && layer && (
+            <NewPlaceForm
+              layerId={layer.id}
+              layerSlug={layer.slug}
+              cityName={city.name}
+              initialName={newPlaceName}
+              t={t}
+              onCancel={() => setNewPlaceName(null)}
+              onCreated={(item, message) => {
+                setItems((list) => [
+                  ...list,
+                  { ...item, layers: [layer.slug] },
+                ]);
+                setNewPlaceName(null);
+                // The search that found nothing is now out of date.
+                setSearched(null);
+                setResults([]);
+                setYourResults([]);
+                setItemFeedback({ tone: "success", text: message });
+              }}
+            />
+          )}
+          {searched !== null &&
+            results.length === 0 &&
+            yourResults.length === 0 &&
+            !searching && (
+              <div className="empty editor-no-results" role="status">
+                <p>{format(t.noResults, { q: searched })}</p>
+                {canCreatePlaces ? (
+                  newPlaceName === null && (
+                    <button
+                      type="button"
+                      className="button secondary small"
+                      onClick={() => setNewPlaceName(searched)}
+                    >
+                      <Plus size={14} aria-hidden="true" />
+                      {format(t.addAsNewPlace, { q: searched })}
+                    </button>
+                  )
+                ) : canSuggestPlace ? (
+                  <>
+                    <p className="fine-print">{t.suggestPlaceBody}</p>
+                    <Link
+                      className="button secondary small"
+                      href={`/submit/place?name=${encodeURIComponent(searched)}`}
+                    >
+                      <Plus size={14} aria-hidden="true" />
+                      {format(t.suggestPlaceNamed, { q: searched })}
+                    </Link>
+                  </>
+                ) : (
+                  <p className="fine-print">{t.noResultsBody}</p>
+                )}
+              </div>
+            )}
+          {canCreatePlaces && yourResults.length > 0 && (
+            <>
+              <h4>{t.yourPlaces}</h4>
+              {resultList(yourResults)}
+            </>
+          )}
           {results.length > 0 && (
-            <ul className="layer-contents editor-results">
-              {results.map((item) => (
-                <li key={item.key} className="result-row">
-                  <a href={item.href} onClick={(e) => e.preventDefault()}>
-                    <span className="row-thumb" aria-hidden="true" />
-                    <span className="row-body">
-                      <span className="row-kicker">{item.category}</span>
-                      <span className="row-title">
-                        {itemTitle(item, locale)}
-                      </span>
-                      <ItemMeta item={item} t={t} locale={locale} />
-                    </span>
-                    <span className="editor-item-actions">
-                      <button
-                        type="button"
-                        className="button secondary small"
-                        disabled={
-                          contained.has(item.key) || pendingKey === item.key
-                        }
-                        aria-busy={pendingKey === item.key || undefined}
-                        onClick={() => add(item)}
-                      >
-                        <Plus size={14} aria-hidden="true" />
-                        {contained.has(item.key)
-                          ? t.addedToLayer
-                          : t.addToLayer}
-                      </button>
-                    </span>
-                  </a>
-                </li>
-              ))}
-            </ul>
+            <>
+              {canCreatePlaces && yourResults.length > 0 && (
+                <h4>{t.inTaiwanHub}</h4>
+              )}
+              {resultList(results)}
+            </>
           )}
         </section>
       )}
     </div>
   );
+  function resultList(list: MapItem[]) {
+    return (
+      <ul className="layer-contents editor-results">
+        {list.map((item) => (
+          <li key={item.key} className="result-row">
+            <a href={item.href} onClick={(e) => e.preventDefault()}>
+              <span className="row-thumb" aria-hidden="true" />
+              <span className="row-body">
+                <span className="row-kicker">{item.category}</span>
+                <span className="row-title">{itemTitle(item, locale)}</span>
+                <ItemMeta item={item} t={t} locale={locale} />
+              </span>
+              <span className="editor-item-actions">
+                <button
+                  type="button"
+                  className="button secondary small"
+                  disabled={contained.has(item.key) || pendingKey === item.key}
+                  aria-busy={pendingKey === item.key || undefined}
+                  onClick={() => add(item)}
+                >
+                  <Plus size={14} aria-hidden="true" />
+                  {contained.has(item.key) ? t.addedToLayer : t.addToLayer}
+                </button>
+              </span>
+            </a>
+          </li>
+        ))}
+      </ul>
+    );
+  }
 }
 /** Layer item ids in the desired order, resolved from the authorized layer record. */
 async function itemIds(layerId: string, ordered: MapItem[]) {

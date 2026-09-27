@@ -3,7 +3,7 @@ import {
   type Actor,
   type Bounds,
   type DateWindow,
-  type ItemKey,
+  type MapItemKey,
   type ItemType,
   type LocationStatus,
   type MapState,
@@ -24,6 +24,8 @@ import {
   resolveLayers,
 } from "../layers/repository";
 import { flags } from "@/lib/config";
+import { customMapItem } from "@/lib/custom-places";
+import { listActiveCustomPlaces } from "../custom-places/repository";
 import {
   type DailyPickView,
   loadDailyPickView,
@@ -38,7 +40,7 @@ export type MapCity = {
 };
 /** One row/pin: a typed reference to a canonical entity plus its layer memberships. */
 export type MapItem = {
-  key: ItemKey;
+  key: MapItemKey;
   type: ItemType;
   id: string;
   slug: string;
@@ -70,6 +72,8 @@ export type MapItem = {
   note: string | null;
   /** Ordering signal for stable, explainable sorting. */
   rank: number;
+  /** Set for member-created places (`custom:` keys): who owns them. */
+  customScope?: "user" | "group";
 };
 export type LayerAvailability = {
   slug: string;
@@ -368,12 +372,13 @@ async function curatedMembers(
     place_id: string | null;
     event_id: string | null;
     content_id: string | null;
+    custom_place_id: string | null;
     note: string;
     position: number;
     valid_from: Date | null;
     valid_until: Date | null;
   }>(
-    "SELECT layer_id,place_id,event_id,content_id,note,position,valid_from,valid_until FROM layer_item WHERE layer_id=ANY($1::uuid[]) ORDER BY position, created_at",
+    "SELECT layer_id,place_id,event_id,content_id,custom_place_id,note,position,valid_from,valid_until FROM layer_item WHERE layer_id=ANY($1::uuid[]) ORDER BY position, created_at",
     [layers.map((l) => l.id)],
   );
   const byKey = new Map<string, MapItem>();
@@ -384,6 +389,25 @@ async function curatedMembers(
   ])
     byKey.set(item.key, item);
   const slugById = new Map(layers.map((l) => [l.id, l.slug]));
+  // Custom places come only from these already-authorized layers, never city-wide.
+  const customIds = flags.layerCustomPlaces
+    ? [
+        ...new Set(
+          result.rows.flatMap((r) =>
+            r.custom_place_id ? [r.custom_place_id] : [],
+          ),
+        ),
+      ]
+    : [];
+  if (customIds.length) {
+    const places = await listActiveCustomPlaces(customIds);
+    const firstLayer = new Map<string, string>();
+    for (const row of result.rows)
+      if (row.custom_place_id && !firstLayer.has(row.custom_place_id))
+        firstLayer.set(row.custom_place_id, slugById.get(row.layer_id)!);
+    for (const place of places)
+      byKey.set(place.key, customMapItem(place, firstLayer.get(place.id)!));
+  }
   const groups = new Map<string, MapItem[]>();
   for (const row of result.rows) {
     if (
@@ -395,7 +419,9 @@ async function curatedMembers(
       ? `place:${row.place_id}`
       : row.event_id
         ? `event:${row.event_id}`
-        : `content:${row.content_id}`;
+        : row.custom_place_id
+          ? `custom:${row.custom_place_id}`
+          : `content:${row.content_id}`;
     const item = byKey.get(key);
     if (!item) continue;
     const slug = slugById.get(row.layer_id)!;

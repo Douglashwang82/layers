@@ -34,6 +34,14 @@ export function ItemMeta({
   t: Copy;
   locale: Locale;
 }) {
+  if (item.customScope)
+    return (
+      <span className="row-meta">
+        <span className="status">
+          {item.customScope === "group" ? t.groupPlace : t.privatePlace}
+        </span>
+      </span>
+    );
   if (item.type === "place")
     return (
       <span className="row-meta">

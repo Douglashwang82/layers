@@ -194,6 +194,33 @@ export const en = {
   suggestPlaceNamed: "Suggest “{q}” as a new place",
   suggestPlaceBody:
     "Suggested places can be added here once a moderator approves them.",
+  privatePlace: "Private place",
+  groupPlace: "Group place",
+  privatePlaceHelp:
+    "A private place: only people who can see a layer containing it can see it.",
+  groupPlaceHelp:
+    "A group place: only group members, and viewers of a layer containing it, can see it.",
+  inTaiwanHub: "In TaiwanHub",
+  yourPlaces: "Your places",
+  addAsNewPlace: "Add “{q}” as a new place",
+  newPlace: "New place",
+  newPlaceHelp:
+    "Visible only to people who can see this layer. No review needed.",
+  placeName: "Place name",
+  findOnMap: "Find on map",
+  useMyLocation: "Use my current location",
+  locationMatched: "Found: {address}",
+  locationNoMatch:
+    "We couldn't find that address. The place will be saved without a map pin.",
+  locationOutsideCity:
+    "That address doesn't seem to be in {city}. The place will be saved without a map pin.",
+  locationUnavailable:
+    "Address lookup is unavailable right now. You can still save the place.",
+  locationPinned: "Pinned to your current location (approximate).",
+  currentLocationDenied: "Couldn't get your current location.",
+  savePlace: "Save place",
+  placeAdded: "Place added to this layer.",
+  cancel: "Cancel",
   noPlacesBody:
     "No places match these filters. Clear a filter or try another neighborhood.",
   noEventsBody:
@@ -850,6 +877,28 @@ export const zh: Copy = {
   noResultsBody: "請確認拼字，或試試更廣泛的中英文關鍵字。",
   suggestPlaceNamed: "推薦「{q}」為新地點",
   suggestPlaceBody: "推薦的地點經管理員審核通過後，就能加入這裡。",
+  privatePlace: "私人地點",
+  groupPlace: "群組地點",
+  privatePlaceHelp: "私人地點：只有能看到包含它的圖層的人才看得到。",
+  groupPlaceHelp:
+    "群組地點：只有群組成員，以及能看到包含它的圖層的人才看得到。",
+  inTaiwanHub: "TaiwanHub 目錄",
+  yourPlaces: "你的地點",
+  addAsNewPlace: "新增「{q}」為新地點",
+  newPlace: "新增地點",
+  newPlaceHelp: "只有能看到這個圖層的人才看得到，不需要審核。",
+  placeName: "地點名稱",
+  findOnMap: "在地圖上尋找",
+  useMyLocation: "使用我目前的位置",
+  locationMatched: "找到：{address}",
+  locationNoMatch: "找不到這個地址，地點會儲存但不會顯示在地圖上。",
+  locationOutsideCity: "這個地址似乎不在{city}，地點會儲存但不會顯示在地圖上。",
+  locationUnavailable: "目前無法查詢地址，你仍然可以儲存這個地點。",
+  locationPinned: "已使用你目前的位置（大約位置）。",
+  currentLocationDenied: "無法取得你目前的位置。",
+  savePlace: "儲存地點",
+  placeAdded: "已將地點加入此圖層。",
+  cancel: "取消",
   noPlacesBody: "沒有符合的店家，請清除篩選或換個地區。",
   noEventsBody: "目前沒有符合的活動，試試「即將舉行」或其他日期。",
   eventCancelled: "活動已取消。",
