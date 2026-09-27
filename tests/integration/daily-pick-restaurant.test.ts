@@ -8,6 +8,7 @@ import {
   loadRestaurantArea,
   prepareRestaurantPickRun,
   publishRestaurantPickRun,
+  runDailyPickGeneration,
   withdrawRestaurantPick,
   type RestaurantArea,
   type RestaurantQualificationAdapter,
@@ -672,6 +673,26 @@ describe("Daily restaurant recommendation (version 2) worker", () => {
       [result.runId],
     );
     expect(rows.rows[0].all).toContain("restaurant_recent");
+  });
+
+  it("skips version 1 generation for a city with an enabled version 2 area, rather than bypassing it", async () => {
+    const { results, errors } = await runDailyPickGeneration({
+      citySlug: city.slug,
+      date: addDays(today, 6),
+    });
+    expect(errors).toEqual([]);
+    expect(results).toEqual([
+      expect.objectContaining({
+        city: city.slug,
+        status: "skipped_v2_enabled",
+        pickId: null,
+      }),
+    ]);
+    const v1Rows = await pool.query(
+      "SELECT id FROM daily_pick WHERE city_id=$1 AND pick_date=$2::date",
+      [city.id, addDays(today, 6)],
+    );
+    expect(v1Rows.rows).toHaveLength(0);
   });
 
   it("refuses to prepare a run for a disabled area", async () => {

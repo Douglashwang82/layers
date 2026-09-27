@@ -175,7 +175,7 @@ export async function insertDailyPick(
 export type DailyPickRunResult = {
   city: string;
   date: string;
-  status: "created" | "replaced" | "unchanged" | "empty";
+  status: "created" | "replaced" | "unchanged" | "empty" | "skipped_v2_enabled";
   pickId: string | null;
   placeId: string | null;
   withdrawnId?: string;
@@ -301,6 +301,27 @@ export async function runDailyPickGeneration(
       errors.push({
         city: city.slug,
         message: `Refusing to generate for ${date}, before ${city.slug}'s local today (${today}).`,
+      });
+      continue;
+    }
+    // A city with an explicitly enabled version 2 restaurant area must go
+    // through that pipeline's own gates (prepareRestaurantPickRun /
+    // publishRestaurantPickRun), not the version 1 catalog-place rules; this
+    // scheduled path never bypasses version 2 by silently falling back to
+    // version 1 for that city.
+    const v2Area = await pool.query<{ enabled: boolean }>(
+      "SELECT enabled FROM restaurant_discovery_area WHERE city_slug=$1",
+      [city.slug],
+    );
+    if (v2Area.rows[0]?.enabled) {
+      results.push({
+        city: city.slug,
+        date,
+        status: "skipped_v2_enabled",
+        pickId: null,
+        placeId: null,
+        reason:
+          "This city has an enabled version 2 restaurant area; use prepareRestaurantPickRun/publishRestaurantPickRun instead of the version 1 generator.",
       });
       continue;
     }
