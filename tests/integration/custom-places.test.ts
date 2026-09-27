@@ -1,8 +1,10 @@
-import { afterAll, beforeAll, describe, expect, it } from "vitest";
-import { pool } from "../../packages/database/src";
+import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
+import { GeocoderError, pool } from "../../packages/database/src";
 import {
   createCustomPlaceInLayer,
   deleteCustomPlace,
+  geocoding,
+  previewGeocode,
   updateCustomPlace,
 } from "../../apps/web/src/features/custom-places/service";
 import {
@@ -289,5 +291,117 @@ describe("feature flag", () => {
     } finally {
       flags.layerCustomPlaces = true;
     }
+  });
+});
+describe("address geocoding (stubbed; no live geocoder call)", () => {
+  const real = geocoding.geocode;
+  const bellaire = {
+    latitude: 29.705,
+    longitude: -95.55,
+    matchedAddress: "9600 BELLAIRE BLVD, HOUSTON, TX, 77036",
+  };
+  afterAll(() => {
+    geocoding.geocode = real;
+  });
+  it("stores a matched address as an exact location", async () => {
+    geocoding.geocode = vi.fn(async () => bellaire);
+    const created = await createCustomPlaceInLayer(alice, alicePrivate, {
+      name: "Geocoded tea house",
+      address: "9600 Bellaire Blvd",
+    });
+    expect(created.geocode).toBe("matched");
+    expect(created.place).toMatchObject({
+      locationStatus: "exact",
+      latitude: bellaire.latitude,
+      longitude: bellaire.longitude,
+    });
+  });
+  it("keeps the place list-only on no match, a far-away match, or an outage", async () => {
+    const cases: [string, () => Promise<unknown>][] = [
+      ["no_match", async () => null],
+      [
+        "outside_city",
+        async () => ({
+          latitude: 40.7128,
+          longitude: -74.006,
+          matchedAddress: "",
+        }),
+      ],
+      [
+        "unavailable",
+        async () => {
+          throw new GeocoderError("Geocoder is unavailable (TimeoutError).");
+        },
+      ],
+    ];
+    for (const [outcome, stub] of cases) {
+      geocoding.geocode = vi.fn(stub) as typeof geocoding.geocode;
+      const created = await createCustomPlaceInLayer(alice, alicePrivate, {
+        name: `Unmapped ${outcome}`,
+        address: "1 Main St",
+      });
+      expect(created.geocode).toBe(outcome);
+      expect(created.place.locationStatus).toBe("unspecified");
+    }
+  });
+  it("prefers the member's pin and never geocodes it", async () => {
+    const spy = vi.fn(async () => bellaire);
+    geocoding.geocode = spy;
+    const created = await createCustomPlaceInLayer(alice, alicePrivate, {
+      name: "Pinned stall",
+      address: "somewhere on Bellaire",
+      pin,
+    });
+    expect(created.geocode).toBe("skipped");
+    expect(created.place.locationStatus).toBe("approximate");
+    expect(spy).not.toHaveBeenCalled();
+  });
+  it("re-geocodes a changed address unless the place was pinned", async () => {
+    geocoding.geocode = vi.fn(async () => null);
+    const { place } = await createCustomPlaceInLayer(alice, alicePrivate, {
+      name: "Moves around",
+      address: "old address",
+    });
+    geocoding.geocode = vi.fn(async () => bellaire);
+    const updated = await updateCustomPlace(alice, place.id, {
+      address: "9600 Bellaire Blvd",
+    });
+    expect(updated.geocode).toBe("matched");
+    expect(updated.place.locationStatus).toBe("exact");
+    const pinned = await createCustomPlaceInLayer(alice, alicePrivate, {
+      name: "Pinned then moved",
+      pin,
+    });
+    const spy = vi.fn(async () => bellaire);
+    geocoding.geocode = spy;
+    const kept = await updateCustomPlace(alice, pinned.place.id, {
+      address: "new text",
+    });
+    expect(kept.place.locationStatus).toBe("approximate");
+    expect(spy).not.toHaveBeenCalled();
+  });
+  it("previews for layer editors without storing anything", async () => {
+    geocoding.geocode = vi.fn(async () => bellaire);
+    const before = await pool.query<{ count: number }>(
+      "SELECT count(*)::int AS count FROM custom_place WHERE owner_user_id=$1",
+      [alice.id],
+    );
+    await expect(
+      previewGeocode(alice, alicePrivate, "9600 Bellaire Blvd"),
+    ).resolves.toEqual({
+      outcome: "matched",
+      latitude: bellaire.latitude,
+      longitude: bellaire.longitude,
+      matchedAddress: bellaire.matchedAddress,
+    });
+    const after = await pool.query<{ count: number }>(
+      "SELECT count(*)::int AS count FROM custom_place WHERE owner_user_id=$1",
+      [alice.id],
+    );
+    expect(after.rows[0].count).toBe(before.rows[0].count);
+    await expect(
+      previewGeocode(viewer, groupLayer, "9600 Bellaire Blvd"),
+    ).rejects.toMatchObject({ status: 403 });
+    await expect(previewGeocode(alice, alicePrivate, "")).rejects.toThrow();
   });
 });

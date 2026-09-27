@@ -1,5 +1,11 @@
-import { pool } from "@taiwanhub/database";
+import {
+  distanceKm,
+  geocodeAddress,
+  GeocoderError,
+  pool,
+} from "@taiwanhub/database";
 import type { PoolClient } from "pg";
+import { z } from "zod";
 import {
   AppError,
   customPlaceInput,
@@ -55,11 +61,95 @@ function enabled() {
 function unavailable() {
   return new AppError(404, "NOT_FOUND", "This place is unavailable.");
 }
-/** A dropped pin is approximate; no pin means list-only. Geocoded (exact) points are set server-side in C2. */
-function locationOf(pin: { latitude: number; longitude: number } | null) {
-  return pin
-    ? { status: "approximate" as const, ...pin }
-    : { status: "unspecified" as const, latitude: null, longitude: null };
+/** Replaceable in tests so no live geocoder call is made. */
+export const geocoding = { geocode: geocodeAddress };
+/** A geocoded match farther than this from the city centre is treated as no match. */
+export const maxCityDistanceKm = 150;
+export type GeocodeOutcome =
+  "matched" | "no_match" | "outside_city" | "unavailable" | "skipped";
+type Location = {
+  status: "exact" | "approximate" | "unspecified";
+  latitude: number | null;
+  longitude: number | null;
+};
+const unmapped: Location = {
+  status: "unspecified",
+  latitude: null,
+  longitude: null,
+};
+/** A dropped pin is approximate; no pin means list-only unless the address geocodes. */
+function pinLocation(
+  pin: { latitude: number; longitude: number } | null,
+): Location {
+  return pin ? { status: "approximate", ...pin } : unmapped;
+}
+/** Per-member geocoder budget; the provider is shared and free. */
+async function geocodeLimit(actor: Actor) {
+  const result = await pool.query<{ count: number }>(
+    `INSERT INTO rate_limit(key,count,expires_at) VALUES($1,1,now()+interval '1 minute') ON CONFLICT(key) DO UPDATE SET count=CASE WHEN rate_limit.expires_at<now() THEN 1 ELSE rate_limit.count+1 END, expires_at=CASE WHEN rate_limit.expires_at<now() THEN now()+interval '1 minute' ELSE rate_limit.expires_at END RETURNING count`,
+    [`geocode:${actor.id}`],
+  );
+  if (result.rows[0].count > 20)
+    throw new AppError(
+      429,
+      "RATE_LIMITED",
+      "Please wait a minute before looking up more addresses.",
+    );
+}
+/**
+ * Geocodes an address for a city. The geocoder is untrusted and optional: a
+ * failure never blocks saving, the place just stays list-only.
+ */
+async function geocodeForCity(
+  actor: Actor,
+  address: string,
+  cityId: string,
+): Promise<{ outcome: GeocodeOutcome; location: Location; matched: string }> {
+  if (!address.trim())
+    return { outcome: "skipped", location: unmapped, matched: "" };
+  await geocodeLimit(actor);
+  const city = await pool.query<{ latitude: number; longitude: number }>(
+    "SELECT latitude,longitude FROM city WHERE id=$1",
+    [cityId],
+  );
+  let match;
+  try {
+    match = await geocoding.geocode(address);
+  } catch (error) {
+    if (error instanceof GeocoderError)
+      return { outcome: "unavailable", location: unmapped, matched: "" };
+    throw error;
+  }
+  if (!match) return { outcome: "no_match", location: unmapped, matched: "" };
+  if (city.rows[0] && distanceKm(match, city.rows[0]) > maxCityDistanceKm)
+    return { outcome: "outside_city", location: unmapped, matched: "" };
+  return {
+    outcome: "matched",
+    location: {
+      status: "exact",
+      latitude: match.latitude,
+      longitude: match.longitude,
+    },
+    matched: match.matchedAddress,
+  };
+}
+/** Editor preview for "Find on map": nothing is stored. */
+export async function previewGeocode(
+  actor: Actor | null,
+  layerId: string,
+  address: unknown,
+) {
+  enabled();
+  const a = requireActor(actor);
+  const value = z.string().trim().min(1).max(300).parse(address);
+  const found = await requireEditableLayer(layerId, a);
+  const result = await geocodeForCity(a, value, found.layer.cityId);
+  return {
+    outcome: result.outcome,
+    latitude: result.location.latitude,
+    longitude: result.location.longitude,
+    matchedAddress: result.matched,
+  };
 }
 /**
  * Creates a place owned by the layer's owner (the user, or the group) and adds
@@ -81,7 +171,14 @@ export async function createCustomPlaceInLayer(
     layer.ownerKind === "group"
       ? { user: null, group: layer.ownerGroupId }
       : { user: layer.ownerUserId, group: null };
-  const location = locationOf(input.pin ?? null);
+  // A member's pin wins; otherwise geocode the address before the transaction.
+  let location = pinLocation(input.pin ?? null);
+  let geocode: GeocodeOutcome = "skipped";
+  if (!input.pin && input.address) {
+    const result = await geocodeForCity(a, input.address, layer.cityId);
+    location = result.location;
+    geocode = result.outcome;
+  }
   return transaction(async (tx) => {
     // Serialize creations per scope so the cap cannot be raced past.
     await tx.query("SELECT pg_advisory_xact_lock(hashtext($1))", [
@@ -129,7 +226,11 @@ export async function createCustomPlaceInLayer(
       placeId: place.id,
       layerId: layer.id,
     });
-    return { place: toCustomPlace(place), key: `custom:${place.id}` };
+    return {
+      place: toCustomPlace(place),
+      key: `custom:${place.id}`,
+      geocode,
+    };
   });
 }
 /** Locks the row and requires edit rights in its owner scope. */
@@ -164,16 +265,30 @@ export async function updateCustomPlace(
   enabled();
   const a = requireActor(actor);
   const input = customPlacePatchInput.parse(body);
+  // Re-geocode a changed address unless the member pinned the place themselves.
+  const current = await findCustomPlace(id);
+  let geocoded: { outcome: GeocodeOutcome; location: Location } | null = null;
+  if (
+    current &&
+    (await scopeAccess(current, a)) === "edit" &&
+    input.pin === undefined &&
+    input.address !== undefined &&
+    input.address !== current.address &&
+    current.location_status !== "approximate"
+  )
+    geocoded = await geocodeForCity(a, input.address, current.city_id);
   return transaction(async (tx) => {
     const row = await requireEditablePlace(tx, a, id);
-    const location =
-      input.pin === undefined
-        ? {
-            status: row.location_status,
-            latitude: row.latitude,
-            longitude: row.longitude,
-          }
-        : locationOf(input.pin);
+    const location: Location =
+      input.pin !== undefined
+        ? pinLocation(input.pin)
+        : geocoded
+          ? geocoded.location
+          : {
+              status: row.location_status,
+              latitude: row.latitude,
+              longitude: row.longitude,
+            };
     const updated = await tx.query<CustomPlaceRow>(
       `UPDATE custom_place SET name=$2,name_chinese=$3,address=$4,location_status=$5,latitude=$6::float8,longitude=$7::float8,
          location=CASE WHEN $6::float8 IS NULL THEN NULL ELSE ST_SetSRID(ST_MakePoint($7::float8,$6::float8),4326) END,
@@ -194,7 +309,10 @@ export async function updateCustomPlace(
     );
     await requeuePublicLayers(tx, id, a.id);
     await record(tx, a.id, "custom_place_updated", { placeId: id });
-    return { place: toCustomPlace(updated.rows[0]) };
+    return {
+      place: toCustomPlace(updated.rows[0]),
+      geocode: geocoded?.outcome ?? ("skipped" as GeocodeOutcome),
+    };
   });
 }
 /** Soft delete; the place leaves every layer of its scope. */

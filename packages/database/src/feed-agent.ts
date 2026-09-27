@@ -4,6 +4,7 @@ import { z } from "zod";
 import { db, pool } from "./index";
 import { generatedFeed } from "./schema";
 import { validateFields } from "./ingestion";
+import { geocodeAddress } from "./geocoder";
 import {
   enabledExtractionPages,
   recordExtractionResult,
@@ -104,33 +105,11 @@ async function extractPlaceFields(html: string, client: Anthropic) {
   );
 }
 
-/**
- * US Census geocoder: free, keyless, public domain, US addresses, and no
- * restriction on storing what it returns. Mapbox needs the permanent-geocoding
- * endpoint and the matching plan before results may be kept.
- */
+/** Coordinates come from the geocoder (./geocoder.ts), never the model; no match fails the page. */
 async function geocode(address: string) {
-  const url =
-    "https://geocoding.geo.census.gov/geocoder/locations/onelineaddress" +
-    `?address=${encodeURIComponent(address)}` +
-    "&benchmark=Public_AR_Current&format=json";
-  const response = await fetch(url, { signal: AbortSignal.timeout(15000) });
-  if (!response.ok)
-    throw new Error(`Geocoder returned HTTP ${response.status}`);
-  const data = (await response.json()) as {
-    result?: {
-      addressMatches?: {
-        matchedAddress?: string;
-        coordinates?: { x?: number; y?: number };
-      }[];
-    };
-  };
-  const match = data.result?.addressMatches?.[0];
-  const latitude = match?.coordinates?.y;
-  const longitude = match?.coordinates?.x;
-  if (typeof latitude !== "number" || typeof longitude !== "number")
-    throw new Error(`Geocoder found no match for "${address}"`);
-  return { latitude, longitude, matchedAddress: match?.matchedAddress ?? "" };
+  const match = await geocodeAddress(address, { timeoutMs: 15000 });
+  if (!match) throw new Error(`Geocoder found no match for "${address}"`);
+  return match;
 }
 
 async function fetchPage(url: string) {

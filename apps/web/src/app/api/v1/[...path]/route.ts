@@ -105,6 +105,7 @@ import {
 import {
   createCustomPlaceInLayer,
   deleteCustomPlace,
+  previewGeocode,
   updateCustomPlace,
 } from "@/features/custom-places/service";
 export const dynamic = "force-dynamic";
@@ -488,6 +489,14 @@ async function handler(
           return ok(await removeLayerItem(a, id, String(query.key ?? "")));
         if (id && action === "places" && method === "POST")
           return ok(await createCustomPlaceInLayer(a, id, body), 201);
+        if (id && action === "geocode" && method === "POST")
+          return ok(
+            await previewGeocode(
+              a,
+              id,
+              (body as { address?: unknown } | null)?.address,
+            ),
+          );
         if (
           id &&
           action === "follow" &&

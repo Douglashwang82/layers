@@ -51,3 +51,10 @@ export {
   type DailyPickGenerateOptions,
   type DailyPickRunResult,
 } from "./daily-pick";
+export {
+  distanceKm,
+  geocodeAddress,
+  GeocoderError,
+  maxGeocodeAddressLength,
+  type GeocodeResult,
+} from "./geocoder";
