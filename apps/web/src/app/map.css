@@ -796,6 +796,16 @@
 .new-place-form h3 {
   margin: 0;
 }
+.suggest-place {
+  margin-top: var(--th-space-4);
+  padding-top: var(--th-space-4);
+  border-top: 1px solid var(--th-divider);
+  display: grid;
+  gap: 8px;
+}
+.suggest-place h4 {
+  margin: 0;
+}
 .editor-results {
   max-height: 480px;
   overflow-y: auto;

@@ -5,6 +5,7 @@ import {
   deleteCustomPlace,
   geocoding,
   previewGeocode,
+  suggestCustomPlace,
   updateCustomPlace,
 } from "../../apps/web/src/features/custom-places/service";
 import {
@@ -15,6 +16,7 @@ import {
   addLayerItem,
   createLayer,
   publishLayer,
+  removeLayerItem,
 } from "../../apps/web/src/features/layers/service";
 import {
   getLayer,
@@ -97,6 +99,9 @@ afterAll(async () => {
     "DELETE FROM custom_place WHERE owner_user_id=ANY($1::uuid[]) OR owner_group_id=$2",
     [ids, groupId],
   );
+  await pool.query("DELETE FROM place WHERE submitted_by=ANY($1::uuid[])", [
+    ids,
+  ]);
   await pool.query('DELETE FROM "group" WHERE id=$1', [groupId]);
   await pool.query(
     "DELETE FROM analytics_event WHERE user_id=ANY($1::uuid[])",
@@ -516,3 +521,145 @@ describe("custom places on the map and in details", () => {
     }
   });
 });
+describe("suggesting a custom place to the catalog (C6)", () => {
+  const houston = {
+    id: "00000000-0000-4000-8000-000000001001",
+    slug: "houston",
+    name: "Houston",
+    timezone: "America/Chicago",
+    latitude: 29.7604,
+    longitude: -95.3698,
+  };
+  const facts = {
+    category: "Taiwanese",
+    neighborhood: "Alief",
+    description: "Hand-made scallion pancakes on weekend mornings.",
+  };
+  let layerId: string;
+  let layerSlug: string;
+  let placeId: string;
+  let catalogId: string;
+  beforeAll(async () => {
+    layerId = await layerFor(alice, "Alice suggestion list");
+    layerSlug = (await getLayer(layerId, alice))!.layer.slug;
+    placeId = (
+      await createCustomPlaceInLayer(alice, layerId, {
+        name: "Suggestable Pancake Stand",
+        address: "11000 Bellaire Blvd",
+        pin,
+      })
+    ).place.id;
+  });
+  it("needs an address and a map location", async () => {
+    const { place } = await createCustomPlaceInLayer(alice, layerId, {
+      name: "No location yet",
+    });
+    await expect(
+      suggestCustomPlace(alice, place.id, facts),
+    ).rejects.toMatchObject({ status: 400, code: "LOCATION_REQUIRED" });
+  });
+  it("files a pending catalog proposal linked to the private place", async () => {
+    const { place } = await suggestCustomPlace(alice, placeId, facts);
+    expect(place.suggestion).toBe("pending");
+    catalogId = place.catalogPlaceId!;
+    const proposal = await pool.query<{
+      status: string;
+      submitted_by: string;
+      name: string;
+      category: string;
+    }>("SELECT status,submitted_by,name,category FROM place WHERE id=$1", [
+      catalogId,
+    ]);
+    expect(proposal.rows[0]).toEqual({
+      status: "pending",
+      submitted_by: alice.id,
+      name: "Suggestable Pancake Stand",
+      category: "Taiwanese",
+    });
+    const submission = await pool.query(
+      "SELECT 1 FROM submission WHERE entity_type='places' AND entity_id=$1",
+      [catalogId],
+    );
+    expect(submission.rowCount).toBe(1);
+    // Still private: the proposal is not public and the map keeps the custom place.
+    const result = await runMapQuery(
+      parseMapQueryFor(layerSlug),
+      houston,
+      alice,
+    );
+    expect(result.items.map((i) => i.key)).toContain(`custom:${placeId}`);
+  });
+  it("refuses a second suggestion while one is pending", async () => {
+    await expect(
+      suggestCustomPlace(alice, placeId, facts),
+    ).rejects.toMatchObject({ status: 409, code: "ALREADY_SUGGESTED" });
+  });
+  it("only lets scope editors suggest", async () => {
+    await expect(suggestCustomPlace(bob, placeId, facts)).rejects.toMatchObject(
+      { status: 404 },
+    );
+    const { place } = await createCustomPlaceInLayer(editor, groupLayer, {
+      name: "Group suggestion",
+      address: "1 Main St",
+      pin,
+    });
+    await expect(
+      suggestCustomPlace(viewer, place.id, facts),
+    ).rejects.toMatchObject({ status: 403 });
+  });
+  it("shows the approved catalog place instead of the private copy", async () => {
+    await pool.query("UPDATE place SET status='approved' WHERE id=$1", [
+      catalogId,
+    ]);
+    expect((await getVisibleCustomPlace(placeId, alice))?.suggestion).toBe(
+      "approved",
+    );
+    const result = await runMapQuery(
+      parseMapQueryFor(layerSlug),
+      houston,
+      alice,
+    );
+    const keys = result.items.map((i) => i.key);
+    expect(keys).toContain(`place:${catalogId}`);
+    expect(keys).not.toContain(`custom:${placeId}`);
+    expect((await listLayerItemRefs(layerId)).map((r) => r.key)).toContain(
+      `place:${catalogId}`,
+    );
+    // Removing by the catalog key removes the underlying custom membership.
+    await removeLayerItem(alice, layerId, `place:${catalogId}`);
+    expect((await listLayerItemRefs(layerId)).map((r) => r.key)).not.toContain(
+      `place:${catalogId}`,
+    );
+  });
+  it("can be suggested again after a rejection", async () => {
+    const { place } = await createCustomPlaceInLayer(alice, layerId, {
+      name: "Try again tea",
+      address: "2 Main St",
+      pin,
+    });
+    const first = await suggestCustomPlace(alice, place.id, facts);
+    await pool.query("UPDATE place SET status='rejected' WHERE id=$1", [
+      first.place.catalogPlaceId,
+    ]);
+    expect((await getVisibleCustomPlace(place.id, alice))?.suggestion).toBe(
+      "rejected",
+    );
+    const second = await suggestCustomPlace(alice, place.id, facts);
+    expect(second.place.suggestion).toBe("pending");
+    expect(second.place.catalogPlaceId).not.toBe(first.place.catalogPlaceId);
+  });
+  it("is unavailable when submissions are off", async () => {
+    flags.submissions = false;
+    try {
+      await expect(
+        suggestCustomPlace(alice, placeId, facts),
+      ).rejects.toMatchObject({ status: 404, code: "DISABLED" });
+    } finally {
+      flags.submissions = true;
+    }
+  });
+});
+function parseMapQueryFor(layers: string) {
+  const parsed = parseMapQuery({ city: "houston", layers });
+  return { ...parsed, layers: parsed.layers ?? "none" };
+}

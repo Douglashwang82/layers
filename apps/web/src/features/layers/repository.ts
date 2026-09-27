@@ -403,8 +403,14 @@ export async function listLayerItemRefs(layerId: string) {
     content_id: string | null;
     subject_id: string | null;
     custom_place_id: string | null;
+    /** A custom place whose suggestion was approved is shown as that catalog place. */
+    approved_catalog_id: string | null;
   }>(
-    "SELECT id,place_id,event_id,content_id,subject_id,custom_place_id FROM layer_item WHERE layer_id=$1 ORDER BY position, created_at",
+    `SELECT i.id,i.place_id,i.event_id,i.content_id,i.subject_id,i.custom_place_id,p.id AS approved_catalog_id
+     FROM layer_item i
+     LEFT JOIN custom_place cp ON cp.id=i.custom_place_id
+     LEFT JOIN place p ON p.id=cp.catalog_place_id AND p.status='approved'
+     WHERE i.layer_id=$1 ORDER BY i.position, i.created_at`,
     [layerId],
   );
   return result.rows.map((r) => ({
@@ -415,9 +421,11 @@ export async function listLayerItemRefs(layerId: string) {
         ? `event:${r.event_id}`
         : r.subject_id
           ? `subject:${r.subject_id}`
-          : r.custom_place_id
-            ? `custom:${r.custom_place_id}`
-            : `content:${r.content_id}`,
+          : r.approved_catalog_id
+            ? `place:${r.approved_catalog_id}`
+            : r.custom_place_id
+              ? `custom:${r.custom_place_id}`
+              : `content:${r.content_id}`,
   }));
 }
 export async function getMapPreference(userId?: string) {

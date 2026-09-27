@@ -651,6 +651,12 @@ export const customPlacePatchInput = z
     message: "Nothing to update.",
   });
 export type CustomPlacePatchInput = z.infer<typeof customPlacePatchInput>;
+/** Opt-in "Suggest to TaiwanHub": the catalog facts a custom place lacks. */
+export const customPlaceSuggestionInput = z.object({
+  category: z.enum(placeCategories),
+  neighborhood: plainText(80),
+  description: plainText(2000),
+});
 const httpsUrl = z.union([z.literal(""), z.url({ protocol: /^https?$/ })]);
 /**
  * General content v1: short text, optional image, optional source link and an

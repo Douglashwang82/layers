@@ -399,14 +399,27 @@ async function curatedMembers(
         ),
       ]
     : [];
+  const catalogFor = new Map<string, string>();
   if (customIds.length) {
     const places = await listActiveCustomPlaces(customIds);
     const firstLayer = new Map<string, string>();
     for (const row of result.rows)
       if (row.custom_place_id && !firstLayer.has(row.custom_place_id))
         firstLayer.set(row.custom_place_id, slugById.get(row.layer_id)!);
-    for (const place of places)
-      byKey.set(place.key, customMapItem(place, firstLayer.get(place.id)!));
+    for (const place of places) {
+      // An approved suggestion is the same place: show the catalog version.
+      const catalogKey = place.catalogPlaceId
+        ? `place:${place.catalogPlaceId}`
+        : null;
+      if (
+        place.suggestion === "approved" &&
+        catalogKey &&
+        byKey.has(catalogKey)
+      )
+        catalogFor.set(place.id, catalogKey);
+      else
+        byKey.set(place.key, customMapItem(place, firstLayer.get(place.id)!));
+    }
   }
   const groups = new Map<string, MapItem[]>();
   for (const row of result.rows) {
@@ -420,7 +433,8 @@ async function curatedMembers(
       : row.event_id
         ? `event:${row.event_id}`
         : row.custom_place_id
-          ? `custom:${row.custom_place_id}`
+          ? (catalogFor.get(row.custom_place_id) ??
+            `custom:${row.custom_place_id}`)
           : `content:${row.content_id}`;
     const item = byKey.get(key);
     if (!item) continue;

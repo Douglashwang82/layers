@@ -575,6 +575,7 @@ export function LayerEditor({
               layerSlug={layer.slug}
               cityName={city.name}
               editing={editingPlace}
+              canSuggest={canSuggestPlace}
               t={t}
               onCancel={() => setEditingPlace(null)}
               onSaved={(item, message) => {

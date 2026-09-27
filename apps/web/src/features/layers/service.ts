@@ -435,8 +435,11 @@ export async function removeLayerItem(
   if (!ref) throw new AppError(400, "INVALID_ITEM", "Unknown item.");
   const found = await requireEditableLayer(id, a);
   notProjected(found);
+  // A catalog key also covers custom places shown as that approved catalog place.
   const result = await pool.query(
-    `DELETE FROM layer_item WHERE layer_id=$1 AND ${itemColumns[ref.type]}=$2`,
+    ref.type === "place"
+      ? `DELETE FROM layer_item WHERE layer_id=$1 AND (place_id=$2 OR custom_place_id IN (SELECT id FROM custom_place WHERE catalog_place_id=$2))`
+      : `DELETE FROM layer_item WHERE layer_id=$1 AND ${itemColumns[ref.type]}=$2`,
     [found.layer.id, ref.id],
   );
   if (result.rowCount)

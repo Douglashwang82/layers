@@ -10,11 +10,17 @@ import {
   AppError,
   customPlaceInput,
   customPlacePatchInput,
+  customPlaceSuggestionInput,
+  placeInput,
   requireActor,
   type Actor,
 } from "@taiwanhub/shared";
 import { flags } from "@/lib/config";
 import { requireEditableLayer } from "@/features/layers/repository";
+import {
+  contributionLimit,
+  insertSubmission,
+} from "@/features/community/service";
 import {
   attachLayerItem,
   notProjected,
@@ -309,10 +315,72 @@ export async function updateCustomPlace(
     );
     await requeuePublicLayers(tx, id, a.id);
     await record(tx, a.id, "custom_place_updated", { placeId: id });
+    // Re-read so derived fields (the suggestion state) are current.
+    const fresh = (await findCustomPlace(id, tx)) ?? updated.rows[0];
     return {
-      place: toCustomPlace(updated.rows[0]),
+      place: toCustomPlace(fresh),
       geocode: geocoded?.outcome ?? ("skipped" as GeocodeOutcome),
     };
+  });
+}
+/**
+ * Opt-in "Suggest to TaiwanHub": files an ordinary pending catalog proposal
+ * from the private place plus the catalog facts it lacks, and links the two.
+ * The private place is unchanged; once a moderator approves the proposal the
+ * map shows the catalog place instead. A pending or approved suggestion
+ * cannot be filed twice; a rejected one can be retried.
+ */
+export async function suggestCustomPlace(
+  actor: Actor | null,
+  id: string,
+  body: unknown,
+) {
+  enabled();
+  if (!flags.submissions)
+    throw new AppError(404, "DISABLED", "Suggestions are unavailable.");
+  const a = requireActor(actor);
+  const input = customPlaceSuggestionInput.parse(body);
+  await contributionLimit(a);
+  return transaction(async (tx) => {
+    const row = await requireEditablePlace(tx, a, id);
+    if (row.latitude === null || row.longitude === null || !row.address.trim())
+      throw new AppError(
+        400,
+        "LOCATION_REQUIRED",
+        "Add an address and a map location before suggesting this place.",
+      );
+    if (row.catalog_place_id) {
+      const linked = await tx.query<{ status: string }>(
+        "SELECT status FROM place WHERE id=$1",
+        [row.catalog_place_id],
+      );
+      const status = linked.rows[0]?.status;
+      if (status === "pending" || status === "approved")
+        throw new AppError(
+          409,
+          "ALREADY_SUGGESTED",
+          "This place has already been suggested.",
+        );
+    }
+    const proposal = placeInput.parse({
+      name: row.name,
+      nameChinese: row.name_chinese,
+      description: input.description,
+      cityId: row.city_id,
+      neighborhood: input.neighborhood,
+      address: row.address,
+      latitude: row.latitude,
+      longitude: row.longitude,
+      category: input.category,
+    });
+    const submitted = await insertSubmission(tx, a, "places", proposal);
+    await tx.query(
+      "UPDATE custom_place SET catalog_place_id=$2,updated_at=now() WHERE id=$1",
+      [id, submitted.id],
+    );
+    await record(tx, a.id, "custom_place_suggested", { placeId: id });
+    const fresh = await findCustomPlace(id, tx);
+    return { place: toCustomPlace(fresh!) };
   });
 }
 /** Soft delete; the place leaves every layer of its scope. */

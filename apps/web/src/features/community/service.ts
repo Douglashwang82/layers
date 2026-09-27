@@ -216,78 +216,89 @@ export async function submitContent(
   const a = requireActor(actor);
   const input =
     kind === "places" ? placeInput.parse(body) : eventInput.parse(body);
-  return transaction(async (tx) => {
-    const city = await tx.query("SELECT id FROM city WHERE id=$1", [
-      input.cityId,
-    ]);
-    if (!city.rowCount)
-      throw new AppError(400, "INVALID_CITY", "Choose a supported city.");
-    const id = crypto.randomUUID();
-    const slug =
-      input.name
-        .toLowerCase()
-        .replace(/[^a-z0-9]+/g, "-")
-        .replace(/^-|-$/g, "") +
-      "-" +
-      id.slice(0, 8);
-    const cols = [
-      "id",
-      "slug",
-      "name",
-      "name_chinese",
-      "description",
-      "image",
-      "category",
-      "city_id",
-      "neighborhood",
-      "address",
-      "latitude",
-      "longitude",
-      "submitted_by",
-    ];
-    const values: unknown[] = [
-      id,
-      slug,
-      input.name,
-      input.nameChinese,
-      input.description,
-      input.image,
-      input.category,
-      input.cityId,
-      input.neighborhood,
-      input.address,
-      input.latitude,
-      input.longitude,
-      a.id,
-    ];
-    if ("organizerId" in input) {
-      const org = await approved(tx, "organizations", input.organizerId);
-      if (org.city_id !== input.cityId)
-        throw new AppError(
-          400,
-          "CITY_MISMATCH",
-          "Organizer must be in the selected city.",
-        );
-      cols.push("organizer_id", "venue", "start_time", "end_time", "capacity");
-      values.push(
-        input.organizerId,
-        input.venue,
-        input.startTime,
-        input.endTime,
-        input.capacity ?? null,
+  return transaction((tx) => insertSubmission(tx, a, kind, input));
+}
+/**
+ * Inserts a pending catalog proposal plus its submission row inside the
+ * caller's transaction; moderators approve or reject it as usual.
+ */
+export async function insertSubmission(
+  tx: PoolClient,
+  a: Actor,
+  kind: "places" | "events",
+  input:
+    ReturnType<typeof placeInput.parse> | ReturnType<typeof eventInput.parse>,
+) {
+  const city = await tx.query("SELECT id FROM city WHERE id=$1", [
+    input.cityId,
+  ]);
+  if (!city.rowCount)
+    throw new AppError(400, "INVALID_CITY", "Choose a supported city.");
+  const id = crypto.randomUUID();
+  const slug =
+    input.name
+      .toLowerCase()
+      .replace(/[^a-z0-9]+/g, "-")
+      .replace(/^-|-$/g, "") +
+    "-" +
+    id.slice(0, 8);
+  const cols = [
+    "id",
+    "slug",
+    "name",
+    "name_chinese",
+    "description",
+    "image",
+    "category",
+    "city_id",
+    "neighborhood",
+    "address",
+    "latitude",
+    "longitude",
+    "submitted_by",
+  ];
+  const values: unknown[] = [
+    id,
+    slug,
+    input.name,
+    input.nameChinese,
+    input.description,
+    input.image,
+    input.category,
+    input.cityId,
+    input.neighborhood,
+    input.address,
+    input.latitude,
+    input.longitude,
+    a.id,
+  ];
+  if ("organizerId" in input) {
+    const org = await approved(tx, "organizations", input.organizerId);
+    if (org.city_id !== input.cityId)
+      throw new AppError(
+        400,
+        "CITY_MISMATCH",
+        "Organizer must be in the selected city.",
       );
-    }
-    await tx.query(
-      `INSERT INTO ${tables[kind]}(${cols.join(",")},location) VALUES(${values.map((_, i) => "$" + (i + 1)).join(",")},ST_SetSRID(ST_MakePoint($12,$11),4326))`,
-      values,
+    cols.push("organizer_id", "venue", "start_time", "end_time", "capacity");
+    values.push(
+      input.organizerId,
+      input.venue,
+      input.startTime,
+      input.endTime,
+      input.capacity ?? null,
     );
-    await tx.query(
-      "INSERT INTO submission(user_id,entity_type,entity_id) VALUES($1,$2,$3)",
-      [a.id, kind, id],
-    );
-    await record(tx, a.id, `${tables[kind]}_submitted`, id);
-    return { id, slug, status: "pending" };
-  });
+  }
+  await tx.query(
+    `INSERT INTO ${tables[kind]}(${cols.join(",")},location) VALUES(${values.map((_, i) => "$" + (i + 1)).join(",")},ST_SetSRID(ST_MakePoint($12,$11),4326))`,
+    values,
+  );
+  await tx.query(
+    "INSERT INTO submission(user_id,entity_type,entity_id) VALUES($1,$2,$3)",
+    [a.id, kind, id],
+  );
+  await record(tx, a.id, `${tables[kind]}_submitted`, id);
+  return { id, slug, status: "pending" as const };
 }
 export async function moderate(actor: Actor | null, body: unknown) {
   const a = requireModerator(actor);

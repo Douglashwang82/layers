@@ -230,6 +230,19 @@ export const en = {
   locationExact: "Located from the address.",
   locationNone: "Not on the map yet.",
   removeLocation: "Remove map location",
+  suggestToTaiwanHub: "Suggest to TaiwanHub",
+  suggestHelp:
+    "A copy goes to moderators. If approved, it becomes a public TaiwanHub place. This private place stays as it is.",
+  suggestNeedsLocation:
+    "Add an address and a map location before suggesting this place.",
+  suggestMissing: "Add a neighborhood and why it's worth adding.",
+  whyWorthAdding: "Why is it worth adding?",
+  sendSuggestion: "Send suggestion",
+  suggestionSent: "Suggestion sent. A moderator will review it.",
+  suggestionPending: "Suggested to TaiwanHub. Waiting for a moderator.",
+  suggestionApproved: "Approved: now a public TaiwanHub place.",
+  suggestionRejected:
+    "Moderators didn't accept this suggestion. You can suggest it again.",
   noPlacesBody:
     "No places match these filters. Clear a filter or try another neighborhood.",
   noEventsBody:
@@ -917,6 +930,17 @@ export const zh: Copy = {
   locationExact: "已依地址定位。",
   locationNone: "尚未顯示在地圖上。",
   removeLocation: "移除地圖位置",
+  suggestToTaiwanHub: "推薦給 TaiwanHub",
+  suggestHelp:
+    "會將副本送交管理員審核，通過後會成為公開的 TaiwanHub 地點。這個私人地點本身不會改變。",
+  suggestNeedsLocation: "推薦前請先加入地址與地圖位置。",
+  suggestMissing: "請填寫地區，以及值得加入的原因。",
+  whyWorthAdding: "為什麼值得加入？",
+  sendSuggestion: "送出推薦",
+  suggestionSent: "已送出推薦，管理員會進行審核。",
+  suggestionPending: "已推薦給 TaiwanHub，等待管理員審核。",
+  suggestionApproved: "已通過：現在是公開的 TaiwanHub 地點。",
+  suggestionRejected: "管理員未接受此推薦，你可以再推薦一次。",
   noPlacesBody: "沒有符合的店家，請清除篩選或換個地區。",
   noEventsBody: "目前沒有符合的活動，試試「即將舉行」或其他日期。",
   eventCancelled: "活動已取消。",

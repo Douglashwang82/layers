@@ -6,6 +6,7 @@ import { Field, fieldProps } from "@/components/ui/field";
 import type { CustomPlace } from "@/features/custom-places/repository";
 import type { MapItem } from "@/features/map/query";
 import { customMapItem } from "@/lib/custom-places";
+import { SuggestPlace } from "./suggest-place";
 import { type Copy, format } from "@/lib/dictionary";
 type Feedback = { tone: "success" | "error"; text: string } | null;
 type Outcome =
@@ -26,6 +27,7 @@ export function NewPlaceForm({
   t,
   onSaved,
   onDeleted,
+  canSuggest = false,
   onCancel,
 }: {
   layerId: string;
@@ -37,8 +39,12 @@ export function NewPlaceForm({
   onSaved: (item: MapItem, message: string) => void;
   onDeleted?: (key: string, message: string) => void;
   onCancel: () => void;
+  /** Place submissions are enabled: offer "Suggest to TaiwanHub" when editing. */
+  canSuggest?: boolean;
 }) {
   const id = editing ? "edit-place" : "new-place";
+  /** The edited place after a suggestion, so its status updates in place. */
+  const [current, setCurrent] = useState<CustomPlace | null>(null);
   const [name, setName] = useState(editing?.name ?? initialName);
   const [nameChinese, setNameChinese] = useState(editing?.nameChinese ?? "");
   const [address, setAddress] = useState(editing?.address ?? "");
@@ -167,164 +173,175 @@ export function NewPlaceForm({
     }
   }
   return (
-    <form
-      className="form-stack new-place-form"
-      onSubmit={submit}
-      noValidate
-      aria-labelledby={`${id}-heading`}
-    >
-      <h3 id={`${id}-heading`}>{editing ? t.editPlaceHeading : t.newPlace}</h3>
-      <p className="fine-print">{t.newPlaceHelp}</p>
-      <Field id={`${id}-name`} label={t.placeName} error={nameError}>
-        <input
-          {...fieldProps(`${id}-name`, { error: nameError })}
-          type="text"
-          value={name}
-          maxLength={120}
-          required
-          autoFocus
-          onChange={(e) => setName(e.target.value)}
-        />
-      </Field>
-      <Field id={`${id}-name-zh`} label={t.chineseName}>
-        <input
-          id={`${id}-name-zh`}
-          type="text"
-          value={nameChinese}
-          maxLength={120}
-          onChange={(e) => setNameChinese(e.target.value)}
-        />
-      </Field>
-      <Field id={`${id}-address`} label={t.address}>
-        <input
-          id={`${id}-address`}
-          type="text"
-          value={address}
-          maxLength={300}
-          autoComplete="street-address"
-          onChange={(e) => {
-            setAddress(e.target.value);
-            setLocationFeedback(null);
-          }}
-        />
-      </Field>
-      {currentLocation && !pin && (
-        <p className="fine-print">{currentLocation}</p>
-      )}
-      <div className="actions">
-        <button
-          type="button"
-          className="button secondary small"
-          onClick={findOnMap}
-          disabled={!address.trim() || looking}
-          aria-busy={looking || undefined}
-        >
-          <MapPin size={14} aria-hidden="true" />
-          {t.findOnMap}
-        </button>
-        <button
-          type="button"
-          className="button secondary small"
-          onClick={useMyLocation}
-          disabled={locating}
-          aria-busy={locating || undefined}
-        >
-          <LocateFixed size={14} aria-hidden="true" />
-          {t.useMyLocation}
-        </button>
-        {editing &&
-          (pin ||
-            (editing.locationStatus !== "unspecified" && !clearLocation)) && (
-            <button
-              type="button"
-              className="button secondary small"
-              onClick={() => {
-                setPin(null);
-                setClearLocation(true);
-                setLocationFeedback(null);
-              }}
-            >
-              {t.removeLocation}
-            </button>
-          )}
-      </div>
-      <div aria-live="polite">
-        <StatusMessage feedback={locationFeedback} />
-      </div>
-      <Field
-        id={`${id}-website`}
-        label={`${t.website} (${t.optional})`}
-        error={websiteError}
+    <div className="new-place-form">
+      <form
+        className="form-stack"
+        onSubmit={submit}
+        noValidate
+        aria-labelledby={`${id}-heading`}
       >
-        <input
-          {...fieldProps(`${id}-website`, { error: websiteError })}
-          type="url"
-          inputMode="url"
-          placeholder="https://"
-          value={website}
-          maxLength={500}
-          onChange={(e) => setWebsite(e.target.value)}
-        />
-      </Field>
-      <Field id={`${id}-note`} label={t.note}>
-        <textarea
-          id={`${id}-note`}
-          value={note}
-          maxLength={300}
-          rows={2}
-          onChange={(e) => setNote(e.target.value)}
-        />
-      </Field>
-      <StatusMessage feedback={feedback} />
-      <div className="actions">
-        <button
-          type="submit"
-          className="button"
-          disabled={saving || deleting}
-          aria-busy={saving || undefined}
-        >
-          {saving ? t.saving : t.savePlace}
-        </button>
-        <button type="button" className="button secondary" onClick={onCancel}>
-          {t.cancel}
-        </button>
-      </div>
-      {editing && (
-        <div className="place-delete">
-          {confirmingDelete ? (
-            <div role="alert" className="notice notice-warning">
-              <p>{format(t.deletePlaceConfirm, { name: editing.name })}</p>
-              <div className="actions">
-                <button
-                  type="button"
-                  className="button small"
-                  onClick={remove}
-                  disabled={deleting}
-                  aria-busy={deleting || undefined}
-                >
-                  {t.deletePlace}
-                </button>
-                <button
-                  type="button"
-                  className="button secondary small"
-                  onClick={() => setConfirmingDelete(false)}
-                  disabled={deleting}
-                >
-                  {t.cancel}
-                </button>
-              </div>
-            </div>
-          ) : (
-            <button
-              type="button"
-              className="text-button"
-              onClick={() => setConfirmingDelete(true)}
-            >
-              <Trash2 size={14} aria-hidden="true" /> {t.deletePlace}
-            </button>
-          )}
+        <h3 id={`${id}-heading`}>
+          {editing ? t.editPlaceHeading : t.newPlace}
+        </h3>
+        <p className="fine-print">{t.newPlaceHelp}</p>
+        <Field id={`${id}-name`} label={t.placeName} error={nameError}>
+          <input
+            {...fieldProps(`${id}-name`, { error: nameError })}
+            type="text"
+            value={name}
+            maxLength={120}
+            required
+            autoFocus
+            onChange={(e) => setName(e.target.value)}
+          />
+        </Field>
+        <Field id={`${id}-name-zh`} label={t.chineseName}>
+          <input
+            id={`${id}-name-zh`}
+            type="text"
+            value={nameChinese}
+            maxLength={120}
+            onChange={(e) => setNameChinese(e.target.value)}
+          />
+        </Field>
+        <Field id={`${id}-address`} label={t.address}>
+          <input
+            id={`${id}-address`}
+            type="text"
+            value={address}
+            maxLength={300}
+            autoComplete="street-address"
+            onChange={(e) => {
+              setAddress(e.target.value);
+              setLocationFeedback(null);
+            }}
+          />
+        </Field>
+        {currentLocation && !pin && (
+          <p className="fine-print">{currentLocation}</p>
+        )}
+        <div className="actions">
+          <button
+            type="button"
+            className="button secondary small"
+            onClick={findOnMap}
+            disabled={!address.trim() || looking}
+            aria-busy={looking || undefined}
+          >
+            <MapPin size={14} aria-hidden="true" />
+            {t.findOnMap}
+          </button>
+          <button
+            type="button"
+            className="button secondary small"
+            onClick={useMyLocation}
+            disabled={locating}
+            aria-busy={locating || undefined}
+          >
+            <LocateFixed size={14} aria-hidden="true" />
+            {t.useMyLocation}
+          </button>
+          {editing &&
+            (pin ||
+              (editing.locationStatus !== "unspecified" && !clearLocation)) && (
+              <button
+                type="button"
+                className="button secondary small"
+                onClick={() => {
+                  setPin(null);
+                  setClearLocation(true);
+                  setLocationFeedback(null);
+                }}
+              >
+                {t.removeLocation}
+              </button>
+            )}
         </div>
+        <div aria-live="polite">
+          <StatusMessage feedback={locationFeedback} />
+        </div>
+        <Field
+          id={`${id}-website`}
+          label={`${t.website} (${t.optional})`}
+          error={websiteError}
+        >
+          <input
+            {...fieldProps(`${id}-website`, { error: websiteError })}
+            type="url"
+            inputMode="url"
+            placeholder="https://"
+            value={website}
+            maxLength={500}
+            onChange={(e) => setWebsite(e.target.value)}
+          />
+        </Field>
+        <Field id={`${id}-note`} label={t.note}>
+          <textarea
+            id={`${id}-note`}
+            value={note}
+            maxLength={300}
+            rows={2}
+            onChange={(e) => setNote(e.target.value)}
+          />
+        </Field>
+        <StatusMessage feedback={feedback} />
+        <div className="actions">
+          <button
+            type="submit"
+            className="button"
+            disabled={saving || deleting}
+            aria-busy={saving || undefined}
+          >
+            {saving ? t.saving : t.savePlace}
+          </button>
+          <button type="button" className="button secondary" onClick={onCancel}>
+            {t.cancel}
+          </button>
+        </div>
+        {editing && (
+          <div className="place-delete">
+            {confirmingDelete ? (
+              <div role="alert" className="notice notice-warning">
+                <p>{format(t.deletePlaceConfirm, { name: editing.name })}</p>
+                <div className="actions">
+                  <button
+                    type="button"
+                    className="button small"
+                    onClick={remove}
+                    disabled={deleting}
+                    aria-busy={deleting || undefined}
+                  >
+                    {t.deletePlace}
+                  </button>
+                  <button
+                    type="button"
+                    className="button secondary small"
+                    onClick={() => setConfirmingDelete(false)}
+                    disabled={deleting}
+                  >
+                    {t.cancel}
+                  </button>
+                </div>
+              </div>
+            ) : (
+              <button
+                type="button"
+                className="text-button"
+                onClick={() => setConfirmingDelete(true)}
+              >
+                <Trash2 size={14} aria-hidden="true" /> {t.deletePlace}
+              </button>
+            )}
+          </div>
+        )}
+      </form>
+      {editing && canSuggest && (
+        <SuggestPlace
+          place={current ?? editing}
+          t={t}
+          onSuggested={setCurrent}
+        />
       )}
-    </form>
+    </div>
   );
 }

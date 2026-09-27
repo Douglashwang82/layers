@@ -106,6 +106,7 @@ import {
   createCustomPlaceInLayer,
   deleteCustomPlace,
   previewGeocode,
+  suggestCustomPlace,
   updateCustomPlace,
 } from "@/features/custom-places/service";
 export const dynamic = "force-dynamic";
@@ -510,6 +511,13 @@ async function handler(
         )
           return ok(await publishLayer(a, id, method === "POST"));
       }
+      if (
+        resource === "custom-places" &&
+        id &&
+        action === "suggest" &&
+        method === "POST"
+      )
+        return ok(await suggestCustomPlace(a, z.uuid().parse(id), body), 201);
       if (resource === "custom-places" && id && !action) {
         const placeId = z.uuid().parse(id);
         if (method === "PATCH")
