@@ -2,6 +2,8 @@
 
 Implements the first release of [the Daily Pick design](../plans/daily-pick-layer-design.md): one shared pick per city and city-local day. Personalization and AI-written copy are not part of this release.
 
+The proposed [daily restaurant recommendation implementation plan](../plans/daily-restaurant-recommendation-implementation-plan.md) describes version 2: Greater Houston restaurant discovery, Google quality and hours checks, weekly food variety, a top-10 decision report, LLM-written recommendations, and publication into Discover Houston. It is a future engineering handoff; the behavior below remains the implemented version 1.
+
 ## Where it lives
 
 | Concern                                       | Location                                                                                      |
