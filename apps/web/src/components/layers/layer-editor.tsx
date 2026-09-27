@@ -2,7 +2,7 @@
 import { useEffect, useRef, useState, type FormEvent } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { ArrowDown, ArrowUp, Plus, Search, Trash2 } from "lucide-react";
+import { ArrowDown, ArrowUp, Pencil, Plus, Search, Trash2 } from "lucide-react";
 import { api, StatusMessage } from "@/components/actions";
 import { Field, fieldProps } from "@/components/ui/field";
 import type { LayerRecord } from "@/features/layers/repository";
@@ -90,6 +90,23 @@ export function LayerEditor({
   const [yourResults, setYourResults] = useState<MapItem[]>([]);
   /** Prefilled name while the new-place form is open; null when closed. */
   const [newPlaceName, setNewPlaceName] = useState<string | null>(null);
+  /** The custom place open in the edit form, loaded fresh from the server. */
+  const [editingPlace, setEditingPlace] = useState<CustomPlace | null>(null);
+  async function editPlace(item: MapItem) {
+    setPendingKey(item.key);
+    setItemFeedback(null);
+    try {
+      const { place } = (await api(`custom-places/${item.id}`, "GET")) as {
+        place: CustomPlace;
+      };
+      setNewPlaceName(null);
+      setEditingPlace(place);
+    } catch (err) {
+      setItemFeedback({ tone: "error", text: (err as Error).message });
+    } finally {
+      setPendingKey(null);
+    }
+  }
   /** The query the current results belong to; null before the first search. */
   const [searched, setSearched] = useState<string | null>(null);
   const [searching, setSearching] = useState(false);
@@ -517,6 +534,22 @@ export function LayerEditor({
                     >
                       <ArrowDown size={16} aria-hidden="true" />
                     </button>
+                    {item.customScope && (
+                      <button
+                        type="button"
+                        className="icon-button"
+                        aria-label={format(t.editPlace, {
+                          name: itemTitle(item, locale),
+                        })}
+                        disabled={pendingKey === item.key}
+                        onClick={(e) => {
+                          e.preventDefault();
+                          editPlace(item);
+                        }}
+                      >
+                        <Pencil size={16} aria-hidden="true" />
+                      </button>
+                    )}
                     <button
                       type="button"
                       className="icon-button"
@@ -535,6 +568,34 @@ export function LayerEditor({
               </li>
             ))}
           </ul>
+          {editingPlace && (
+            <NewPlaceForm
+              key={editingPlace.id}
+              layerId={layer.id}
+              layerSlug={layer.slug}
+              cityName={city.name}
+              editing={editingPlace}
+              t={t}
+              onCancel={() => setEditingPlace(null)}
+              onSaved={(item, message) => {
+                setItems((list) =>
+                  list.map((i) =>
+                    i.key === item.key
+                      ? { ...item, layers: i.layers, note: i.note }
+                      : i,
+                  ),
+                );
+                setEditingPlace(null);
+                setItemFeedback({ tone: "success", text: message });
+              }}
+              onDeleted={(key, message) => {
+                setItems((list) => list.filter((i) => i.key !== key));
+                if (undo?.key === key) setUndo(null);
+                setEditingPlace(null);
+                setItemFeedback({ tone: "success", text: message });
+              }}
+            />
+          )}
           {undo && (
             <p className="message success-message" role="status">
               {t.removed}{" "}
@@ -577,7 +638,10 @@ export function LayerEditor({
               <button
                 type="button"
                 className="button secondary small"
-                onClick={() => setNewPlaceName(query.trim())}
+                onClick={() => {
+                  setEditingPlace(null);
+                  setNewPlaceName(query.trim());
+                }}
               >
                 <Plus size={14} aria-hidden="true" />
                 {t.newPlace}
@@ -592,7 +656,7 @@ export function LayerEditor({
               initialName={newPlaceName}
               t={t}
               onCancel={() => setNewPlaceName(null)}
-              onCreated={(item, message) => {
+              onSaved={(item, message) => {
                 setItems((list) => [
                   ...list,
                   { ...item, layers: [layer.slug] },
@@ -617,7 +681,10 @@ export function LayerEditor({
                     <button
                       type="button"
                       className="button secondary small"
-                      onClick={() => setNewPlaceName(searched)}
+                      onClick={() => {
+                        setEditingPlace(null);
+                        setNewPlaceName(searched);
+                      }}
                     >
                       <Plus size={14} aria-hidden="true" />
                       {format(t.addAsNewPlace, { q: searched })}

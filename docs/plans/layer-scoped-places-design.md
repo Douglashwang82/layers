@@ -1,6 +1,6 @@
 # Layer-scoped places: add places freely to private and group layers
 
-Status: in progress. C0–C2 shipped (flag off). C3+C4 (editor search sections and new-place form, map/list/detail rendering) implemented and tested locally. Not yet built: the drop-a-pin map in the form (members use "Find on map" or "Use my current location"), catalog dedupe via `catalog_place_id` (lands with C6), editing/deleting a custom place from the UI (API exists), and C5–C6. Decisions below were made by the product owner on 2026-09-27.
+Status: in progress. C0–C2 shipped (flag off). C3+C4 (editor search sections and new-place form, map/list/detail rendering) implemented and tested locally. Not yet built: the drop-a-pin map in the form (members use "Find on map" or "Use my current location"), catalog dedupe via `catalog_place_id` (lands with C6), and C5–C6. Decisions below were made by the product owner on 2026-09-27.
 
 ## Problem
 

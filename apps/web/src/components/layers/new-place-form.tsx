@@ -1,6 +1,6 @@
 "use client";
 import { useState, type FormEvent } from "react";
-import { LocateFixed, MapPin } from "lucide-react";
+import { LocateFixed, MapPin, Trash2 } from "lucide-react";
 import { api, StatusMessage } from "@/components/actions";
 import { Field, fieldProps } from "@/components/ui/field";
 import type { CustomPlace } from "@/features/custom-places/repository";
@@ -12,42 +12,61 @@ type Outcome =
   "matched" | "no_match" | "outside_city" | "unavailable" | "skipped";
 type Pin = { latitude: number; longitude: number };
 /**
- * Creates a member-owned place in the current layer. Location comes from the
- * member's own position (approximate) or from the server geocoding the address
- * (exact); without either, the place is saved list-only.
+ * Creates a member-owned place in the current layer, or edits one (`editing`).
+ * Location comes from the member's own position (approximate) or from the
+ * server geocoding the address (exact); without either, the place is list-only.
+ * Deleting removes the place from every layer of its owner.
  */
 export function NewPlaceForm({
   layerId,
   layerSlug,
   cityName,
-  initialName,
+  initialName = "",
+  editing,
   t,
-  onCreated,
+  onSaved,
+  onDeleted,
   onCancel,
 }: {
   layerId: string;
   layerSlug: string;
   cityName: string;
-  initialName: string;
+  initialName?: string;
+  editing?: CustomPlace;
   t: Copy;
-  onCreated: (item: MapItem, message: string) => void;
+  onSaved: (item: MapItem, message: string) => void;
+  onDeleted?: (key: string, message: string) => void;
   onCancel: () => void;
 }) {
-  const [name, setName] = useState(initialName);
-  const [nameChinese, setNameChinese] = useState("");
-  const [address, setAddress] = useState("");
-  const [website, setWebsite] = useState("");
-  const [note, setNote] = useState("");
+  const id = editing ? "edit-place" : "new-place";
+  const [name, setName] = useState(editing?.name ?? initialName);
+  const [nameChinese, setNameChinese] = useState(editing?.nameChinese ?? "");
+  const [address, setAddress] = useState(editing?.address ?? "");
+  const [website, setWebsite] = useState(editing?.website ?? "");
+  const [note, setNote] = useState(editing?.note ?? "");
   const [pin, setPin] = useState<Pin | null>(null);
+  /** Edit only: the member asked to take the place off the map. */
+  const [clearLocation, setClearLocation] = useState(false);
   const [locating, setLocating] = useState(false);
   const [looking, setLooking] = useState(false);
   const [saving, setSaving] = useState(false);
+  const [confirmingDelete, setConfirmingDelete] = useState(false);
+  const [deleting, setDeleting] = useState(false);
   const [locationFeedback, setLocationFeedback] = useState<Feedback>(null);
   const [feedback, setFeedback] = useState<Feedback>(null);
   const [touched, setTouched] = useState(false);
   const nameError = touched && !name.trim() ? t.placeName : undefined;
   const websiteError =
     website && !/^https:\/\/\S+$/.test(website.trim()) ? t.website : undefined;
+  const currentLocation = !editing
+    ? null
+    : clearLocation
+      ? t.locationNone
+      : editing.locationStatus === "exact"
+        ? t.locationExact
+        : editing.locationStatus === "approximate"
+          ? t.locationPinned
+          : t.locationNone;
   const outcomeText = (outcome: Outcome, matched = "") =>
     outcome === "matched"
       ? format(t.locationMatched, { address: matched || address })
@@ -89,6 +108,7 @@ export function NewPlaceForm({
           latitude: position.coords.latitude,
           longitude: position.coords.longitude,
         });
+        setClearLocation(false);
         setLocationFeedback({ tone: "success", text: t.locationPinned });
         setLocating(false);
       },
@@ -105,21 +125,28 @@ export function NewPlaceForm({
     if (!name.trim() || websiteError) return;
     setSaving(true);
     setFeedback(null);
+    const fields = {
+      name: name.trim(),
+      nameChinese: nameChinese.trim(),
+      address: address.trim(),
+      website: website.trim(),
+      note: note.trim(),
+    };
     try {
-      const result = (await api(`layers/${layerId}/places`, "POST", {
-        name: name.trim(),
-        nameChinese: nameChinese.trim(),
-        address: address.trim(),
-        website: website.trim(),
-        note: note.trim(),
-        ...(pin ? { pin } : {}),
-      })) as { place: CustomPlace; geocode: Outcome };
+      const result = editing
+        ? ((await api(`custom-places/${editing.id}`, "PATCH", {
+            ...fields,
+            ...(pin ? { pin } : clearLocation ? { pin: null } : {}),
+          })) as { place: CustomPlace; geocode: Outcome })
+        : ((await api(`layers/${layerId}/places`, "POST", {
+            ...fields,
+            ...(pin ? { pin } : {}),
+          })) as { place: CustomPlace; geocode: Outcome });
+      const done = editing ? t.placeUpdated : t.placeAdded;
       const extra = outcomeText(result.geocode);
-      onCreated(
+      onSaved(
         customMapItem(result.place, layerSlug),
-        result.geocode === "matched" || !extra
-          ? t.placeAdded
-          : `${t.placeAdded} ${extra}`,
+        result.geocode === "matched" || !extra ? done : `${done} ${extra}`,
       );
     } catch (err) {
       setFeedback({ tone: "error", text: (err as Error).message });
@@ -127,18 +154,30 @@ export function NewPlaceForm({
       setSaving(false);
     }
   }
+  async function remove() {
+    if (!editing) return;
+    setDeleting(true);
+    setFeedback(null);
+    try {
+      await api(`custom-places/${editing.id}`, "DELETE");
+      onDeleted?.(editing.key, t.placeDeleted);
+    } catch (err) {
+      setFeedback({ tone: "error", text: (err as Error).message });
+      setDeleting(false);
+    }
+  }
   return (
     <form
       className="form-stack new-place-form"
       onSubmit={submit}
       noValidate
-      aria-labelledby="new-place-heading"
+      aria-labelledby={`${id}-heading`}
     >
-      <h3 id="new-place-heading">{t.newPlace}</h3>
+      <h3 id={`${id}-heading`}>{editing ? t.editPlaceHeading : t.newPlace}</h3>
       <p className="fine-print">{t.newPlaceHelp}</p>
-      <Field id="new-place-name" label={t.placeName} error={nameError}>
+      <Field id={`${id}-name`} label={t.placeName} error={nameError}>
         <input
-          {...fieldProps("new-place-name", { error: nameError })}
+          {...fieldProps(`${id}-name`, { error: nameError })}
           type="text"
           value={name}
           maxLength={120}
@@ -147,18 +186,18 @@ export function NewPlaceForm({
           onChange={(e) => setName(e.target.value)}
         />
       </Field>
-      <Field id="new-place-name-zh" label={t.chineseName}>
+      <Field id={`${id}-name-zh`} label={t.chineseName}>
         <input
-          id="new-place-name-zh"
+          id={`${id}-name-zh`}
           type="text"
           value={nameChinese}
           maxLength={120}
           onChange={(e) => setNameChinese(e.target.value)}
         />
       </Field>
-      <Field id="new-place-address" label={t.address}>
+      <Field id={`${id}-address`} label={t.address}>
         <input
-          id="new-place-address"
+          id={`${id}-address`}
           type="text"
           value={address}
           maxLength={300}
@@ -169,6 +208,9 @@ export function NewPlaceForm({
           }}
         />
       </Field>
+      {currentLocation && !pin && (
+        <p className="fine-print">{currentLocation}</p>
+      )}
       <div className="actions">
         <button
           type="button"
@@ -190,17 +232,32 @@ export function NewPlaceForm({
           <LocateFixed size={14} aria-hidden="true" />
           {t.useMyLocation}
         </button>
+        {editing &&
+          (pin ||
+            (editing.locationStatus !== "unspecified" && !clearLocation)) && (
+            <button
+              type="button"
+              className="button secondary small"
+              onClick={() => {
+                setPin(null);
+                setClearLocation(true);
+                setLocationFeedback(null);
+              }}
+            >
+              {t.removeLocation}
+            </button>
+          )}
       </div>
       <div aria-live="polite">
         <StatusMessage feedback={locationFeedback} />
       </div>
       <Field
-        id="new-place-website"
+        id={`${id}-website`}
         label={`${t.website} (${t.optional})`}
         error={websiteError}
       >
         <input
-          {...fieldProps("new-place-website", { error: websiteError })}
+          {...fieldProps(`${id}-website`, { error: websiteError })}
           type="url"
           inputMode="url"
           placeholder="https://"
@@ -209,9 +266,9 @@ export function NewPlaceForm({
           onChange={(e) => setWebsite(e.target.value)}
         />
       </Field>
-      <Field id="new-place-note" label={t.note}>
+      <Field id={`${id}-note`} label={t.note}>
         <textarea
-          id="new-place-note"
+          id={`${id}-note`}
           value={note}
           maxLength={300}
           rows={2}
@@ -223,7 +280,7 @@ export function NewPlaceForm({
         <button
           type="submit"
           className="button"
-          disabled={saving}
+          disabled={saving || deleting}
           aria-busy={saving || undefined}
         >
           {saving ? t.saving : t.savePlace}
@@ -232,6 +289,42 @@ export function NewPlaceForm({
           {t.cancel}
         </button>
       </div>
+      {editing && (
+        <div className="place-delete">
+          {confirmingDelete ? (
+            <div role="alert" className="notice notice-warning">
+              <p>{format(t.deletePlaceConfirm, { name: editing.name })}</p>
+              <div className="actions">
+                <button
+                  type="button"
+                  className="button small"
+                  onClick={remove}
+                  disabled={deleting}
+                  aria-busy={deleting || undefined}
+                >
+                  {t.deletePlace}
+                </button>
+                <button
+                  type="button"
+                  className="button secondary small"
+                  onClick={() => setConfirmingDelete(false)}
+                  disabled={deleting}
+                >
+                  {t.cancel}
+                </button>
+              </div>
+            </div>
+          ) : (
+            <button
+              type="button"
+              className="text-button"
+              onClick={() => setConfirmingDelete(true)}
+            >
+              <Trash2 size={14} aria-hidden="true" /> {t.deletePlace}
+            </button>
+          )}
+        </div>
+      )}
     </form>
   );
 }
