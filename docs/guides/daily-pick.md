@@ -61,3 +61,40 @@ Client outcome events (city slug only): `daily_pick_shown` (context, not a succe
 - The seeded demo catalog is entirely demo content, so a freshly seeded local database shows the empty state. Tests create their own non-demo fixtures.
 - Selection weights are a first release and need tuning against real catalog coverage before launch.
 - Category names inside the Chinese reason text use a fixed translation table for the known categories and fall back to the English name.
+
+## Version 2: daily restaurant recommendation (Greater Houston)
+
+A separate, additive pipeline extends this into a daily restaurant
+recommendation sourced from reviewer-approved candidates rather than the
+whole catalog. See
+[the implementation plan](../plans/daily-restaurant-recommendation-implementation-plan.md)
+for the full design and
+[ADR: Phase 0 provider/retention decision](../adr/daily-restaurant-recommendation-phase0.md)
+for what is **pending, not approved** before any of this runs against real
+provider data or publishes for real. This section documents only the
+defaults and commands that already exist in this repository.
+
+Rule defaults (`packages/shared/src/daily-pick-restaurant.ts`, overridable
+per area via `restaurant_discovery_area.config`): minimum rating 4.3 with at
+least 30 ratings; no repeated food type within 6 calendar days; no repeated
+restaurant within (at least) 30 calendar days; a rating-volume-adjusted score
+(`(count*rating + 50*4.2) / (count+50)`) with a deterministic tie-break; a
+top-10 report; at most 3 candidate copy attempts per run.
+
+A version 2 run never publishes automatically. `prepareRestaurantPickRun`
+produces a `ready_for_review` run with a pending, unreviewed
+`restaurant_copy` row; a moderator must call `approveRestaurantCopy` before
+`publishRestaurantPickRun` can commit — this holds regardless of which
+adapters (fake or real) prepared the run. `pnpm daily-pick:restaurant:worker
+CITY_SLUG [--date] [--fixtures path.json]` runs `prepareRestaurantPickRun`
+with the deterministic fake adapters only (never a live call), refuses under
+`NODE_ENV=production`, and is the only CLI entrypoint that exists today —
+there is no command that can reach a real provider or publish. A city with
+an `enabled` version 2 area is automatically skipped (not silently
+overridden) by the version 1 `daily-pick:generate`/`runDailyPickGeneration`
+path described above.
+
+`.github/workflows/daily-pick-restaurant.yml` mirrors `mail-outbox.yml`'s
+double-gate pattern and is unenabled everywhere; as committed it only runs
+the fake-only CLI, so enabling it before real adapters are wired in would
+produce harmless pending drafts, never a real recommendation.

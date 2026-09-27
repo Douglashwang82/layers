@@ -1,6 +1,8 @@
 # Daily restaurant recommendations: engineering implementation plan
 
-Status: proposed implementation handoff; no application behavior changed. Updated September 27, 2026.
+Status: in progress. Updated September 27, 2026 (original handoff), status note added October 2026.
+
+Implemented and tested so far: the pure eligibility/ranking/report rules (Phase 2/3), additive schema (candidates, evidence, discovery/pick runs, reports, copy, Discover membership provenance), a worker that discovers/qualifies/ranks/drafts copy and can only reach `ready_for_review`/`empty`/`failed` (never publishes without a separate human copy approval), the atomic revalidating publish transaction, real Google Places (qualification + Text Search discovery) and Anthropic copy adapters (network calls gated behind an explicit `legalAcknowledged` flag nothing in this codebase sets to true), an offline CLI, and a disabled scheduling workflow. See [ADR: Phase 0 provider/retention decision](../adr/daily-restaurant-recommendation-phase0.md) for what remains **pending** (not approved) before any of this can run against real provider data. Not yet implemented: the admin curation/report/review UI and its moderator-only API surface, version 2-aware public card/history/map projections, and end-to-end coverage — tracked as remaining work, not silently dropped.
 
 This plan extends the implemented [Daily Pick](../guides/daily-pick.md) into a daily restaurant recommendation for Greater Houston. It supersedes the older [Daily Pick design](daily-pick-layer-design.md) only for the version 2 restaurant pipeline described here. Existing version 1 history remains valid historical data.
 
