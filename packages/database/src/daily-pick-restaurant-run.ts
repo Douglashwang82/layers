@@ -937,12 +937,36 @@ export async function publishRestaurantPickRun(
     freshCommitted,
     config,
   );
-  if (!freshQualification.qualified)
-    return {
-      status: "stale",
-      runId,
-      reason: freshQualification.primaryCode ?? "no_longer_qualified",
-    };
+  // Distinguish "fresh data says this now fails a gate" (must block) from
+  // "the adapter simply has no fresh data" (absence of evidence, not
+  // evidence of staleness): until a real, legally-acknowledged adapter is
+  // wired in (see restaurant-providers.ts), every caller re-checks with an
+  // adapter that has no fixture for this candidate, which would otherwise
+  // make quality_unknown/hours_unknown fail every single publish
+  // unconditionally. DB-derived facts (visibility, food rotation,
+  // restaurant repeat, evidence, candidate/subject fingerprint above) are
+  // always re-checked regardless — only the quality/hours-dependent codes
+  // are set aside when there is genuinely no fresh signal to check them
+  // against.
+  const qualityDependentCodes = new Set([
+    "rating_below_minimum",
+    "rating_count_below_minimum",
+    "quality_unknown",
+    "not_operational",
+    "hours_unknown",
+    "closed_on_date",
+    "service_finished",
+  ]);
+  const hasFreshQualityData =
+    freshQuality.rating != null ||
+    freshQuality.ratingCount != null ||
+    freshQuality.businessStatus != null ||
+    [...freshQuality.hoursByDate.values()].some((h) => h != null);
+  const meaningfulCodes = hasFreshQualityData
+    ? freshQualification.codes
+    : freshQualification.codes.filter((c) => !qualityDependentCodes.has(c));
+  if (meaningfulCodes.length)
+    return { status: "stale", runId, reason: meaningfulCodes[0] };
 
   const client = await pool.connect();
   try {

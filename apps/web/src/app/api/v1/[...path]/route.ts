@@ -98,6 +98,7 @@ import {
   handleAdminPlaceSubjectRoute,
   handlePlaceSubjectRoute,
 } from "@/features/place-subjects/router";
+import { handleRestaurantAdminRoute } from "@/features/restaurant-admin/router";
 import {
   getVisibleCustomPlace,
   listScopePlaces,
@@ -127,6 +128,10 @@ async function handler(
       const actor = await currentActor();
       const query = Object.fromEntries(request.nextUrl.searchParams);
       return await handleAdminPlaceSubjectRoute(request, action, actor, query);
+    }
+    if (resource === "admin" && id === "restaurant-picks") {
+      const actor = await currentActor();
+      return await handleRestaurantAdminRoute(request, path.slice(2), actor);
     }
     if (resource === "place-subjects") {
       const actor = await currentActor();
