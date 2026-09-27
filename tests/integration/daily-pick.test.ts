@@ -228,7 +228,12 @@ describe("Daily Pick on the map", () => {
       null,
     );
     expect(away.items).toHaveLength(0);
-    expect(away.dailyPick?.pick?.placeId).toBe(row.place_id);
+    expect(away.dailyPick?.pick?.kind).toBe("catalog");
+    expect(
+      away.dailyPick?.pick?.kind === "catalog"
+        ? away.dailyPick.pick.placeId
+        : null,
+    ).toBe(row.place_id);
     expect(away.dailyPick?.inResults).toBe(false);
     const events = await runMapQuery(state({ types: "event" }), city, null);
     expect(events.dailyPick?.inResults).toBe(false);
@@ -238,7 +243,11 @@ describe("Daily Pick on the map", () => {
       city,
       null,
     );
-    expect(future.dailyPick?.pick?.placeId).toBe(row.place_id);
+    expect(
+      future.dailyPick?.pick?.kind === "catalog"
+        ? future.dailyPick.pick.placeId
+        : null,
+    ).toBe(row.place_id);
     expect(future.dailyPick?.inResults).toBe(true);
   });
   it("never serves a hidden place from a stored pick, and the job replaces it with an audit link", async () => {
@@ -251,7 +260,9 @@ describe("Daily Pick on the map", () => {
     const map = await runMapQuery(state({}), city, null);
     expect(map.items).toHaveLength(0);
     const history = await listDailyPickHistory(city, addDays(today, 1));
-    expect(history.some((p) => p.placeId === row.place_id)).toBe(false);
+    expect(
+      history.some((p) => p.kind === "catalog" && p.placeId === row.place_id),
+    ).toBe(false);
     const replaced = await generateDailyPick(city, today);
     expect(replaced).toMatchObject({ status: "replaced", withdrawnId: row.id });
     expect(replaced.placeId).not.toBe(row.place_id);

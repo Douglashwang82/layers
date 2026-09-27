@@ -639,6 +639,7 @@ export function MapWorkspace({
       view={result.dailyPick}
       cityName={city.name}
       citySlug={city.slug}
+      providerKey={places.providerKey}
       t={t}
       locale={locale}
       authenticated={authenticated}

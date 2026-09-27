@@ -32,7 +32,12 @@ export const visibleSubject = `($2::boolean OR (
     OR EXISTS (
       SELECT 1 FROM layer_item li JOIN layer l ON l.id=li.layer_id
       WHERE li.subject_id=s.id AND (
-        l.owner_kind='system'
+        -- A system layer (Discover, Daily Pick) still requires the layer's
+        -- own active/public state AND the subject's own city review — a
+        -- membership row existing is never sufficient by itself, since that
+        -- would bypass the review gate for any subject some future system
+        -- layer happens to reference.
+        (l.owner_kind='system' AND l.lifecycle='active' AND s.city_review_status='approved')
         OR (l.audience='public' AND l.review_status='approved' AND l.lifecycle='active' AND s.city_review_status='approved')
         OR ($1::uuid IS NOT NULL AND l.owner_kind='user' AND l.owner_user_id=$1::uuid)
         OR ($1::uuid IS NOT NULL AND l.owner_kind='group' AND EXISTS (SELECT 1 FROM group_member gm WHERE gm.group_id=l.owner_group_id AND gm.user_id=$1::uuid))

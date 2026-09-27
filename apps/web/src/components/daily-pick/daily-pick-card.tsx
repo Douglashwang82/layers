@@ -1,5 +1,5 @@
 "use client";
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import {
@@ -16,14 +16,22 @@ import { Photo as Image } from "@/components/photo";
 import { type Copy, type Locale, format, localized } from "@/lib/dictionary";
 import { pickDateLabel, pickText } from "@/lib/daily-pick";
 import { track } from "@/lib/track";
+import { getPlacesProvider, type LatLng } from "@/lib/places/provider";
+import { subjectApi } from "@/lib/places/api";
+import { ProviderDetails } from "@/components/places/provider-slot";
 /**
  * Today's Daily Pick: identity, the approved description, the recorded reasons
  * and only the practical facts the listing supports. Works without the map.
+ * A catalog-linked pick renders from the canonical place's current facts; an
+ * external (non-catalog) version 2 winner has no server-stored name, address
+ * or hours to render — those come live from the Google UI Kit component,
+ * with an honest unavailable state when the provider can't resolve it.
  */
 export function DailyPickCard({
   view,
   cityName,
   citySlug,
+  providerKey,
   t,
   locale,
   authenticated,
@@ -35,6 +43,8 @@ export function DailyPickCard({
   view: DailyPickView;
   cityName: string;
   citySlug: string;
+  /** The browser-visible Places UI Kit key, or null when discovery is disabled. */
+  providerKey: string | null;
   t: Copy;
   locale: Locale;
   authenticated: boolean;
@@ -58,6 +68,12 @@ export function DailyPickCard({
     tone: "success" | "error";
     text: string;
   } | null>(null);
+  const [providerLocation, setProviderLocation] = useState<LatLng | null>(null);
+  const [providerUnavailable, setProviderUnavailable] = useState(false);
+  const provider = useMemo(
+    () => getPlacesProvider(providerKey ?? undefined, locale),
+    [providerKey, locale],
+  );
   // Render with key={pick id + saved} so a new day or refreshed state resets local state.
   const pickId = pick?.id ?? null;
   useEffect(() => {
@@ -99,21 +115,16 @@ export function DailyPickCard({
             })}
             :{" "}
             <Link href={view.previous.href}>
-              {localized(view.previous, locale)}
+              {view.previous.kind === "catalog"
+                ? localized(view.previous, locale)
+                : t.externalBusinesses}
             </Link>
           </p>
         )}
         {history}
       </section>
     );
-  const name = localized(pick, locale);
   const { description, reason } = pickText(pick, locale);
-  /** The official website when known, otherwise the listing's source page. */
-  const link = pick.website ?? pick.sourceUrl;
-  const directions =
-    pick.latitude != null && pick.longitude != null
-      ? `https://www.google.com/maps/search/?api=1&query=${pick.latitude},${pick.longitude}`
-      : null;
   async function toggleSave() {
     if (!pick) return;
     if (!authenticated) {
@@ -126,7 +137,14 @@ export function DailyPickCard({
     setPending(true);
     setFeedback(null);
     try {
-      await api(`places/${pick.placeId}/save`, saved ? "DELETE" : "POST");
+      if (pick.kind === "catalog")
+        await api(`places/${pick.placeId}/save`, saved ? "DELETE" : "POST");
+      else
+        await subjectApi(
+          `place-subjects/${pick.subjectId}/save`,
+          saved ? "DELETE" : "POST",
+          saved ? undefined : {},
+        );
       if (!saved) track("daily_pick_saved", { city: citySlug });
       setSaved(!saved);
       if (onChanged) onChanged();
@@ -137,6 +155,123 @@ export function DailyPickCard({
       setPending(false);
     }
   }
+  const saveButton = (
+    <button
+      type="button"
+      className={`button secondary ${saved ? "active" : ""}`}
+      aria-pressed={saved}
+      disabled={pending}
+      aria-busy={pending || undefined}
+      onClick={toggleSave}
+    >
+      <Bookmark size={16} aria-hidden="true" />
+      {pending ? t.saving : saved ? t.unsave : t.save}
+    </button>
+  );
+  const showOnMapControls = (
+    <>
+      {!view.inResults && onShowToday && (
+        <div className="notice" role="status">
+          <p>{t.dailyPickFiltered}</p>
+          <button
+            type="button"
+            className="button secondary small"
+            onClick={() => {
+              track("daily_pick_show_on_map", { city: citySlug });
+              onShowToday(pick.key);
+            }}
+          >
+            <Crosshair size={14} aria-hidden="true" /> {t.dailyPickShowToday}
+          </button>
+        </div>
+      )}
+    </>
+  );
+  if (pick.kind === "external") {
+    const directions = providerLocation
+      ? `https://www.google.com/maps/search/?api=1&query=${providerLocation.lat},${providerLocation.lng}`
+      : null;
+    return (
+      <section
+        className="daily-pick-card"
+        aria-labelledby={`daily-pick-${citySlug}`}
+      >
+        {header}
+        <p className="eyebrow">
+          {pick.foodType ?? ""}
+          {pick.selectionKind === "editorial" && (
+            <span className="layer-badge">{t.dailyPickEditorial}</span>
+          )}
+        </p>
+        <h4>{t.dailyPickAbout}</h4>
+        <p>{description}</p>
+        <h4>{t.dailyPickWhy}</h4>
+        <p>{reason}</p>
+        <h4>{t.dailyPickDetails}</h4>
+        {provider && pick.providerPlaceId && !providerUnavailable ? (
+          <ProviderDetails
+            provider={provider}
+            placeId={pick.providerPlaceId}
+            compact={false}
+            onLoad={(place) => setProviderLocation(place.location)}
+            onError={() => setProviderUnavailable(true)}
+          />
+        ) : (
+          <p className="fine-print">{t.externalUnavailable}</p>
+        )}
+        <p className="fine-print">{t.dailyPickOpenNote}</p>
+        {showOnMapControls}
+        <div className="actions daily-pick-actions">
+          <Link
+            className="button"
+            href={pick.href}
+            onClick={() => track("daily_pick_place_opened", { city: citySlug })}
+          >
+            {t.dailyPickViewPlace}
+          </Link>
+          {saveButton}
+          {directions && (
+            <a
+              className="button secondary"
+              target="_blank"
+              rel="noreferrer"
+              href={directions}
+              onClick={() => track("daily_pick_directions", { city: citySlug })}
+            >
+              <MapPin size={16} aria-hidden="true" />
+              {t.directions} ↗
+            </a>
+          )}
+          {view.inResults && onShow && (
+            <button
+              type="button"
+              className="button secondary"
+              onClick={() => {
+                track("daily_pick_show_on_map", { city: citySlug });
+                onShow(pick.key);
+              }}
+            >
+              <Crosshair size={16} aria-hidden="true" /> {t.dailyPickShowOnMap}
+            </button>
+          )}
+          {mapHref && (
+            <Link className="button secondary" href={mapHref}>
+              <Crosshair size={16} aria-hidden="true" /> {t.dailyPickShowOnMap}
+            </Link>
+          )}
+        </div>
+        <StatusMessage feedback={feedback} />
+        {history}
+      </section>
+    );
+  }
+  const name = localized(pick, locale);
+  /** The official website when known, otherwise the listing's source page. */
+  const link = pick.website ?? pick.sourceUrl;
+  const directions =
+    pick.latitude != null && pick.longitude != null
+      ? `https://www.google.com/maps/search/?api=1&query=${pick.latitude},${pick.longitude}`
+      : null;
   return (
     <section
       className="daily-pick-card"
@@ -197,21 +332,7 @@ export function DailyPickCard({
         )}
       </dl>
       <p className="fine-print">{t.dailyPickOpenNote}</p>
-      {!view.inResults && onShowToday && (
-        <div className="notice" role="status">
-          <p>{t.dailyPickFiltered}</p>
-          <button
-            type="button"
-            className="button secondary small"
-            onClick={() => {
-              track("daily_pick_show_on_map", { city: citySlug });
-              onShowToday(pick.key);
-            }}
-          >
-            <Crosshair size={14} aria-hidden="true" /> {t.dailyPickShowToday}
-          </button>
-        </div>
-      )}
+      {showOnMapControls}
       <div className="actions daily-pick-actions">
         <Link
           className="button"
@@ -220,17 +341,7 @@ export function DailyPickCard({
         >
           {t.dailyPickViewPlace}
         </Link>
-        <button
-          type="button"
-          className={`button secondary ${saved ? "active" : ""}`}
-          aria-pressed={saved}
-          disabled={pending}
-          aria-busy={pending || undefined}
-          onClick={toggleSave}
-        >
-          <Bookmark size={16} aria-hidden="true" />
-          {pending ? t.saving : saved ? t.unsave : t.save}
-        </button>
+        {saveButton}
         {directions && (
           <a
             className="button secondary"

@@ -7,10 +7,23 @@ import { currentActor } from "@/lib/session";
 import {
   listDailyPickHistory,
   loadDailyPickView,
+  type DailyPickCard as DailyPickCardData,
 } from "@/features/daily-pick/repository";
 import { DailyPickCard } from "@/components/daily-pick/daily-pick-card";
 import { pickDateLabel, pickText } from "@/lib/daily-pick";
 import { ApplyLayerButton } from "@/components/layers/layer-actions";
+import { placesClientConfig } from "@/lib/config";
+import type { Locale } from "@/lib/dictionary";
+/** The history list has no live provider component, so an external entry titles itself by food type. */
+function historyTitle(
+  pick: DailyPickCardData,
+  locale: Locale,
+  t: { externalBusinesses: string },
+) {
+  return pick.kind === "catalog"
+    ? localized(pick, locale)
+    : (pick.foodType ?? t.externalBusinesses);
+}
 export const metadata: Metadata = { title: "Daily Pick" };
 /**
  * Today's pick and dated history for the active city. Every entry is re-checked
@@ -55,6 +68,7 @@ export default async function DailyPickPage({
           view={view}
           cityName={city.name}
           citySlug={city.slug}
+          providerKey={placesClientConfig().providerKey}
           t={t}
           locale={locale}
           authenticated={!!actor}
@@ -83,8 +97,12 @@ export default async function DailyPickPage({
                     <time dateTime={pick.date}>
                       {pickDateLabel(pick.date, locale)}
                     </time>{" "}
-                    · {pick.category}
-                    {pick.neighborhood && ` · ${pick.neighborhood}`}
+                    ·{" "}
+                    {pick.kind === "catalog"
+                      ? [pick.category, pick.neighborhood]
+                          .filter(Boolean)
+                          .join(" · ")
+                      : pick.foodType}
                     {pick.selectionKind === "editorial" && (
                       <span className="layer-badge">
                         {t.dailyPickEditorial}
@@ -92,7 +110,9 @@ export default async function DailyPickPage({
                     )}
                   </p>
                   <h3>
-                    <Link href={pick.href}>{localized(pick, locale)}</Link>
+                    <Link href={pick.href}>
+                      {historyTitle(pick, locale, t)}
+                    </Link>
                   </h3>
                   <p>
                     <b>{t.dailyPickWhy}:</b> {pickText(pick, locale).reason}

@@ -512,7 +512,13 @@ export async function runMapQuery(
     // The stored city-wide pick, resolved independently of truncated or filtered candidates.
     const loaded = await loadDailyPickView(city, actor, now);
     dailyPick = { ...loaded.view, layer: dailyPickLayer.slug };
-    if (loaded.row && !searchAll) {
+    // A catalog-linked pick (loaded.row.place_id set) gets a native map pin
+    // from the catalog row. An external (non-catalog) winner has no
+    // server-stored coordinate to place a Mapbox pin at — it surfaces
+    // through the same external-reference list path Discover uses (see
+    // features/map/external.ts), resolved live by the client's Google UI
+    // Kit component, never a fabricated pin here.
+    if (loaded.row && loaded.row.place_id && !searchAll) {
       const key = itemKey("place", String(loaded.row.id));
       const item =
         candidates.places.find((p) => p.key === key) ?? placeItem(loaded.row);

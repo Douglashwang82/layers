@@ -15,6 +15,10 @@ import {
 } from "../../packages/database/src";
 import { listExternalReferences } from "../../apps/web/src/features/map/external";
 import {
+  listDailyPickHistory,
+  loadDailyPickView,
+} from "../../apps/web/src/features/daily-pick/repository";
+import {
   addDays,
   parseMapQuery,
   localDate,
@@ -410,6 +414,64 @@ describe("Daily restaurant recommendation (version 2) worker", () => {
     expect(
       dailyPickReferencesAfter.references.map((r) => r.subjectId),
     ).not.toContain(winner.subjectId);
+  });
+
+  it("projects an external winner as a subject-backed card in the public Daily Pick view and history", async () => {
+    const winner = await insertCandidate({
+      foodType: "vietnamese",
+      facts: ["Broth simmered overnight.", "Fresh herb plate included."],
+    });
+    const qualification = createFakeQualificationAdapter(
+      new Map([[winner.providerPlaceId, operationalQuality(4.6, 80)]]),
+    );
+    const prepared = await prepareAndApprove(area, today, qualification);
+    const published = await publishRestaurantPickRun(
+      prepared.runId,
+      moderator.id,
+      { qualification },
+    );
+    expect(published.status).toBe("created");
+
+    const { view } = await loadDailyPickView(city, null, new Date());
+    expect(view.pick).not.toBeNull();
+    expect(view.pick).toMatchObject({
+      kind: "external",
+      subjectId: winner.subjectId,
+      foodType: "vietnamese",
+      providerPlaceId: winner.providerPlaceId,
+      href: `/place-subjects/${winner.subjectId}`,
+    });
+    expect(view.pick!.description.length).toBeGreaterThan(0);
+
+    const history = await listDailyPickHistory(city, today, 5);
+    const historyRow = history.find((p) => p.date === today)!;
+    expect(historyRow).toMatchObject({
+      kind: "external",
+      subjectId: winner.subjectId,
+    });
+
+    // Saving an external winner uses saved_place_subject, not saved_place.
+    await pool.query(
+      "INSERT INTO saved_place_subject(user_id, subject_id) VALUES($1,$2)",
+      [moderator.id, winner.subjectId],
+    );
+    const { view: savedView } = await loadDailyPickView(
+      city,
+      moderator,
+      new Date(),
+    );
+    expect(savedView.saved).toBe(true);
+    await pool.query(
+      "DELETE FROM saved_place_subject WHERE user_id=$1 AND subject_id=$2",
+      [moderator.id, winner.subjectId],
+    );
+
+    if (published.status === "created")
+      await withdrawRestaurantPick(
+        published.pickId,
+        "test cleanup",
+        moderator.id,
+      );
   });
 
   it("rejects a stale publish when evidence changed after the report was written", async () => {
