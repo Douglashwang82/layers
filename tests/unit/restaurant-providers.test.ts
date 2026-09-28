@@ -243,6 +243,32 @@ describe("createGooglePlacesDiscoveryAdapter", () => {
     expect(fetchImpl).not.toHaveBeenCalled();
   });
 
+  it("includes Google's error status and message when a search is refused", async () => {
+    const fetchImpl = respond(
+      {
+        error: {
+          code: 403,
+          status: "PERMISSION_DENIED",
+          message: "Places API (New) has not been used in project 123",
+        },
+      },
+      { status: 403 },
+    );
+    const adapter = createGooglePlacesDiscoveryAdapter("test-key", {
+      legalAcknowledged: true,
+      fetchImpl,
+    });
+    await expect(
+      adapter.discover({
+        areaId: "a1",
+        queryGroup: "Houston",
+        pageToken: null,
+      }),
+    ).rejects.toThrow(
+      "Places Text Search request failed: 403 PERMISSION_DENIED: Places API (New) has not been used in project 123",
+    );
+  });
+
   it("collects results across bounded pagination and reports truncation honestly", async () => {
     let call = 0;
     const fetchImpl = vi.fn<typeof fetch>(async () => {

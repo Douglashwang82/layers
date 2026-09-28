@@ -308,10 +308,13 @@ async function discoverCandidates(
         const upserted = await upsertDiscoveredCandidate(area.id, found);
         if (upserted) discoveredCount += 1;
       }
-    } catch {
+    } catch (error) {
       errors.push({
         queryGroup,
-        message: "discovery_failed",
+        message:
+          error instanceof Error
+            ? error.message.slice(0, 300)
+            : "discovery_failed",
       });
     }
   }

@@ -117,13 +117,38 @@ async function main() {
     );
     if (result.status === "failed") process.exitCode = 1;
   }
+  const discovery = await pool.query<{
+    status: string;
+    request_count: number;
+    discovered_count: number;
+    errors: unknown;
+  }>(
+    `SELECT status, request_count, discovered_count, errors FROM restaurant_discovery_run
+     WHERE area_id=$1 AND run_date=$2 ORDER BY attempt DESC LIMIT 1`,
+    [area.id, targetDate],
+  );
+  const latest = discovery.rows[0];
+  if (latest) {
+    console.log(
+      redact(
+        JSON.stringify({
+          event: "restaurant_discovery",
+          citySlug,
+          date: targetDate,
+          ...latest,
+        }),
+        4000,
+      ),
+    );
+    if (latest.status === "failed") process.exitCode = 1;
+  }
 }
 /** Keeps the cause visible in CI logs without echoing connection strings or keys. */
-function redact(message: string) {
+function redact(message: string, maxLength = 500) {
   return message
     .replace(/postgres(?:ql)?:\/\/\S+/gi, "postgres://[redacted]")
     .replace(/\b(?:sk-ant-[\w-]+|AIza[\w-]{20,})\b/g, "[redacted]")
-    .slice(0, 500);
+    .slice(0, maxLength);
 }
 main()
   .catch((e) => {

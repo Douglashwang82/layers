@@ -170,12 +170,39 @@ function requireLegalAcknowledgement(
 }
 
 const maxResponseBytes = 262_144; // 256 KiB: a place/search response is a few KB; this only bounds abuse/misconfiguration.
+/** Google's `{error:{status,message}}` from the first 4 KB of an error body; it never contains the key. */
+async function googleErrorReason(response: Response): Promise<string> {
+  const reader = response.body?.getReader();
+  if (!reader) return "";
+  const chunks: Uint8Array[] = [];
+  let size = 0;
+  try {
+    while (size < 4096) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      chunks.push(value);
+      size += value.byteLength;
+    }
+    const text = Buffer.concat(chunks).toString("utf8").slice(0, 4096);
+    const error = (
+      JSON.parse(text) as { error?: { status?: string; message?: string } }
+    ).error;
+    return [error?.status, error?.message]
+      .filter(Boolean)
+      .join(": ")
+      .slice(0, 300);
+  } catch {
+    return "";
+  } finally {
+    await reader.cancel().catch(() => {});
+  }
+}
 async function fetchWithTimeout(
   fetchImpl: typeof fetch,
   input: string,
   init: RequestInit,
   timeoutMs: number,
-): Promise<{ ok: boolean; status: number; body: unknown }> {
+): Promise<{ ok: boolean; status: number; body: unknown; reason?: string }> {
   const controller = new AbortController();
   let timer: ReturnType<typeof setTimeout> | undefined;
   const timeout = new Promise<never>((_, reject) => {
@@ -193,10 +220,13 @@ async function fetchWithTimeout(
           redirect: "error",
           signal: controller.signal,
         });
-        if (!response.ok) {
-          await response.body?.cancel();
-          return { ok: false, status: response.status, body: null };
-        }
+        if (!response.ok)
+          return {
+            ok: false,
+            status: response.status,
+            body: null,
+            reason: await googleErrorReason(response),
+          };
         const reader = response.body?.getReader();
         if (!reader) throw new Error("Places API returned no body.");
         const chunks: Uint8Array[] = [];
@@ -373,7 +403,9 @@ export function createGooglePlacesQualificationAdapter(
         timeoutMs,
       );
       if (!response.ok)
-        throw new Error(`Places API request failed: ${response.status}`);
+        throw new Error(
+          `Places API request failed: ${response.status}${response.reason ? ` ${response.reason}` : ""}`,
+        );
       const parsed = placeQualityResponse.parse(response.body);
       return {
         rating: parsed.rating ?? null,
@@ -473,7 +505,7 @@ export function createGooglePlacesDiscoveryAdapter(
         );
         if (!response.ok)
           throw new Error(
-            `Places Text Search request failed: ${response.status}`,
+            `Places Text Search request failed: ${response.status}${response.reason ? ` ${response.reason}` : ""}`,
           );
         const parsed = textSearchResponse.parse(response.body);
         for (const place of parsed.places ?? [])
