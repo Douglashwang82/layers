@@ -752,7 +752,9 @@ export async function prepareRestaurantPickRun(
             row.eligibleRank,
             row.reportPosition,
             row.decision,
-            row.score,
+            // Derived from Google rating data, which the Phase 0 decision
+            // keeps transient: rank and reason codes persist, the score does not.
+            null,
             row.primaryReasonCode,
             JSON.stringify(row.allReasonCodes),
             fingerprint,

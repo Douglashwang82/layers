@@ -237,7 +237,6 @@ export function RestaurantPicksAdmin({
                   <th>#</th>
                   <th>{c.candidate}</th>
                   <th>{c.decision}</th>
-                  <th>{c.score}</th>
                   <th>{c.reason}</th>
                 </tr>
               </thead>
@@ -249,7 +248,6 @@ export function RestaurantPicksAdmin({
                       <a href={`/place-subjects/${r.subjectId}`}>{r.label}</a>
                     </td>
                     <td>{reason(r.decision)}</td>
-                    <td>{r.score?.toFixed(2) ?? "—"}</td>
                     <td>
                       {(r.reasonCodes.length
                         ? r.reasonCodes

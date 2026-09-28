@@ -5,6 +5,7 @@ import {
   loadRestaurantArea,
   prepareRestaurantPickRun,
   approveRestaurantCopy,
+  areaRuleConfig,
   RunBusy,
   type RestaurantArea,
 } from "./daily-pick-restaurant-run";
@@ -14,7 +15,12 @@ import {
   createFakeQualificationAdapter,
   type RestaurantQualitySnapshot,
 } from "./restaurant-providers";
-import { isCalendarDate, localDate, addDays } from "../../shared/src";
+import {
+  isCalendarDate,
+  localDate,
+  addDays,
+  qualityScore,
+} from "../../shared/src";
 import { z } from "zod";
 
 /**
@@ -211,7 +217,13 @@ async function pickFreeDate(areaId: string, timezone: string, start?: string) {
   throw new Error("Could not find a free date within a year.");
 }
 
-async function printReport(runId: string) {
+/** The run report never stores scores, so recompute them from the local fixtures. */
+async function printReport(
+  runId: string,
+  area: RestaurantArea,
+  fixtures: Map<string, Fixture>,
+) {
+  const config = areaRuleConfig(area);
   const rows = await pool.query<{
     report_position: number;
     catalog_name: string | null;
@@ -219,13 +231,12 @@ async function printReport(runId: string) {
     subject_id: string;
     food_type: string | null;
     decision: string;
-    score: number | null;
     primary_reason_code: string;
   }>(
     `SELECT rc.report_position, p.name AS catalog_name, rc.subject_id,
        (SELECT r.provider_place_id FROM place_provider_reference r WHERE r.subject_id=s.id AND r.state='current' LIMIT 1) AS provider_place_id,
        (SELECT c.food_type FROM restaurant_candidate c WHERE c.subject_id=rc.subject_id LIMIT 1) AS food_type,
-       rc.decision, rc.score, rc.primary_reason_code
+       rc.decision, rc.primary_reason_code
      FROM daily_pick_run_candidate rc
      JOIN place_subject s ON s.id = rc.subject_id
      LEFT JOIN place p ON p.id = s.catalog_place_id
@@ -239,8 +250,14 @@ async function printReport(runId: string) {
       (r.provider_place_id && fixtureNames.get(r.provider_place_id)) ??
       r.provider_place_id ??
       r.subject_id;
+    const fixture = r.provider_place_id
+      ? fixtures.get(r.provider_place_id)
+      : undefined;
+    const score = fixture
+      ? qualityScore(fixture.rating, fixture.ratingCount, config)
+      : null;
     console.log(
-      `  ${r.report_position}. ${label} [${r.food_type ?? "no food type"}] — ${r.decision} (score=${r.score?.toFixed(2) ?? "—"}, ${r.primary_reason_code})`,
+      `  ${r.report_position}. ${label} [${r.food_type ?? "no food type"}] — ${r.decision} (score=${score?.toFixed(2) ?? "—"}, ${r.primary_reason_code})`,
     );
   }
 }
@@ -269,7 +286,7 @@ async function main() {
 
   const prepared = await prepareRestaurantPickRun(area, date, adapters);
   console.log(JSON.stringify({ event: "prepare", date, result: prepared }, null, 2));
-  if ("runId" in prepared) await printReport(prepared.runId);
+  if ("runId" in prepared) await printReport(prepared.runId, area, fixtures);
 
   if (flags.has("publish")) {
     if (prepared.status !== "ready_for_review" || !("copyId" in prepared) || !prepared.copyId) {

@@ -39,6 +39,6 @@ Queued/running/succeeded/failed jobs and sanitized outcomes are visible in the a
 
 ## Current limits
 
-The delivered workflow is a human-reviewed pilot. Automatic copy approval, account-wide monthly spend accounting, per-field retention/deletion automation, automatic food classification, and production rollout remain separate work. Raw Google rating/hour snapshots are deliberately absent from the durable report pending the provider ADR. The report stores adjusted scores and reason codes, whose retention also needs that approval.
+The delivered workflow is a human-reviewed pilot. Automatic copy approval, account-wide monthly spend accounting, per-field retention/deletion automation, automatic food classification, and production rollout remain separate work. Per the approved Phase 0 ADR, Google rating/hour data stays transient: the durable report stores rank, decision, and reason codes, and no score. The local tune script recomputes scores from its fixtures.
 
 Provider normalization follows the official [Place opening-hours reference](https://developers.google.com/maps/documentation/places/web-service/reference/rest/v1/places#OpeningHours) and [Text Search documentation](https://developers.google.com/maps/documentation/places/web-service/text-search). Current hours cover the provider's seven-day window, including exceptions and truncated overnight periods; missing or out-of-window dates fail closed.

@@ -537,7 +537,7 @@ export function createAnthropicCopyAdapter(
   },
 ): RestaurantCopyAdapter {
   const model = requireConfiguredModel(options.model);
-  const timeoutMs = options.timeoutMs ?? 15000;
+  const timeoutMs = options.timeoutMs ?? 30000;
   const client = new Anthropic({ apiKey, maxRetries: 0 });
   const createMessage =
     options.createMessage ??
@@ -545,7 +545,10 @@ export function createAnthropicCopyAdapter(
       const message = await client.messages.create(
         {
           model: m,
-          max_tokens: 1200,
+          // Current models think by default and thinking counts toward
+          // max_tokens; leave headroom so the JSON is never truncated.
+          max_tokens: 4000,
+          output_config: { effort: "low" },
           system,
           messages: [{ role: "user", content: userContent }],
         },
