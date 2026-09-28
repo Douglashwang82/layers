@@ -13,7 +13,10 @@ import { z } from "zod";
  * subpath (never the package root) so Node crypto/fs and provider
  * configuration stay out of browser bundles.
  */
-export type MailKind = "membership_invitation" | "membership_otp";
+export type MailKind =
+  | "membership_invitation"
+  | "membership_otp"
+  | "membership_password_reset";
 export type MailMessage = {
   to: string;
   kind: MailKind;
@@ -418,6 +421,28 @@ export function invitationEmail(link: string, expiresAt: Date) {
       link,
       "",
       "如果你並未預期收到這封信，可以直接忽略。",
+    ].join("\n"),
+  };
+}
+export function resetPasswordEmail(link: string) {
+  return {
+    subject: "Reset your TaiwanHub password · 重設 TaiwanHub 密碼",
+    text: [
+      "We received a request to reset your TaiwanHub password.",
+      "",
+      "Open this link to choose a new password. It works once and expires in 1 hour:",
+      link,
+      "",
+      "If you didn't ask for this, you can ignore this email — your password won't change.",
+      "",
+      "——",
+      "",
+      "我們收到重設你的 TaiwanHub 密碼的請求。",
+      "",
+      "請開啟以下連結設定新密碼。此連結只能使用一次，將於 1 小時後失效：",
+      link,
+      "",
+      "如果這不是你本人的操作，可以直接忽略這封信，你的密碼不會被變更。",
     ].join("\n"),
   };
 }

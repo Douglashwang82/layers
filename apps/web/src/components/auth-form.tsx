@@ -341,6 +341,175 @@ function PasswordForm({ t, destination }: { t: Copy; destination: string }) {
       >
         {isSubmitting ? t.submitting : t.signIn}
       </button>
+      <div className="auth-links">
+        <Link className="text-button" href="/forgot-password">
+          {t.forgotPassword}
+        </Link>
+      </div>
+      <StatusMessage
+        feedback={message ? { tone: "error", text: message } : null}
+      />
+    </form>
+  );
+}
+export function ForgotPasswordForm({ t }: { t: Copy }) {
+  const [email, setEmail] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [feedback, setFeedback] = useState<Feedback>(null);
+  const [cooldown, setCooldown] = useCountdown();
+  return (
+    <form
+      className="form-stack"
+      noValidate
+      onSubmit={async (e) => {
+        e.preventDefault();
+        setFeedback(null);
+        if (!z.email().safeParse(email.trim()).success) {
+          setFeedback({ tone: "error", text: t.authError });
+          return;
+        }
+        setBusy(true);
+        try {
+          const result = await client.requestPasswordReset({
+            email: email.trim(),
+            redirectTo: "/reset-password",
+          });
+          if (result.error && result.error.status === 429) {
+            const wait = retryAfter(result.error);
+            setCooldown(wait);
+            setFeedback({
+              tone: "error",
+              text: format(t.signInCooldown, { seconds: wait }),
+            });
+            return;
+          }
+          // Same message whether or not the address belongs to an account.
+          setCooldown(RESEND_COOLDOWN_SECONDS);
+          setFeedback({ tone: "success", text: t.forgotPasswordSent });
+        } catch {
+          setFeedback({ tone: "error", text: t.signInUnavailable });
+        } finally {
+          setBusy(false);
+        }
+      }}
+    >
+      <p className="muted">{t.forgotPasswordIntro}</p>
+      <Field id="forgot-password-email" label={t.email}>
+        <input
+          type="email"
+          autoComplete="email"
+          required
+          value={email}
+          onChange={(e) => setEmail(e.target.value)}
+          {...fieldProps("forgot-password-email", {})}
+        />
+      </Field>
+      <button
+        className="button"
+        disabled={busy || cooldown > 0}
+        aria-busy={busy || undefined}
+      >
+        {busy ? t.signInSending : t.forgotPasswordSubmit}
+      </button>
+      <p className="auth-links">
+        <Link className="text-button" href="/sign-in">
+          {t.backToSignIn}
+        </Link>
+      </p>
+      <StatusMessage feedback={feedback} />
+    </form>
+  );
+}
+export function ResetPasswordForm({
+  t,
+  token,
+}: {
+  t: Copy;
+  token: string | undefined;
+}) {
+  const router = useRouter();
+  const [done, setDone] = useState(false);
+  const [message, setMessage] = useState("");
+  const {
+    register,
+    handleSubmit,
+    formState: { errors, isSubmitting },
+  } = useForm<{ password: string }>({
+    resolver: zodResolver(z.object({ password: z.string().min(10).max(128) })),
+  });
+  if (!token)
+    return (
+      <div className="form-stack">
+        <StatusMessage feedback={{ tone: "error", text: t.resetPasswordInvalid }} />
+        <p className="auth-links">
+          <Link className="text-button" href="/forgot-password">
+            {t.forgotPassword}
+          </Link>
+        </p>
+      </div>
+    );
+  if (done)
+    return (
+      <div className="form-stack">
+        <StatusMessage
+          feedback={{ tone: "success", text: t.resetPasswordSuccess }}
+        />
+        <button className="button" onClick={() => router.push("/sign-in")}>
+          {t.goToSignIn}
+        </button>
+      </div>
+    );
+  return (
+    <form
+      className="form-stack"
+      noValidate
+      onSubmit={handleSubmit(async (data) => {
+        setMessage("");
+        try {
+          const result = await client.resetPassword({
+            newPassword: data.password,
+            token,
+          });
+          if (result.error) {
+            setMessage(
+              result.error.status === 400
+                ? t.resetPasswordInvalid
+                : (result.error.message ?? t.authError),
+            );
+            return;
+          }
+          setDone(true);
+        } catch {
+          setMessage(t.authError);
+        }
+      })}
+    >
+      <p className="muted">{t.resetPasswordIntro}</p>
+      <Field
+        id="reset-password-new"
+        label={t.newPassword}
+        help={t.passwordHint}
+        error={errors.password?.message}
+      >
+        <input
+          type="password"
+          autoComplete="new-password"
+          required
+          minLength={10}
+          {...register("password")}
+          {...fieldProps("reset-password-new", {
+            help: true,
+            error: errors.password?.message,
+          })}
+        />
+      </Field>
+      <button
+        className="button"
+        disabled={isSubmitting}
+        aria-busy={isSubmitting || undefined}
+      >
+        {isSubmitting ? t.submitting : t.resetPasswordSubmit}
+      </button>
       <StatusMessage
         feedback={message ? { tone: "error", text: message } : null}
       />

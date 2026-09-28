@@ -6,6 +6,7 @@ import { db, schema } from "@taiwanhub/database";
 import {
   resolveMailer,
   signInCodeEmail,
+  resetPasswordEmail,
   mailErrorCode,
   type MailErrorCode,
 } from "@taiwanhub/shared/mail";
@@ -26,6 +27,22 @@ export const auth = betterAuth({
     enabled: true,
     minPasswordLength: 10,
     disableSignUp: true,
+    sendResetPassword: async ({ user, url }) => {
+      try {
+        await resolveMailer().send({
+          to: user.email,
+          kind: "membership_password_reset",
+          ...resetPasswordEmail(url),
+        });
+      } catch (error) {
+        const code = mailErrorCode(error);
+        // Redacted operational record: no address, token or provider text.
+        console.warn(
+          JSON.stringify({ event: "reset_password_send_failed", code }),
+        );
+        throw error;
+      }
+    },
   },
   advanced: { database: { generateId: () => crypto.randomUUID() } },
   user: {

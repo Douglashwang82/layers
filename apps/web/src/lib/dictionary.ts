@@ -557,6 +557,22 @@ export const en = {
   signInUseCode: "Email me a code instead",
   signInUnavailable:
     "Email sign-in is unavailable right now. Try again later, or use your password.",
+  forgotPassword: "Forgot password?",
+  forgotPasswordTitle: "Reset your password",
+  forgotPasswordIntro:
+    "Enter your account email and we'll send you a link to reset your password.",
+  forgotPasswordSubmit: "Send reset link",
+  forgotPasswordSent:
+    "If this email belongs to an account, you'll receive a password reset link. Check your inbox or try again shortly.",
+  backToSignIn: "Back to sign in",
+  resetPasswordTitle: "Choose a new password",
+  resetPasswordIntro: "Choose a new password for your account.",
+  newPassword: "New password",
+  resetPasswordSubmit: "Reset password",
+  resetPasswordSuccess: "Your password has been reset. You can now sign in.",
+  resetPasswordInvalid:
+    "This link is invalid or has expired. Request a new one.",
+  goToSignIn: "Go to sign in",
   joinSuccess: "Welcome to TaiwanHub.",
   joinAlreadyMember: "You already have a TaiwanHub account. Signing you in.",
   joinPaused:
@@ -1244,6 +1260,20 @@ export const zh: Copy = {
   signInUsePassword: "改用密碼登入",
   signInUseCode: "改用 Email 驗證碼登入",
   signInUnavailable: "目前無法使用 Email 登入，請稍後再試，或改用密碼登入。",
+  forgotPassword: "忘記密碼？",
+  forgotPasswordTitle: "重設密碼",
+  forgotPasswordIntro: "請輸入你的帳號電子郵件，我們會寄送重設密碼的連結給你。",
+  forgotPasswordSubmit: "寄送重設連結",
+  forgotPasswordSent:
+    "如果這個電子郵件屬於某個帳號，你將會收到密碼重設連結。請查看收件匣，或稍後再試一次。",
+  backToSignIn: "返回登入",
+  resetPasswordTitle: "設定新密碼",
+  resetPasswordIntro: "請為你的帳號設定新密碼。",
+  newPassword: "新密碼",
+  resetPasswordSubmit: "重設密碼",
+  resetPasswordSuccess: "你的密碼已重設，現在可以登入了。",
+  resetPasswordInvalid: "此連結無效或已過期，請重新申請。",
+  goToSignIn: "前往登入",
   joinSuccess: "歡迎加入 TaiwanHub。",
   joinAlreadyMember: "你已經有 TaiwanHub 帳號，正在為你登入。",
   joinPaused: "會員系統目前暫停新帳號，請稍後再試。",
