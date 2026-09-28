@@ -18,6 +18,7 @@
     "db:seed": "tsx packages/database/src/seed.ts",
     "db:seed:reference": "tsx packages/database/src/seed-reference.ts",
     "admin:grant": "tsx packages/database/src/grant-admin.ts",
+    "auth:set-password": "tsx packages/database/src/set-password.ts",
     "membership:bootstrap": "tsx packages/database/src/membership-bootstrap.ts",
     "membership:backfill-legacy": "tsx packages/database/src/membership-legacy-backfill.ts",
     "mail:worker": "tsx packages/database/src/mail-worker.ts",
