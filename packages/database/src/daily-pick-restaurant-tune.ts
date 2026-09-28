@@ -150,12 +150,18 @@ async function buildFixtures(
 }
 
 async function resetRun(areaId: string, date: string) {
-  const run = await pool.query<{ id: string }>(
-    "SELECT id FROM daily_pick_run WHERE area_id=$1 AND run_date=$2",
+  const run = await pool.query<{ id: string; status: string }>(
+    "SELECT id, status FROM daily_pick_run WHERE area_id=$1 AND run_date=$2",
     [areaId, date],
   );
   if (!run.rows[0]) return;
-  const runId = run.rows[0].id;
+  const { id: runId, status } = run.rows[0];
+  if (status === "published")
+    throw new Error(
+      `Run ${runId} for ${date} is already published; --reset refuses to delete committed history ` +
+        `(a daily_pick row still references its copy). Pick a different --date, or withdraw the pick ` +
+        `first via the admin UI/withdrawRestaurantPick if you actually want to redo this date.`,
+    );
   await pool.query("DELETE FROM restaurant_job WHERE run_id=$1", [runId]);
   await pool.query("DELETE FROM restaurant_copy WHERE run_id=$1", [runId]);
   await pool.query("DELETE FROM daily_pick_run WHERE id=$1", [runId]);
@@ -234,11 +240,22 @@ async function main() {
       throw new Error("No local user found to record as copy approver; seed the dev DB first.");
     await approveRestaurantCopy(prepared.copyId, anyUser.rows[0].id);
     console.log("Copy approved.");
+    // If this date already has a published pick (e.g. a new attempt after a
+    // prior --reset-refused publish), publishRestaurantPickRun requires
+    // expectedPickId to match it, exactly like the admin UI's "replace" flow.
+    const current = await pool.query<{ id: string }>(
+      `SELECT d.id FROM daily_pick d JOIN city c ON c.id = d.city_id
+       WHERE c.slug = $1 AND d.pick_date = $2 AND d.status = 'published'`,
+      [area.citySlug, date],
+    );
+    const expectedPickId = current.rows[0]?.id ?? null;
+    if (expectedPickId) console.log(`Replacing published pick ${expectedPickId}.`);
     await enqueueRestaurantJob({
       areaId: area.id,
       date,
       kind: "publish",
       runId: prepared.runId,
+      expectedPickId,
     });
     for (let i = 0; i < 5; i++) {
       const result = await workRestaurantJob(area, adapters);
