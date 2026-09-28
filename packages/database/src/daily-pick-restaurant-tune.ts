@@ -15,6 +15,7 @@ import {
   type RestaurantQualitySnapshot,
 } from "./restaurant-providers";
 import { isCalendarDate, localDate, addDays } from "../../shared/src";
+import { z } from "zod";
 
 /**
  * Local-only iteration tool for the restaurant recommendation pipeline.
@@ -26,6 +27,33 @@ import { isCalendarDate, localDate, addDays } from "../../shared/src";
  */
 
 type Fixture = Omit<RestaurantQualitySnapshot, "retrievedAt">;
+
+/** `name` is a report-only display label, never written to the catalog. `hours` defaults to open all day on the target date. */
+const fixtureFileSchema = z.record(
+  z.string(),
+  z.object({
+    name: z.string().max(120).optional(),
+    rating: z.number().min(0).max(5).nullable(),
+    ratingCount: z.number().int().min(0).nullable(),
+    businessStatus: z
+      .enum(["OPERATIONAL", "CLOSED_TEMPORARILY", "CLOSED_PERMANENTLY"])
+      .nullable(),
+    hours: z
+      .array(
+        z.object({
+          date: z.iso.date(),
+          periods: z.array(
+            z.object({
+              open: z.number().int().min(0).max(1440),
+              close: z.number().int().min(0).max(2880),
+            }),
+          ),
+        }),
+      )
+      .optional(),
+  }),
+);
+const fixtureNames = new Map<string, string>();
 
 function parseArgs(argv: string[]) {
   const citySlug = argv[0];
@@ -112,25 +140,25 @@ async function buildFixtures(
   flags: Set<string>,
 ): Promise<Map<string, Fixture>> {
   if (opts.fixtures) {
-    const raw = JSON.parse(await readFile(opts.fixtures, "utf8")) as Record<
-      string,
-      {
-        rating: number | null;
-        ratingCount: number | null;
-        businessStatus: Fixture["businessStatus"];
-        hours: { date: string; periods: { open: number; close: number }[] }[];
-      }
-    >;
+    const raw = fixtureFileSchema.parse(
+      JSON.parse(await readFile(opts.fixtures, "utf8")),
+    );
     return new Map(
-      Object.entries(raw).map(([id, v]) => [
-        id,
-        {
-          rating: v.rating,
-          ratingCount: v.ratingCount,
-          businessStatus: v.businessStatus,
-          hoursByDate: new Map(v.hours.map((h) => [h.date, h])),
-        },
-      ]),
+      Object.entries(raw).map(([id, v]) => {
+        if (v.name) fixtureNames.set(id, v.name);
+        const hours = v.hours ?? [
+          { date, periods: [{ open: 0, close: 1440 }] },
+        ];
+        return [
+          id,
+          {
+            rating: v.rating,
+            ratingCount: v.ratingCount,
+            businessStatus: v.businessStatus,
+            hoursByDate: new Map(hours.map((h) => [h.date, h])),
+          },
+        ];
+      }),
     );
   }
   const rating = opts.rating !== undefined ? Number(opts.rating) : 4.6;
@@ -186,14 +214,17 @@ async function pickFreeDate(areaId: string, timezone: string, start?: string) {
 async function printReport(runId: string) {
   const rows = await pool.query<{
     report_position: number;
-    label: string;
+    catalog_name: string | null;
+    provider_place_id: string | null;
+    subject_id: string;
+    food_type: string | null;
     decision: string;
     score: number | null;
     primary_reason_code: string;
   }>(
-    `SELECT rc.report_position,
-       COALESCE(p.name, (SELECT r.provider_place_id FROM place_provider_reference r WHERE r.subject_id=s.id AND r.state='current' LIMIT 1), rc.subject_id::text)
-         || ' [' || COALESCE((SELECT c.food_type FROM restaurant_candidate c WHERE c.subject_id=rc.subject_id LIMIT 1), 'no food type') || ']' AS label,
+    `SELECT rc.report_position, p.name AS catalog_name, rc.subject_id,
+       (SELECT r.provider_place_id FROM place_provider_reference r WHERE r.subject_id=s.id AND r.state='current' LIMIT 1) AS provider_place_id,
+       (SELECT c.food_type FROM restaurant_candidate c WHERE c.subject_id=rc.subject_id LIMIT 1) AS food_type,
        rc.decision, rc.score, rc.primary_reason_code
      FROM daily_pick_run_candidate rc
      JOIN place_subject s ON s.id = rc.subject_id
@@ -202,10 +233,16 @@ async function printReport(runId: string) {
     [runId],
   );
   console.log("\nTop-10 report:");
-  for (const r of rows.rows)
+  for (const r of rows.rows) {
+    const label =
+      r.catalog_name ??
+      (r.provider_place_id && fixtureNames.get(r.provider_place_id)) ??
+      r.provider_place_id ??
+      r.subject_id;
     console.log(
-      `  ${r.report_position}. ${r.label} — ${r.decision} (score=${r.score?.toFixed(2) ?? "—"}, ${r.primary_reason_code})`,
+      `  ${r.report_position}. ${label} [${r.food_type ?? "no food type"}] — ${r.decision} (score=${r.score?.toFixed(2) ?? "—"}, ${r.primary_reason_code})`,
     );
+  }
 }
 
 async function main() {
