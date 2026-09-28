@@ -5,6 +5,7 @@ import {
   loadRestaurantArea,
   prepareRestaurantPickRun,
   approveRestaurantCopy,
+  RunBusy,
   type RestaurantArea,
 } from "./daily-pick-restaurant-run";
 import { enqueueRestaurantJob, workRestaurantJob } from "./restaurant-jobs";
@@ -150,22 +151,23 @@ async function buildFixtures(
 }
 
 async function resetRun(areaId: string, date: string) {
-  const run = await pool.query<{ id: string; status: string }>(
-    "SELECT id, status FROM daily_pick_run WHERE area_id=$1 AND run_date=$2",
+  // Only unreviewed drafts block a new attempt; terminal runs (published,
+  // empty, failed) stay as history and a publish replaces the current pick.
+  const drafts = await pool.query<{ id: string }>(
+    `SELECT id FROM daily_pick_run WHERE area_id=$1 AND run_date=$2
+     AND status IN ('ready_for_review','ready_to_publish')`,
     [areaId, date],
   );
-  if (!run.rows[0]) return;
-  const { id: runId, status } = run.rows[0];
-  if (status === "published")
-    throw new Error(
-      `Run ${runId} for ${date} is already published; --reset refuses to delete committed history ` +
-        `(a daily_pick row still references its copy). Pick a different --date, or withdraw the pick ` +
-        `first via the admin UI/withdrawRestaurantPick if you actually want to redo this date.`,
-    );
-  await pool.query("DELETE FROM restaurant_job WHERE run_id=$1", [runId]);
-  await pool.query("DELETE FROM restaurant_copy WHERE run_id=$1", [runId]);
-  await pool.query("DELETE FROM daily_pick_run WHERE id=$1", [runId]);
-  console.log(`Cleared prior run ${runId} for ${date}.`);
+  if (!drafts.rows.length) {
+    console.log(`No unreviewed draft for ${date}; starting a new attempt.`);
+    return;
+  }
+  for (const { id: runId } of drafts.rows) {
+    await pool.query("DELETE FROM restaurant_job WHERE run_id=$1", [runId]);
+    await pool.query("DELETE FROM restaurant_copy WHERE run_id=$1", [runId]);
+    await pool.query("DELETE FROM daily_pick_run WHERE id=$1", [runId]);
+    console.log(`Discarded unreviewed draft ${runId} for ${date}.`);
+  }
 }
 
 async function pickFreeDate(areaId: string, timezone: string, start?: string) {
@@ -267,7 +269,11 @@ async function main() {
 
 main()
   .catch((e) => {
-    console.error(e instanceof Error ? e.message : e);
+    if (e instanceof RunBusy)
+      console.error(
+        `Run ${e.runId} is an unreviewed draft for this date. Rerun with --reset to discard it.`,
+      );
+    else console.error(e instanceof Error ? e.message : e);
     process.exitCode = 1;
   })
   .finally(() => pool.end());
