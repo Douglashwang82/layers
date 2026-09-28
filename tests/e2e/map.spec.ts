@@ -253,9 +253,14 @@ test("a failed map provider keeps results, selection and directions usable", asy
 }) => {
   await blockMapProvider(page);
   await page.goto("/?types=place");
-  // The workspace explains the failure and offers recovery, never a blank screen.
-  await expect(page.getByText("The map couldn’t load")).toBeVisible();
-  await expect(page.getByRole("button", { name: "Try again" })).toBeVisible();
+  // The workspace explains the failure, never a blank screen. With a token the
+  // blocked provider offers a retry; without one (as in CI) it names the missing
+  // token instead. Either way every list flow below must keep working.
+  const loadFailed = page.getByText("The map couldn’t load");
+  const needsToken = page.getByText("Map preview needs a Mapbox token.");
+  await expect(loadFailed.or(needsToken)).toBeVisible();
+  if (await loadFailed.isVisible())
+    await expect(page.getByRole("button", { name: "Try again" })).toBeVisible();
   // Every discovery and action flow still works from the semantic list.
   const row = page.locator(".result-row", { hasText: noodleHouse });
   await expect(row).toHaveCount(1);
