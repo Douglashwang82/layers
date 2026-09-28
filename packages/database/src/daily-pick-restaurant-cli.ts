@@ -118,12 +118,18 @@ async function main() {
     if (result.status === "failed") process.exitCode = 1;
   }
 }
+/** Keeps the cause visible in CI logs without echoing connection strings or keys. */
+function redact(message: string) {
+  return message
+    .replace(/postgres(?:ql)?:\/\/\S+/gi, "postgres://[redacted]")
+    .replace(/\b(?:sk-ant-[\w-]+|AIza[\w-]{20,})\b/g, "[redacted]")
+    .slice(0, 500);
+}
 main()
   .catch((e) => {
     console.error(
       e instanceof Error
-        ? e.name +
-            ": restaurant worker failed; check configuration and admin job status."
+        ? `${e.name}: restaurant worker failed: ${redact(e.message)}`
         : "Restaurant worker failed.",
     );
     process.exitCode = 1;
