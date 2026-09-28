@@ -27,6 +27,8 @@ export type DiscoveredRestaurant = {
   providerPlaceId: string;
   /** A short label for the moderator queue only; not stored as catalog content. */
   label: string;
+  /** Google's primary place type (e.g. "ramen_restaurant"); only its mapped food-type label is stored. */
+  primaryType?: string | null;
 };
 export type DiscoveryOutcome = {
   found: DiscoveredRestaurant[];
@@ -431,6 +433,7 @@ const textSearchResponse = z.object({
       z.object({
         id: z.string(),
         displayName: z.object({ text: z.string() }).optional(),
+        primaryType: z.string().optional(),
       }),
     )
     .optional(),
@@ -482,7 +485,8 @@ export function createGooglePlacesDiscoveryAdapter(
             headers: {
               "Content-Type": "application/json",
               "X-Goog-Api-Key": serverApiKey,
-              "X-Goog-FieldMask": "places.id,places.displayName,nextPageToken",
+              "X-Goog-FieldMask":
+                "places.id,places.displayName,places.primaryType,nextPageToken",
             },
             body: JSON.stringify({
               textQuery: `restaurants in ${queryGroup}`,
@@ -512,6 +516,7 @@ export function createGooglePlacesDiscoveryAdapter(
           found.push({
             providerPlaceId: place.id,
             label: place.displayName?.text ?? place.id,
+            primaryType: place.primaryType ?? null,
           });
         nextPageToken = parsed.nextPageToken ?? null;
         if (!nextPageToken) break;

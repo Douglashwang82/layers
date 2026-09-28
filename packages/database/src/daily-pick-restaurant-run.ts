@@ -6,6 +6,8 @@ import { lockDailyPickSlot } from "./daily-pick";
 import {
   addDays,
   buildRestaurantReport,
+  foodTypeFromProviderType,
+  templateRestaurantCopy,
   qualifyRestaurantCandidate,
   rankCandidates,
   restaurantRuleConfigSchema,
@@ -102,6 +104,12 @@ const areaBudgetSchema = z.object({
   queryGroups: z.array(z.string().min(1)).default([]),
   discoveryBudgetPerRun: z.number().int().min(0).default(0),
   qualificationBudgetPerRun: z.number().int().min(0).default(200),
+  /**
+   * Owner-approved trust in discovery: a found restaurant whose provider type
+   * maps to a food type is approved with the area's city confirmed, instead
+   * of waiting in `discovered` for a moderator.
+   */
+  autoApproveDiscovered: z.boolean().default(false),
 });
 function areaBudgets(area: RestaurantArea) {
   return areaBudgetSchema.parse(area.config);
@@ -305,7 +313,11 @@ async function discoverCandidates(
         pageToken: null,
       });
       for (const found of outcome.found) {
-        const upserted = await upsertDiscoveredCandidate(area.id, found);
+        const upserted = await upsertDiscoveredCandidate(
+          area.id,
+          found,
+          budgets.autoApproveDiscovered,
+        );
         if (upserted) discoveredCount += 1;
       }
     } catch (error) {
@@ -340,9 +352,17 @@ async function discoverCandidates(
     throw new Error("Discovery partially failed; retry before selection.");
 }
 
+async function cityName(citySlug: string) {
+  const result = await pool.query<{ name: string }>(
+    "SELECT name FROM city WHERE slug=$1",
+    [citySlug],
+  );
+  return result.rows[0]?.name ?? citySlug;
+}
 async function upsertDiscoveredCandidate(
   areaId: string,
   found: DiscoveredRestaurant,
+  autoApprove = false,
 ): Promise<boolean> {
   const existingRef = await pool.query<{ subject_id: string }>(
     `SELECT subject_id FROM place_provider_reference WHERE provider='google' AND provider_place_id=$1`,
@@ -380,12 +400,45 @@ async function upsertDiscoveredCandidate(
     }
   }
   if (!subjectId) return false;
-  const candidate = await pool.query(
-    `INSERT INTO restaurant_candidate(area_id, subject_id, state) VALUES($1,$2,'discovered')
-     ON CONFLICT (area_id, subject_id) DO NOTHING RETURNING id`,
-    [areaId, subjectId],
-  );
-  return Boolean(candidate.rowCount);
+  const foodType = autoApprove
+    ? foodTypeFromProviderType(found.primaryType)
+    : null;
+  if (!foodType) {
+    const candidate = await pool.query(
+      `INSERT INTO restaurant_candidate(area_id, subject_id, state) VALUES($1,$2,'discovered')
+       ON CONFLICT (area_id, subject_id) DO NOTHING RETURNING id`,
+      [areaId, subjectId],
+    );
+    return Boolean(candidate.rowCount);
+  }
+  // Only untouched candidates are auto-approved: anything a moderator has
+  // reviewed, approved or excluded keeps its state and food type.
+  const client = await pool.connect();
+  try {
+    await client.query("BEGIN");
+    await client.query(
+      `UPDATE place_subject SET city_id=(SELECT c.id FROM city c JOIN restaurant_discovery_area a ON a.city_slug=c.slug WHERE a.id=$2),
+         city_review_status='approved', city_reviewed_at=now(), revision=revision+1, updated_at=now()
+       WHERE id=$1 AND city_review_status='unreviewed'`,
+      [subjectId, areaId],
+    );
+    const candidate = await client.query(
+      `INSERT INTO restaurant_candidate(area_id, subject_id, state, food_type, food_type_version, food_type_source, reviewed_at)
+       VALUES($1,$2,'approved',$3,1,'provider',now())
+       ON CONFLICT (area_id, subject_id) DO UPDATE SET state='approved', food_type=EXCLUDED.food_type,
+         food_type_version=1, food_type_source='provider', reviewed_at=now(), updated_at=now()
+       WHERE restaurant_candidate.state='discovered'
+       RETURNING id`,
+      [areaId, subjectId, foodType],
+    );
+    await client.query("COMMIT");
+    return Boolean(candidate.rowCount);
+  } catch (error) {
+    await client.query("ROLLBACK").catch(() => {});
+    throw error;
+  } finally {
+    client.release();
+  }
 }
 
 type CandidateRow = {
@@ -692,6 +745,22 @@ export async function prepareRestaurantPickRun(
       if (attempts >= config.maxCopyAttempts) break;
       attempts += 1;
       const row = candidateById.get(input.subjectId)!;
+      if (
+        !config.requireEvidence &&
+        row.evidence.length < 2 &&
+        input.foodType
+      ) {
+        copyRecords.set(input.subjectId, {
+          output: templateRestaurantCopy({
+            foodType: input.foodType,
+            citySlug: area.citySlug,
+            cityName: await cityName(area.citySlug),
+          }),
+          approvedFactIds: new Set(),
+        });
+        copyOutcomes.set(input.subjectId, "grounded");
+        break;
+      }
       try {
         const output = await adapters.copy.generate({
           candidateLabel: row.catalog_place_id ? row.label : "This restaurant",

@@ -1,0 +1,2 @@
+ALTER TABLE "restaurant_candidate" DROP CONSTRAINT "restaurant_candidate_food_source_check";--> statement-breakpoint
+ALTER TABLE "restaurant_candidate" ADD CONSTRAINT "restaurant_candidate_food_source_check" CHECK ("restaurant_candidate"."food_type_source" IS NULL OR "restaurant_candidate"."food_type_source" IN ('llm_suggested', 'moderator', 'provider'));

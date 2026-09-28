@@ -1,6 +1,8 @@
 import { describe, it, expect } from "vitest";
 import {
   buildRestaurantReport,
+  foodTypeFromProviderType,
+  templateRestaurantCopy,
   hasServiceOnDate,
   normalizeDailyIntervals,
   qualifyRestaurantCandidate,
@@ -752,5 +754,40 @@ describe("validateRestaurantCopy", () => {
       facts,
     );
     expect(r.valid).toBe(false);
+  });
+});
+
+describe("auto-approve areas", () => {
+  it("maps Google primary types to food types and skips generic ones", () => {
+    expect(foodTypeFromProviderType("ramen_restaurant")).toBe("ramen");
+    expect(foodTypeFromProviderType("hamburger_restaurant")).toBe("burgers");
+    expect(foodTypeFromProviderType("restaurant")).toBeNull();
+    expect(foodTypeFromProviderType(undefined)).toBeNull();
+  });
+
+  it("does not require evidence when the area opts out", () => {
+    const c = candidate({ hasIndependentEvidence: false });
+    const strict = qualifyRestaurantCandidate(c, "2026-09-27", noon, []);
+    expect(strict.codes).toContain("insufficient_evidence");
+    const relaxed = qualifyRestaurantCandidate(c, "2026-09-27", noon, [], {
+      ...restaurantRuleDefaults,
+      requireEvidence: false,
+    });
+    expect(relaxed.qualified).toBe(true);
+  });
+
+  it("builds bilingual template copy that passes copy validation with no facts", () => {
+    const copy = templateRestaurantCopy({
+      foodType: "indian",
+      citySlug: "houston",
+      cityName: "Houston",
+    });
+    expect(copy.enSentences[0].text).toBe(
+      "Today's pick is an indian restaurant in Houston.",
+    );
+    expect(copy.zhSentences[0].text).toBe(
+      "今日精選是一間位於休士頓的印度餐廳。",
+    );
+    expect(validateRestaurantCopy(copy, new Set())).toEqual({ valid: true });
   });
 });

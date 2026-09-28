@@ -279,6 +279,7 @@ describe("createGooglePlacesDiscoveryAdapter", () => {
             {
               id: `place-${call}`,
               displayName: { text: `Restaurant ${call}` },
+              ...(call === 1 ? { primaryType: "ramen_restaurant" } : {}),
             },
           ],
           nextPageToken: `token-${call}`,
@@ -297,8 +298,12 @@ describe("createGooglePlacesDiscoveryAdapter", () => {
       pageToken: null,
     });
     expect(outcome.found).toEqual([
-      { providerPlaceId: "place-1", label: "Restaurant 1" },
-      { providerPlaceId: "place-2", label: "Restaurant 2" },
+      {
+        providerPlaceId: "place-1",
+        label: "Restaurant 1",
+        primaryType: "ramen_restaurant",
+      },
+      { providerPlaceId: "place-2", label: "Restaurant 2", primaryType: null },
     ]);
     expect(outcome.requestCount).toBe(2);
     expect(outcome.truncated).toBe(true);

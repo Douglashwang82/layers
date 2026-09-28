@@ -1404,11 +1404,11 @@ export const restaurantCandidate = pgTable(
     state: text("state", { enum: restaurantCandidateStates })
       .default("discovered")
       .notNull(),
-    /** One reviewed primary food type; an LLM may suggest it, a moderator approves it. */
+    /** One primary food type: moderator-set, LLM-suggested, or mapped from the provider's primary type in auto-approve areas. */
     foodType: text("food_type"),
     foodTypeVersion: integer("food_type_version"),
     foodTypeSource: text("food_type_source", {
-      enum: ["llm_suggested", "moderator"],
+      enum: ["llm_suggested", "moderator", "provider"],
     }),
     excludedReason: text("excluded_reason"),
     reviewedBy: uuid("reviewed_by").references(() => user.id, {
@@ -1429,7 +1429,7 @@ export const restaurantCandidate = pgTable(
     ),
     check(
       "restaurant_candidate_food_source_check",
-      sql`${t.foodTypeSource} IS NULL OR ${t.foodTypeSource} IN ('llm_suggested', 'moderator')`,
+      sql`${t.foodTypeSource} IS NULL OR ${t.foodTypeSource} IN ('llm_suggested', 'moderator', 'provider')`,
     ),
   ],
 );

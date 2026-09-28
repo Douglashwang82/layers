@@ -22,6 +22,7 @@ Create the area's `restaurant_discovery_area` row initially disabled, with `city
 - `discoveryBudgetPerRun`: 1–100 requests; runtime makes one search page per group and rotates groups by date. Google search is a bounded sample, never an exhaustive list.
 - `qualificationBudgetPerRun`: 1–200 candidates. A deterministic daily rotation chooses the evaluated cohort when the pool exceeds this limit.
 - Optional rule overrides: `minRating` (default 4.3), `minRatingCount` (30), `foodRotationDays` (6), `restaurantRepeatDays` (30), and the other validated shared rule fields.
+- Optional auto mode (see ADR section 2a items 7-8): `autoApproveDiscovered: true` approves discovered restaurants whose Google primary type maps to a food type, confirming their city from the search rectangle. `requireEvidence: false` lets candidates without two approved facts qualify, with fixed template copy instead of model copy. Copy approval stays mandatory.
 
 Enable the area only after its geography, candidate approval process, retention policy, model, and billing caps have been reviewed. Configure account-level daily/monthly quotas and billing alerts before rollout; application limits currently bound each run, not cumulative monthly spend. Bump `config_version` when changing configuration; pending runs then require new preparation.
 
@@ -29,7 +30,7 @@ Enable the area only after its geography, candidate approval process, retention 
 
 ## Review and recovery
 
-Discovery stores provider identities, not a Google business-content cache. Newly found candidates require a reviewed city association, primary food type, and at least two approved independent facts. Use consistent taxonomy labels such as `tacos`, `pizza`, `sushi`, `ramen`, `barbecue`, and `burgers`. Google reviews and summaries must not be pasted into independent evidence.
+Discovery stores provider identities, not a Google business-content cache. Outside auto mode, newly found candidates require a reviewed city association, primary food type, and at least two approved independent facts. Use consistent taxonomy labels such as `tacos`, `pizza`, `sushi`, `ramen`, `barbecue`, and `burgers`. Google reviews and summaries must not be pasted into independent evidence.
 
 Queue preparation, refresh the admin screen after the worker finishes, and inspect the top-ten report and both languages. The report covers only the evaluated cohort. Failed provider calls block selection; unknown ratings/hours fail eligibility. Review drafts survive repeated scheduler calls. Reject or discard a draft before preparing a replacement. Copy approval is mandatory in this pilot; `FEATURE_RESTAURANT_AUTO_PUBLISH` does not bypass review.
 

@@ -35,6 +35,11 @@ export const restaurantRuleConfigSchema = z.object({
   maxCopyAttempts: z.number().finite().int().min(1),
   /** Report shows the winner plus this many other candidates. */
   reportSize: z.number().finite().int().min(1),
+  /**
+   * When false, a candidate without two approved facts is still eligible and
+   * gets fixed template copy instead of model copy (auto-approve areas).
+   */
+  requireEvidence: z.boolean().default(true),
 });
 /** Validated, numeric (not literal-typed) run configuration. */
 export type RestaurantRuleConfig = z.infer<typeof restaurantRuleConfigSchema>;
@@ -49,7 +54,84 @@ export const restaurantRuleDefaults: RestaurantRuleConfig =
     maxEvidenceAgeMinutes: 30,
     maxCopyAttempts: 3,
     reportSize: 10,
+    requireEvidence: true,
   });
+
+/**
+ * Google Places primary type -> our food-type label and its Traditional
+ * Chinese display name. Types not listed (including plain "restaurant") map
+ * to null: the candidate stays unapproved rather than guessing a cuisine.
+ */
+const providerFoodTypes: Record<string, { label: string; zh: string }> = {
+  american_restaurant: { label: "american", zh: "美式" },
+  barbecue_restaurant: { label: "barbecue", zh: "燒烤" },
+  brazilian_restaurant: { label: "brazilian", zh: "巴西" },
+  breakfast_restaurant: { label: "breakfast", zh: "早餐" },
+  brunch_restaurant: { label: "brunch", zh: "早午餐" },
+  chinese_restaurant: { label: "chinese", zh: "中式" },
+  french_restaurant: { label: "french", zh: "法式" },
+  greek_restaurant: { label: "greek", zh: "希臘" },
+  hamburger_restaurant: { label: "burgers", zh: "漢堡" },
+  indian_restaurant: { label: "indian", zh: "印度" },
+  indonesian_restaurant: { label: "indonesian", zh: "印尼" },
+  italian_restaurant: { label: "italian", zh: "義式" },
+  japanese_restaurant: { label: "japanese", zh: "日式" },
+  korean_restaurant: { label: "korean", zh: "韓式" },
+  lebanese_restaurant: { label: "lebanese", zh: "黎巴嫩" },
+  mediterranean_restaurant: { label: "mediterranean", zh: "地中海" },
+  mexican_restaurant: { label: "mexican", zh: "墨西哥" },
+  middle_eastern_restaurant: { label: "middle eastern", zh: "中東" },
+  pizza_restaurant: { label: "pizza", zh: "披薩" },
+  ramen_restaurant: { label: "ramen", zh: "拉麵" },
+  seafood_restaurant: { label: "seafood", zh: "海鮮" },
+  spanish_restaurant: { label: "spanish", zh: "西班牙" },
+  steak_house: { label: "steakhouse", zh: "牛排" },
+  sushi_restaurant: { label: "sushi", zh: "壽司" },
+  thai_restaurant: { label: "thai", zh: "泰式" },
+  turkish_restaurant: { label: "turkish", zh: "土耳其" },
+  vegan_restaurant: { label: "vegan", zh: "純素" },
+  vegetarian_restaurant: { label: "vegetarian", zh: "素食" },
+  vietnamese_restaurant: { label: "vietnamese", zh: "越南" },
+};
+export function foodTypeFromProviderType(
+  primaryType: string | null | undefined,
+): string | null {
+  return (primaryType && providerFoodTypes[primaryType]?.label) || null;
+}
+const foodTypeZh = new Map(
+  Object.values(providerFoodTypes).map((t) => [t.label, t.zh]),
+);
+const cityNamesZh: Record<string, string> = { houston: "休士頓" };
+
+/**
+ * Fixed bilingual copy for a pick with no approved facts. It states only
+ * what the pipeline itself established (food type, city, passing today's
+ * checks), so it needs no model call and cites no evidence.
+ */
+export function templateRestaurantCopy(input: {
+  foodType: string;
+  citySlug: string;
+  cityName: string;
+}): RestaurantCopyOutput {
+  const zhFood = foodTypeZh.get(input.foodType) ?? input.foodType;
+  const zhCity = cityNamesZh[input.citySlug] ?? input.cityName;
+  const sentence = (text: string) => ({ text, factIds: [] as string[] });
+  const article = /^[aeiou]/i.test(input.foodType) ? "an" : "a";
+  return {
+    enSentences: [
+      sentence(
+        `Today's pick is ${article} ${input.foodType} restaurant in ${input.cityName}.`,
+      ),
+      sentence("It passed today's rating, opening-hours, and rotation checks."),
+    ],
+    zhSentences: [
+      sentence(`今日精選是一間位於${zhCity}的${zhFood}餐廳。`),
+      sentence("這家餐廳通過了今日的評分、營業時間與輪替檢查。"),
+    ],
+    promptVersion: "template-v1",
+    modelVersion: "template",
+  };
+}
 
 /** A half-open service interval on one calendar date, in UTC instants. */
 export type ServiceInterval = { start: Date; end: Date };
@@ -341,7 +423,8 @@ export function qualifyRestaurantCandidate(
   }
 
   if (!candidate.foodType) codes.push("food_type_unknown");
-  if (!candidate.hasIndependentEvidence) codes.push("insufficient_evidence");
+  if (config.requireEvidence && !candidate.hasIndependentEvidence)
+    codes.push("insufficient_evidence");
 
   if (candidate.foodType) {
     const conflict = committed.some(

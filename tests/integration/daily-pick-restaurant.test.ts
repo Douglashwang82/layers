@@ -4,6 +4,7 @@ import {
   ensureSystemLayers,
   approveRestaurantCopy,
   createFakeCopyAdapter,
+  createFakeDiscoveryAdapter,
   createFakeQualificationAdapter,
   loadRestaurantArea,
   prepareRestaurantPickRun,
@@ -942,5 +943,101 @@ describe("Daily restaurant recommendation (version 2) worker", () => {
     expect(results.find((r) => r.status === "stale")).toMatchObject({
       reason: "food_type_recent",
     });
+  });
+
+  it("auto-approves discovered restaurants with a mapped type and drafts template copy without facts", async () => {
+    const date = addDays(today, 200);
+    const ramenId = `auto-${suffix}-ramen`;
+    const genericId = `auto-${suffix}-generic`;
+    await pool.query(
+      `UPDATE restaurant_discovery_area SET config=$2::jsonb WHERE id=$1`,
+      [
+        area.id,
+        JSON.stringify({
+          autoApproveDiscovered: true,
+          requireEvidence: false,
+          queryGroups: ["g1"],
+          discoveryBudgetPerRun: 1,
+        }),
+      ],
+    );
+    const autoArea = (await loadRestaurantArea(pool, city.slug))!;
+    try {
+      const result = await prepareRestaurantPickRun(autoArea, date, {
+        discovery: createFakeDiscoveryAdapter({
+          g1: [
+            {
+              providerPlaceId: ramenId,
+              label: "Ramen",
+              primaryType: "ramen_restaurant",
+            },
+            {
+              providerPlaceId: genericId,
+              label: "Generic",
+              primaryType: "restaurant",
+            },
+          ],
+        }),
+        qualification: createFakeQualificationAdapter(
+          new Map([[ramenId, operationalQuality(4.7, 300, date)]]),
+        ),
+        copy: createFakeCopyAdapter(),
+      });
+      const rows = await pool.query<{
+        provider_place_id: string;
+        candidate_id: string;
+        subject_id: string;
+        state: string;
+        food_type: string | null;
+        food_type_source: string | null;
+        city_review_status: string;
+      }>(
+        `SELECT r.provider_place_id, c.id AS candidate_id, s.id AS subject_id, c.state, c.food_type, c.food_type_source, s.city_review_status
+         FROM place_provider_reference r
+         JOIN place_subject s ON s.id=r.subject_id
+         JOIN restaurant_candidate c ON c.subject_id=s.id AND c.area_id=$1
+         WHERE r.provider_place_id = ANY($2::text[])`,
+        [area.id, [ramenId, genericId]],
+      );
+      for (const r of rows.rows) {
+        subjectIds.push(r.subject_id);
+        candidateIds.push(r.candidate_id);
+      }
+      const byId = new Map(rows.rows.map((r) => [r.provider_place_id, r]));
+      expect(byId.get(ramenId)).toMatchObject({
+        state: "approved",
+        food_type: "ramen",
+        food_type_source: "provider",
+        city_review_status: "approved",
+      });
+      expect(byId.get(genericId)).toMatchObject({
+        state: "discovered",
+        food_type: null,
+        city_review_status: "unreviewed",
+      });
+      expect(result.status).toBe("ready_for_review");
+      if (result.status !== "ready_for_review") return;
+      expect(result.winnerSubjectId).toBe(byId.get(ramenId)!.subject_id);
+      const copy = await pool.query<{
+        prompt_version: string;
+        review_status: string;
+        en_sentences: { text: string }[];
+      }>(
+        "SELECT prompt_version, review_status, en_sentences FROM restaurant_copy WHERE id=$1",
+        [result.copyId],
+      );
+      expect(copy.rows[0]).toMatchObject({
+        prompt_version: "template-v1",
+        review_status: "pending",
+      });
+      expect(copy.rows[0].en_sentences[0].text).toBe(
+        `Today's pick is a ramen restaurant in ${city.name}.`,
+      );
+    } finally {
+      await pool.query(
+        `UPDATE restaurant_discovery_area SET config='{}'::jsonb WHERE id=$1`,
+        [area.id],
+      );
+    }
   });
 });
