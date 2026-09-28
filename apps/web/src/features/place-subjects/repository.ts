@@ -31,14 +31,17 @@ export const visibleSubject = `($2::boolean OR (
     OR ($1::uuid IS NOT NULL AND EXISTS (SELECT 1 FROM place_review pr JOIN group_member gm ON gm.group_id=pr.group_id AND gm.user_id=$1::uuid WHERE pr.subject_id=s.id AND pr.status='approved'))
     OR EXISTS (
       SELECT 1 FROM layer_item li JOIN layer l ON l.id=li.layer_id
-      WHERE li.subject_id=s.id AND (
+      WHERE li.subject_id=s.id
+        AND (l.owner_kind<>'system' OR ((li.valid_from IS NULL OR li.valid_from<=now()) AND (li.valid_until IS NULL OR li.valid_until>now())))
+        AND (NOT li.restaurant_managed OR EXISTS(SELECT 1 FROM daily_pick_layer_membership m JOIN daily_pick d ON d.id=m.pick_id JOIN city dc ON dc.id=d.city_id WHERE m.layer_item_id=li.id AND d.status='published' AND d.pick_date<=(now() AT TIME ZONE dc.timezone)::date))
+        AND (
         -- A system layer (Discover, Daily Pick) still requires the layer's
         -- own active/public state AND the subject's own city review — a
         -- membership row existing is never sufficient by itself, since that
         -- would bypass the review gate for any subject some future system
         -- layer happens to reference.
-        (l.owner_kind='system' AND l.lifecycle='active' AND s.city_review_status='approved')
-        OR (l.audience='public' AND l.review_status='approved' AND l.lifecycle='active' AND s.city_review_status='approved')
+        (l.owner_kind='system' AND l.lifecycle='active' AND l.audience='public' AND l.review_status='approved' AND s.city_review_status='approved' AND s.city_id=l.city_id AND (li.valid_from IS NULL OR li.valid_from<=now()) AND (li.valid_until IS NULL OR li.valid_until>now()))
+        OR (l.owner_kind<>'system' AND l.audience='public' AND l.review_status='approved' AND l.lifecycle='active' AND s.city_review_status='approved')
         OR ($1::uuid IS NOT NULL AND l.owner_kind='user' AND l.owner_user_id=$1::uuid)
         OR ($1::uuid IS NOT NULL AND l.owner_kind='group' AND EXISTS (SELECT 1 FROM group_member gm WHERE gm.group_id=l.owner_group_id AND gm.user_id=$1::uuid))
       )

@@ -2,7 +2,12 @@ import Link from "next/link";
 import { redirect, notFound } from "next/navigation";
 import { pool, listExtractionPages } from "@taiwanhub/database";
 import { currentActor } from "@/lib/session";
-import { getCopy } from "@/lib/i18n";
+import {
+  getCopy,
+  getLocale,
+  restaurantAdminEn,
+  restaurantAdminZh,
+} from "@/lib/i18n";
 import { isModerator, kinds, type Kind } from "@taiwanhub/shared";
 import { getContent, tables } from "@/features/catalog/repository";
 import {
@@ -16,6 +21,9 @@ import {
   ExtractionPageControls,
 } from "@/components/extraction-controls";
 import { MembershipAdminPanel } from "@/components/membership/admin-panel";
+import { RestaurantPicksAdmin } from "@/components/restaurant-admin/restaurant-picks-admin";
+import { listAreas } from "@/features/restaurant-admin/service";
+import { localDate } from "@taiwanhub/shared";
 import { DailyPickAdmin } from "@/components/daily-pick/daily-pick-admin";
 import { listAdminDailyPicks } from "@/features/daily-pick/service";
 import { getActiveCity } from "@/lib/city";
@@ -35,6 +43,8 @@ export default async function Admin({
   if (!actor) redirect("/sign-in?next=/admin");
   if (!isModerator(actor.role)) notFound();
   const t = await getCopy();
+  const restaurantCopy =
+    (await getLocale()) === "zh-TW" ? restaurantAdminZh : restaurantAdminEn;
   const { section } = await params;
   const kind = section?.[0];
   const admin = actor.role === "ADMIN";
@@ -52,6 +62,8 @@ export default async function Admin({
       })
     : null;
   const extraction = kind === "extraction" ? await listExtractionPages() : [];
+  const restaurantAreas =
+    kind === "restaurant-picks" ? await listAreas(actor) : null;
   const dailyPicks =
     kind === "daily-picks"
       ? await listAdminDailyPicks(actor, (await getActiveCity()).city.slug)
@@ -155,6 +167,7 @@ export default async function Admin({
         >
           {t.dailyPick}
         </Link>
+        <Link href="/admin/restaurant-picks">{restaurantCopy.title}</Link>
         {admin && (
           <Link
             href="/admin/extraction"
@@ -181,7 +194,14 @@ export default async function Admin({
           </Link>
         ))}
       </nav>
-      {dailyPicks ? (
+      {restaurantAreas && (
+        <RestaurantPicksAdmin
+          areas={restaurantAreas}
+          copy={restaurantCopy}
+          today={localDate(new Date(), "America/Chicago")}
+        />
+      )}
+      {restaurantAreas ? null : dailyPicks ? (
         <DailyPickAdmin
           city={dailyPicks.city}
           today={dailyPicks.today}

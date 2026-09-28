@@ -1,4 +1,5 @@
 import type { PoolClient } from "pg";
+import { createHash } from "node:crypto";
 import { z } from "zod";
 import { pool } from "./index";
 import { lockDailyPickSlot } from "./daily-pick";
@@ -9,7 +10,7 @@ import {
   rankCandidates,
   restaurantRuleConfigSchema,
   restaurantRuleDefaults,
-  stableHash,
+  isCalendarDate,
   validateRestaurantCopy,
   zonedMidnight,
   type CommittedFeature,
@@ -36,7 +37,7 @@ import type {
  * plan's `queued -> ... -> ready_for_review -> ready_to_publish -> published`
  * lifecycle:
  *
- * - `prepareRestaurantPickRun` claims a leased run, discovers/upserits
+ * - `prepareRestaurantPickRun` claims a leased run, discovers/upserts
  *   candidates, qualifies and ranks them, attempts grounded copy, and writes
  *   the report. It NEVER publishes: a run can only reach `ready_for_review`
  *   (with a pending, unreviewed `restaurant_copy` row), `empty`, or `failed`.
@@ -90,10 +91,10 @@ export async function loadRestaurantArea(
 
 /** Operator-tunable rule thresholds layered onto the shared defaults from `area.config`. */
 export function areaRuleConfig(area: RestaurantArea): RestaurantRuleConfig {
-  const overrides = restaurantRuleConfigSchema.partial().safeParse(area.config);
+  const overrides = restaurantRuleConfigSchema.partial().parse(area.config);
   return restaurantRuleConfigSchema.parse({
     ...restaurantRuleDefaults,
-    ...(overrides.success ? overrides.data : {}),
+    ...overrides,
   });
 }
 /** Bounded discovery/qualification request budgets, from `area.config`. */
@@ -103,14 +104,7 @@ const areaBudgetSchema = z.object({
   qualificationBudgetPerRun: z.number().int().min(0).default(200),
 });
 function areaBudgets(area: RestaurantArea) {
-  const parsed = areaBudgetSchema.safeParse(area.config);
-  return parsed.success
-    ? parsed.data
-    : {
-        queryGroups: [],
-        discoveryBudgetPerRun: 0,
-        qualificationBudgetPerRun: 200,
-      };
+  return areaBudgetSchema.parse(area.config);
 }
 
 const terminalRunStatuses = [
@@ -165,12 +159,14 @@ async function claimRestaurantRun(
       [area.id, date],
     );
     const row = latest.rows[0];
+    if (row && ["ready_for_review", "ready_to_publish"].includes(row.status))
+      throw new RunBusy(row.id);
     const isTerminal = (status: string) =>
       (terminalRunStatuses as readonly string[]).includes(status);
     if (!row || isTerminal(row.status)) {
       const inserted = await client.query<{ id: string; attempt: number }>(
         `INSERT INTO daily_pick_run(area_id, run_date, attempt, status, config_version, rules_config, lease_owner, lease_expires_at)
-         VALUES($1,$2::date,$3,'discovering',$4,'{}'::jsonb,$5,$6)
+         VALUES($1,$2::date,$3,'discovering',$4,$7::jsonb,$5,$6)
          RETURNING id, attempt`,
         [
           area.id,
@@ -179,6 +175,7 @@ async function claimRestaurantRun(
           area.configVersion,
           leaseOwner,
           new Date(now.getTime() + leaseDurationMs),
+          JSON.stringify(areaRuleConfig(area)),
         ],
       );
       await client.query("COMMIT");
@@ -197,8 +194,14 @@ async function claimRestaurantRun(
     // Reclaim: either unleased, expired, or already ours. Reset to the start
     // of evaluation so a recovered worker never trusts a half-written report.
     await client.query(
-      `UPDATE daily_pick_run SET status='discovering', lease_owner=$2, lease_expires_at=$3, error_code=NULL, updated_at=now() WHERE id=$1`,
-      [row.id, leaseOwner, new Date(now.getTime() + leaseDurationMs)],
+      `UPDATE daily_pick_run SET status='discovering', lease_owner=$2, lease_expires_at=$3, config_version=$4, rules_config=$5::jsonb,error_code=NULL, updated_at=now() WHERE id=$1`,
+      [
+        row.id,
+        leaseOwner,
+        new Date(now.getTime() + leaseDurationMs),
+        area.configVersion,
+        JSON.stringify(areaRuleConfig(area)),
+      ],
     );
     await client.query(`DELETE FROM daily_pick_run_candidate WHERE run_id=$1`, [
       row.id,
@@ -216,12 +219,13 @@ async function claimRestaurantRun(
 async function renewLease(runId: string, leaseOwner: string, now: Date) {
   const result = await pool.query<{ id: string }>(
     `UPDATE daily_pick_run SET lease_expires_at=$3, updated_at=now()
-     WHERE id=$1 AND lease_owner=$2 AND status <> ALL($4::text[]) RETURNING id`,
+     WHERE id=$1 AND lease_owner=$2 AND lease_expires_at>$5 AND status <> ALL($4::text[]) RETURNING id`,
     [
       runId,
       leaseOwner,
       new Date(now.getTime() + leaseDurationMs),
       terminalRunStatuses,
+      now,
     ],
   );
   if (!result.rows[0]) throw new RunLeaseLost(runId);
@@ -237,13 +241,14 @@ async function setRunStatus(
     eligibleCount?: number;
     excludedCount?: number;
   },
+  client: PoolClient | typeof pool = pool,
 ) {
-  await pool.query(
+  const result = await client.query(
     `UPDATE daily_pick_run SET status=$2, error_code=$3,
        evaluated_count=COALESCE($4, evaluated_count),
        eligible_count=COALESCE($5, eligible_count),
        excluded_count=COALESCE($6, excluded_count),
-       updated_at=now()
+       lease_expires_at=NULL, lease_owner=NULL, updated_at=now()
      WHERE id=$1 AND lease_owner=$7`,
     [
       runId,
@@ -255,6 +260,7 @@ async function setRunStatus(
       leaseOwner,
     ],
   );
+  if (!result.rowCount) throw new RunLeaseLost(runId);
 }
 
 /**
@@ -283,7 +289,13 @@ async function discoverCandidates(
   let requestCount = 0;
   let discoveredCount = 0;
   const errors: { queryGroup: string; message: string }[] = [];
-  for (const queryGroup of budgets.queryGroups) {
+  const offset =
+    Math.floor(now.getTime() / 86400000) % budgets.queryGroups.length;
+  const groups = [
+    ...budgets.queryGroups.slice(offset),
+    ...budgets.queryGroups.slice(0, offset),
+  ];
+  for (const queryGroup of groups) {
     if (requestCount >= budgets.discoveryBudgetPerRun) break;
     requestCount += 1;
     try {
@@ -296,10 +308,10 @@ async function discoverCandidates(
         const upserted = await upsertDiscoveredCandidate(area.id, found);
         if (upserted) discoveredCount += 1;
       }
-    } catch (error) {
+    } catch {
       errors.push({
         queryGroup,
-        message: error instanceof Error ? error.message : "discovery failed",
+        message: "discovery_failed",
       });
     }
   }
@@ -313,7 +325,7 @@ async function discoverCandidates(
       runId,
       errors.length === 0
         ? "success"
-        : errors.length === budgets.queryGroups.length
+        : errors.length === requestCount
           ? "failed"
           : "partial",
       requestCount,
@@ -321,7 +333,8 @@ async function discoverCandidates(
       JSON.stringify(errors),
     ],
   );
-  void now;
+  if (errors.length)
+    throw new Error("Discovery partially failed; retry before selection.");
 }
 
 async function upsertDiscoveredCandidate(
@@ -329,7 +342,7 @@ async function upsertDiscoveredCandidate(
   found: DiscoveredRestaurant,
 ): Promise<boolean> {
   const existingRef = await pool.query<{ subject_id: string }>(
-    `SELECT subject_id FROM place_provider_reference WHERE provider='google' AND provider_place_id=$1 AND state='current'`,
+    `SELECT subject_id FROM place_provider_reference WHERE provider='google' AND provider_place_id=$1`,
     [found.providerPlaceId],
   );
   let subjectId = existingRef.rows[0]?.subject_id;
@@ -349,7 +362,7 @@ async function upsertDiscoveredCandidate(
       if (!ref.rowCount) {
         await client.query("ROLLBACK");
         const winner = await pool.query<{ subject_id: string }>(
-          `SELECT subject_id FROM place_provider_reference WHERE provider='google' AND provider_place_id=$1 AND state='current'`,
+          `SELECT subject_id FROM place_provider_reference WHERE provider='google' AND provider_place_id=$1`,
           [found.providerPlaceId],
         );
         subjectId = winner.rows[0]?.subject_id;
@@ -373,6 +386,7 @@ async function upsertDiscoveredCandidate(
 }
 
 type CandidateRow = {
+  candidate_state: string;
   candidate_id: string;
   subject_id: string;
   provider_place_id: string | null;
@@ -395,7 +409,7 @@ type CandidateRow = {
   }[];
 };
 const candidateSelect = `
-  SELECT c.id AS candidate_id, c.subject_id, c.food_type, c.food_type_version, c.updated_at AS candidate_updated_at,
+  SELECT c.id AS candidate_id, c.state AS candidate_state, c.subject_id, c.food_type, c.food_type_version, c.updated_at AS candidate_updated_at,
      s.status = 'active' AS subject_active, s.city_review_status, s.updated_at AS subject_updated_at,
      (s.city_id IS NOT NULL AND EXISTS (SELECT 1 FROM restaurant_discovery_area a WHERE a.id=c.area_id AND a.city_slug=(SELECT slug FROM city WHERE id=s.city_id))) AS in_area,
      s.catalog_place_id, p.status AS catalog_status, p.is_demo AS catalog_is_demo,
@@ -461,7 +475,7 @@ export async function loadCommittedFeatures(
      FROM daily_pick d
      JOIN city c ON c.id = d.city_id
      JOIN restaurant_discovery_area a ON a.city_slug = c.slug
-     WHERE a.id = $1 AND d.status IN ('published','withdrawn') AND d.subject_id IS NOT NULL
+     WHERE a.id = $1 AND (d.status='published' OR (d.status='withdrawn' AND d.withdrawn_at >= d.pick_date::timestamp AT TIME ZONE c.timezone)) AND d.subject_id IS NOT NULL
        AND ($2::uuid IS NULL OR d.id <> $2)`,
     [areaId, excludePickId],
   );
@@ -475,9 +489,12 @@ export async function loadCommittedFeatures(
 
 /** A compact, stable fingerprint of exactly the fields that would change a fresh evaluation's outcome. */
 function candidateFingerprint(row: CandidateRow): string {
-  return String(
-    stableHash(
+  return createHash("sha256")
+    .update(
       JSON.stringify([
+        row.candidate_state,
+        row.candidate_updated_at,
+        row.provider_place_id,
         row.subject_active,
         row.city_review_status,
         row.in_area,
@@ -486,10 +503,10 @@ function candidateFingerprint(row: CandidateRow): string {
         row.catalog_is_demo,
         row.food_type,
         row.food_type_version,
-        row.evidence.map((e) => [e.id, e.approvedAt]),
+        row.evidence.map((e) => [e.id, e.approvedAt, e.label, e.sourceUrl]),
       ]),
-    ),
-  );
+    )
+    .digest("hex");
 }
 
 function toCandidateInput(
@@ -504,7 +521,7 @@ function toCandidateInput(
     foodType: row.food_type,
     foodTypeVersion: row.food_type_version,
     visibility: {
-      active: row.subject_active,
+      active: row.subject_active && row.candidate_state === "approved",
       isDemo: catalogLinked ? Boolean(row.catalog_is_demo) : false,
       inGreaterHouston: row.in_area,
       catalogApproved:
@@ -538,10 +555,8 @@ export type PrepareRunOutcome =
  * Discover, qualify, rank, attempt copy, and write the report. Never
  * publishes: the only reachable terminal states here are `ready_for_review`
  * (a pending, unapproved `restaurant_copy` row exists), `empty`, or `failed`.
- * Safe to call repeatedly for the same area/date: a non-terminal previous
- * attempt is reclaimed (its lease renewed) rather than starting a fresh
- * attempt, and a terminal `published` run is left untouched by the caller
- * (see runDailyPickRestaurantIfNeeded for the idempotent wrapper).
+ * Expired preparation work can be reclaimed; review drafts remain intact.
+ * The scheduler in restaurant-jobs.ts leaves previously attempted dates alone.
  */
 export async function prepareRestaurantPickRun(
   area: RestaurantArea,
@@ -554,6 +569,7 @@ export async function prepareRestaurantPickRun(
   options: { now?: Date; leaseOwner?: string } = {},
 ): Promise<PrepareRunOutcome> {
   const now = options.now ?? new Date();
+  if (!isCalendarDate(date)) throw new Error("Invalid restaurant run date.");
   if (!area.enabled)
     throw new Error(
       `Refusing to run a restaurant pick for a disabled area (${area.citySlug}). Enable it explicitly once Phase 0 is approved.`,
@@ -564,11 +580,36 @@ export async function prepareRestaurantPickRun(
 
   try {
     await discoverCandidates(area, runId, adapters.discovery, now);
-    await renewLease(runId, leaseOwner, now);
+    await renewLease(runId, leaseOwner, options.now ?? new Date());
 
-    const candidates = await loadApprovedCandidates(pool, area.id);
+    const poolCandidates = await loadApprovedCandidates(pool, area.id);
     const committed = await loadCommittedFeatures(pool, area.id, null);
     const budgets = areaBudgets(area);
+    const offset = poolCandidates.length
+      ? Math.floor(new Date(date).getTime() / 86400000) % poolCandidates.length
+      : 0;
+    const candidates = [
+      ...poolCandidates.slice(offset),
+      ...poolCandidates.slice(0, offset),
+    ].slice(0, budgets.qualificationBudgetPerRun);
+    if (
+      committed.some(
+        (f) =>
+          f.foodType === null &&
+          Math.abs(new Date(f.date).getTime() - new Date(date).getTime()) <=
+            config.foodRotationDays * 86400000,
+      )
+    ) {
+      await setRunStatus(runId, leaseOwner, {
+        status: "failed",
+        errorCode: "history_food_type_unreviewed",
+      });
+      return {
+        status: "failed",
+        runId,
+        errorCode: "history_food_type_unreviewed",
+      };
+    }
 
     const inputs: RestaurantCandidateInput[] = [];
     let qualificationFailures = 0;
@@ -610,15 +651,13 @@ export async function prepareRestaurantPickRun(
           };
         }
       }
+      await renewLease(runId, leaseOwner, options.now ?? new Date());
       inputs.push(toCandidateInput(row, quality, area.timezone));
     }
     // Every qualification call failed (not merely "quality unknown" for a
     // subset): this is a transport/auth/quota outage, not an honest empty
     // pool, and must not silently masquerade as "no eligible candidates".
-    if (
-      qualificationCalls > 0 &&
-      qualificationFailures === qualificationCalls
-    ) {
+    if (qualificationCalls > 0 && qualificationFailures > 0) {
       await setRunStatus(runId, leaseOwner, {
         status: "failed",
         errorCode: "qualification_unavailable",
@@ -629,7 +668,7 @@ export async function prepareRestaurantPickRun(
         errorCode: "qualification_unavailable",
       };
     }
-    await renewLease(runId, leaseOwner, now);
+    await renewLease(runId, leaseOwner, options.now ?? new Date());
 
     const candidateById = new Map(candidates.map((c) => [c.subject_id, c]));
     const copyRecords = new Map<
@@ -652,7 +691,7 @@ export async function prepareRestaurantPickRun(
       const row = candidateById.get(input.subjectId)!;
       try {
         const output = await adapters.copy.generate({
-          candidateLabel: row.label,
+          candidateLabel: row.catalog_place_id ? row.label : "This restaurant",
           foodType: input.foodType ?? "restaurant",
           evidence: row.evidence.map((e) => ({
             id: e.id,
@@ -685,70 +724,97 @@ export async function prepareRestaurantPickRun(
       config,
     );
 
-    await pool.query(`DELETE FROM daily_pick_run_candidate WHERE run_id = $1`, [
-      runId,
-    ]);
-    for (const row of outcome.report) {
-      const candidateRow = candidateById.get(row.subjectId);
-      const fingerprint =
-        row.decision === "picked" && candidateRow
-          ? candidateFingerprint(candidateRow)
-          : null;
-      await pool.query(
-        `INSERT INTO daily_pick_run_candidate(run_id, subject_id, base_rank, eligible_rank, report_position, decision, score, primary_reason_code, reason_codes, fingerprint)
+    const reportClient = await pool.connect();
+    try {
+      await reportClient.query("BEGIN");
+      const owned = await reportClient.query(
+        `SELECT id FROM daily_pick_run WHERE id=$1 AND lease_owner=$2 AND lease_expires_at>$3 FOR UPDATE`,
+        [runId, leaseOwner, options.now ?? new Date()],
+      );
+      if (!owned.rowCount) throw new RunLeaseLost(runId);
+      await reportClient.query(
+        `DELETE FROM daily_pick_run_candidate WHERE run_id = $1`,
+        [runId],
+      );
+      for (const row of outcome.report) {
+        const candidateRow = candidateById.get(row.subjectId);
+        const fingerprint =
+          row.decision === "picked" && candidateRow
+            ? candidateFingerprint(candidateRow)
+            : null;
+        await reportClient.query(
+          `INSERT INTO daily_pick_run_candidate(run_id, subject_id, base_rank, eligible_rank, report_position, decision, score, primary_reason_code, reason_codes, fingerprint)
          VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9::jsonb,$10)`,
-        [
+          [
+            runId,
+            row.subjectId,
+            row.baseRank,
+            row.eligibleRank,
+            row.reportPosition,
+            row.decision,
+            row.score,
+            row.primaryReasonCode,
+            JSON.stringify(row.allReasonCodes),
+            fingerprint,
+          ],
+        );
+      }
+
+      if (outcome.status === "empty") {
+        await setRunStatus(
           runId,
-          row.subjectId,
-          row.baseRank,
-          row.eligibleRank,
-          row.reportPosition,
-          row.decision,
-          row.score,
-          row.primaryReasonCode,
-          JSON.stringify(row.allReasonCodes),
-          fingerprint,
+          leaseOwner,
+          {
+            status: "empty",
+            errorCode: outcome.reason,
+            evaluatedCount: outcome.evaluatedCount,
+            eligibleCount: outcome.evaluatedCount - outcome.excludedCount,
+            excludedCount: outcome.excludedCount,
+          },
+          reportClient,
+        );
+        await reportClient.query("COMMIT");
+        return { status: "empty", runId, reason: outcome.reason };
+      }
+
+      const winnerRow = candidateById.get(outcome.winnerSubjectId)!;
+      const copyRecord = copyRecords.get(outcome.winnerSubjectId)!;
+      const copyInsert = await reportClient.query<{ id: string }>(
+        `INSERT INTO restaurant_copy(candidate_id, run_id, en_sentences, zh_sentences, prompt_version, model_version, review_status)
+       VALUES($1,$2,$3::jsonb,$4::jsonb,$5,$6,'pending') RETURNING id`,
+        [
+          winnerRow.candidate_id,
+          runId,
+          JSON.stringify(copyRecord.output.enSentences),
+          JSON.stringify(copyRecord.output.zhSentences),
+          copyRecord.output.promptVersion,
+          copyRecord.output.modelVersion,
         ],
       );
-    }
-
-    if (outcome.status === "empty") {
-      await setRunStatus(runId, leaseOwner, {
-        status: "empty",
-        errorCode: outcome.reason,
-        evaluatedCount: outcome.evaluatedCount,
-        eligibleCount: outcome.evaluatedCount - outcome.excludedCount,
-        excludedCount: outcome.excludedCount,
-      });
-      return { status: "empty", runId, reason: outcome.reason };
-    }
-
-    const winnerRow = candidateById.get(outcome.winnerSubjectId)!;
-    const copyRecord = copyRecords.get(outcome.winnerSubjectId)!;
-    const copyInsert = await pool.query<{ id: string }>(
-      `INSERT INTO restaurant_copy(candidate_id, run_id, en_sentences, zh_sentences, prompt_version, model_version, review_status)
-       VALUES($1,$2,$3::jsonb,$4::jsonb,$5,$6,'pending') RETURNING id`,
-      [
-        winnerRow.candidate_id,
+      await setRunStatus(
         runId,
-        JSON.stringify(copyRecord.output.enSentences),
-        JSON.stringify(copyRecord.output.zhSentences),
-        copyRecord.output.promptVersion,
-        copyRecord.output.modelVersion,
-      ],
-    );
-    await setRunStatus(runId, leaseOwner, {
-      status: "ready_for_review",
-      evaluatedCount: outcome.evaluatedCount,
-      eligibleCount: outcome.evaluatedCount - outcome.excludedCount,
-      excludedCount: outcome.excludedCount,
-    });
-    return {
-      status: "ready_for_review",
-      runId,
-      winnerSubjectId: outcome.winnerSubjectId,
-      copyId: copyInsert.rows[0].id,
-    };
+        leaseOwner,
+        {
+          status: "ready_for_review",
+          evaluatedCount: outcome.evaluatedCount,
+          eligibleCount: outcome.evaluatedCount - outcome.excludedCount,
+          excludedCount: outcome.excludedCount,
+        },
+        reportClient,
+      );
+      await reportClient.query("COMMIT");
+      return {
+        status: "ready_for_review",
+        runId,
+        winnerSubjectId: outcome.winnerSubjectId,
+        copyId: copyInsert.rows[0].id,
+      };
+    } catch (error) {
+      await reportClient.query("ROLLBACK");
+      throw error;
+    } finally {
+      reportClient.release();
+    }
   } catch (error) {
     if (!(error instanceof RunLeaseLost)) {
       await setRunStatus(runId, leaseOwner, {
@@ -760,37 +826,67 @@ export async function prepareRestaurantPickRun(
   }
 }
 
-/** A moderator's explicit approval; required before `publishRestaurantPickRun` can commit. */
-export async function approveRestaurantCopy(copyId: string, actorId: string) {
-  const result = await pool.query<{ id: string }>(
-    `UPDATE restaurant_copy SET review_status='approved', reviewed_by=$2, reviewed_at=now(), updated_at=now()
-     WHERE id=$1 AND review_status='pending' RETURNING id`,
-    [copyId, actorId],
-  );
-  if (!result.rows[0])
-    throw new Error(
-      `Copy ${copyId} is not pending review (already approved/rejected, or does not exist).`,
+/** A moderator review and its audit trail commit together. */
+async function reviewRestaurantCopy(
+  copyId: string,
+  actorId: string,
+  approved: boolean,
+  reason: string,
+) {
+  const client = await pool.connect();
+  try {
+    await client.query("BEGIN");
+    const copy = await client.query<{ run_id: string }>(
+      "SELECT run_id FROM restaurant_copy WHERE id=$1",
+      [copyId],
     );
+    if (!copy.rows[0]) throw new Error("Unknown copy.");
+    const run = await client.query(
+      "SELECT id FROM daily_pick_run WHERE id=$1 AND status='ready_for_review' FOR UPDATE",
+      [copy.rows[0].run_id],
+    );
+    if (!run.rowCount)
+      throw new Error("This run is no longer awaiting review.");
+    const updated = await client.query(
+      `UPDATE restaurant_copy SET review_status=$3,reviewed_by=$2,reviewed_at=now(),updated_at=now() WHERE id=$1 AND review_status='pending' RETURNING id`,
+      [copyId, actorId, approved ? "approved" : "rejected"],
+    );
+    if (!updated.rowCount) throw new Error("Copy is not pending review.");
+    await client.query(
+      `UPDATE daily_pick_run SET copy_status=$2,status=$3,reviewed_by=$4,updated_at=now() WHERE id=$1`,
+      [
+        copy.rows[0].run_id,
+        approved ? "approved" : "rejected",
+        approved ? "ready_for_review" : "canceled",
+        actorId,
+      ],
+    );
+    await client.query(
+      `INSERT INTO moderation_action(entity_type,entity_id,action,reason,actor_id) VALUES('places',$1,$2,$3,$4)`,
+      [copyId, approved ? "approved" : "rejected", reason, actorId],
+    );
+    await client.query("COMMIT");
+  } catch (error) {
+    await client.query("ROLLBACK");
+    throw error;
+  } finally {
+    client.release();
+  }
+}
+export async function approveRestaurantCopy(copyId: string, actorId: string) {
+  await reviewRestaurantCopy(
+    copyId,
+    actorId,
+    true,
+    "Approved restaurant recommendation copy.",
+  );
 }
 export async function rejectRestaurantCopy(
   copyId: string,
   actorId: string,
   reason: string,
 ) {
-  const result = await pool.query<{ run_id: string }>(
-    `UPDATE restaurant_copy SET review_status='rejected', reviewed_by=$2, reviewed_at=now(), updated_at=now()
-     WHERE id=$1 AND review_status='pending' RETURNING run_id`,
-    [copyId, actorId],
-  );
-  if (!result.rows[0])
-    throw new Error(
-      `Copy ${copyId} is not pending review (already approved/rejected, or does not exist).`,
-    );
-  await pool.query(
-    `UPDATE daily_pick_run SET copy_status='rejected', updated_at=now() WHERE id=$1`,
-    [result.rows[0].run_id],
-  );
-  void reason;
+  await reviewRestaurantCopy(copyId, actorId, false, reason);
 }
 
 export type PublishOutcome =
@@ -801,7 +897,7 @@ export type PublishOutcome =
       subjectId: string;
     }
   | { status: "unchanged"; runId: string; pickId: string }
-  | { status: "revision_conflict"; runId: string; currentPickId: string }
+  | { status: "revision_conflict"; runId: string; currentPickId: string | null }
   | { status: "copy_not_approved"; runId: string }
   | { status: "stale"; runId: string; reason: string };
 
@@ -832,8 +928,10 @@ export async function publishRestaurantPickRun(
     run_date: string;
     status: string;
     final_pick_id: string | null;
+    config_version: number;
+    rules_config: RestaurantRuleConfig;
   }>(
-    `SELECT id, area_id, run_date::text AS run_date, status, final_pick_id FROM daily_pick_run WHERE id=$1`,
+    `SELECT id, area_id, run_date::text AS run_date, status, final_pick_id, config_version, rules_config FROM daily_pick_run WHERE id=$1`,
     [runId],
   );
   const runRow = run.rows[0];
@@ -884,8 +982,10 @@ export async function publishRestaurantPickRun(
     layer_slug: string;
     timezone: string;
     config: Record<string, unknown>;
+    config_version: number;
+    enabled: boolean;
   }>(
-    `SELECT id, city_slug, layer_slug, timezone, config FROM restaurant_discovery_area WHERE id=$1`,
+    `SELECT id, city_slug, layer_slug, timezone, config, config_version, enabled FROM restaurant_discovery_area WHERE id=$1`,
     [runRow.area_id],
   );
   const areaRow = area.rows[0];
@@ -895,18 +995,25 @@ export async function publishRestaurantPickRun(
     citySlug: areaRow.city_slug,
     layerSlug: areaRow.layer_slug,
     timezone: areaRow.timezone,
-    configVersion: 1,
+    configVersion: areaRow.config_version,
     config: areaRow.config,
-    enabled: true,
+    enabled: areaRow.enabled,
   };
   const config = areaRuleConfig(restaurantArea);
+  if (
+    !restaurantArea.enabled ||
+    runRow.config_version !== restaurantArea.configVersion ||
+    JSON.stringify(config) !==
+      JSON.stringify(restaurantRuleConfigSchema.parse(runRow.rules_config))
+  )
+    return { status: "stale", runId, reason: "area_configuration_changed" };
 
   // Fetch expensive, fresh finalist data OUTSIDE any lock.
   const freshCandidate = await loadCandidate(pool, winnerRow.candidate_id);
   if (!freshCandidate)
     return { status: "stale", runId, reason: "candidate_removed" };
   const freshFingerprint = candidateFingerprint(freshCandidate);
-  if (winnerRow.fingerprint && winnerRow.fingerprint !== freshFingerprint)
+  if (winnerRow.fingerprint !== freshFingerprint)
     return { status: "stale", runId, reason: "evidence_or_review_changed" };
   const freshQuality = freshCandidate.provider_place_id
     ? await adapters.qualification.fetchQuality({
@@ -937,36 +1044,8 @@ export async function publishRestaurantPickRun(
     freshCommitted,
     config,
   );
-  // Distinguish "fresh data says this now fails a gate" (must block) from
-  // "the adapter simply has no fresh data" (absence of evidence, not
-  // evidence of staleness): until a real, legally-acknowledged adapter is
-  // wired in (see restaurant-providers.ts), every caller re-checks with an
-  // adapter that has no fixture for this candidate, which would otherwise
-  // make quality_unknown/hours_unknown fail every single publish
-  // unconditionally. DB-derived facts (visibility, food rotation,
-  // restaurant repeat, evidence, candidate/subject fingerprint above) are
-  // always re-checked regardless — only the quality/hours-dependent codes
-  // are set aside when there is genuinely no fresh signal to check them
-  // against.
-  const qualityDependentCodes = new Set([
-    "rating_below_minimum",
-    "rating_count_below_minimum",
-    "quality_unknown",
-    "not_operational",
-    "hours_unknown",
-    "closed_on_date",
-    "service_finished",
-  ]);
-  const hasFreshQualityData =
-    freshQuality.rating != null ||
-    freshQuality.ratingCount != null ||
-    freshQuality.businessStatus != null ||
-    [...freshQuality.hoursByDate.values()].some((h) => h != null);
-  const meaningfulCodes = hasFreshQualityData
-    ? freshQualification.codes
-    : freshQualification.codes.filter((c) => !qualityDependentCodes.has(c));
-  if (meaningfulCodes.length)
-    return { status: "stale", runId, reason: meaningfulCodes[0] };
+  if (!freshQualification.qualified)
+    return { status: "stale", runId, reason: freshQualification.codes[0] };
 
   const client = await pool.connect();
   try {
@@ -1014,9 +1093,65 @@ export async function publishRestaurantPickRun(
       [cityId, runRow.run_date],
     );
     const existingId = existing.rows[0]?.id ?? null;
-    if (existingId && existingId !== options.expectedPickId) {
+    if (existingId !== (options.expectedPickId ?? null)) {
       await client.query("ROLLBACK");
       return { status: "revision_conflict", runId, currentPickId: existingId };
+    }
+    // Provider calls finish before locks. Lock every mutable approval row and
+    // evaluate again against history serialized by the area lock.
+    await client.query(
+      "SELECT id FROM restaurant_discovery_area WHERE id=$1 FOR SHARE",
+      [restaurantArea.id],
+    );
+    await client.query(
+      "SELECT id FROM restaurant_candidate WHERE id=$1 FOR UPDATE",
+      [winnerRow.candidate_id],
+    );
+    await client.query("SELECT id FROM place_subject WHERE id=$1 FOR SHARE", [
+      winnerRow.subject_id,
+    ]);
+    await client.query(
+      "SELECT id FROM place_provider_reference WHERE subject_id=$1 FOR SHARE",
+      [winnerRow.subject_id],
+    );
+    await client.query(
+      "SELECT id FROM restaurant_evidence WHERE candidate_id=$1 FOR SHARE",
+      [winnerRow.candidate_id],
+    );
+    if (freshCandidate.catalog_place_id)
+      await client.query("SELECT id FROM place WHERE id=$1 FOR SHARE", [
+        freshCandidate.catalog_place_id,
+      ]);
+    const lockedCandidate = await loadCandidate(client, winnerRow.candidate_id);
+    const lockedArea = await loadRestaurantArea(
+      client,
+      restaurantArea.citySlug,
+    );
+    const lockedCopy = await client.query<{ review_status: string }>(
+      "SELECT review_status FROM restaurant_copy WHERE id=$1 FOR UPDATE",
+      [copyRow.id],
+    );
+    if (
+      !lockedCandidate ||
+      candidateFingerprint(lockedCandidate) !== freshFingerprint ||
+      !lockedArea?.enabled ||
+      lockedArea.configVersion !== runRow.config_version ||
+      JSON.stringify(areaRuleConfig(lockedArea)) !== JSON.stringify(config) ||
+      lockedCopy.rows[0]?.review_status !== "approved"
+    ) {
+      await client.query("ROLLBACK");
+      return { status: "stale", runId, reason: "evidence_or_review_changed" };
+    }
+    const finalQualification = qualifyRestaurantCandidate(
+      toCandidateInput(lockedCandidate, freshQuality, lockedArea.timezone),
+      runRow.run_date,
+      options.now ?? new Date(),
+      await loadCommittedFeatures(client, runRow.area_id, existingId),
+      config,
+    );
+    if (!finalQualification.qualified) {
+      await client.query("ROLLBACK");
+      return { status: "stale", runId, reason: finalQualification.codes[0] };
     }
     if (existingId)
       await client.query(
@@ -1037,7 +1172,7 @@ export async function publishRestaurantPickRun(
       .join(" ");
     const pickInsert = await client.query<{ id: string }>(
       `INSERT INTO daily_pick(city_id, pick_date, place_id, subject_id, food_type, food_type_version, run_id, copy_id, status, selection_kind, selection_version, description, description_chinese, reasons, reason_text, reason_text_chinese, evidence, replaces_id, created_by)
-       VALUES($1,$2::date,$3,$4,$5,$6,$7,$8,'published','automatic',2,$9,$10,'[]'::jsonb,$9,$10,$11::jsonb,$12,$13)
+       VALUES($1,$2::date,$3,$4,$5,$6,$7,$8,'published','automatic',2,$9,$10,'[]'::jsonb,$14,$15,$11::jsonb,$12,$13)
        RETURNING id`,
       [
         cityId,
@@ -1053,6 +1188,8 @@ export async function publishRestaurantPickRun(
         JSON.stringify({ reportRunId: runId }),
         existingId,
         actorId,
+        "Selected after checking Google rating quality, service hours for this date, recent restaurant and food-type history, and approved facts supporting the recommendation.",
+        "經查核 Google 評分品質、指定日期營業時間、近期餐廳與餐點類型推薦紀錄，以及支持推薦內容的已核准事實後入選。",
       ],
     );
     const pickId = pickInsert.rows[0].id;
@@ -1069,8 +1206,11 @@ export async function publishRestaurantPickRun(
     // map pin at).
     if (!freshCandidate.catalog_place_id) {
       const layers = await client.query<{ id: string; slug: string }>(
-        `SELECT id, slug FROM layer WHERE slug = ANY($1::text[])`,
-        [[restaurantArea.layerSlug, `daily-pick-${restaurantArea.citySlug}`]],
+        `SELECT id, slug FROM layer WHERE slug = ANY($1::text[]) AND city_id=$2 AND audience='public' AND review_status='approved' AND lifecycle='active' AND owner_kind='system' FOR SHARE`,
+        [
+          [restaurantArea.layerSlug, `daily-pick-${restaurantArea.citySlug}`],
+          cityId,
+        ],
       );
       if (!layers.rows.some((l) => l.slug === restaurantArea.layerSlug))
         throw new Error(
@@ -1092,7 +1232,7 @@ export async function publishRestaurantPickRun(
           );
         else {
           const inserted = await client.query<{ id: string }>(
-            `INSERT INTO layer_item(layer_id, subject_id, note, valid_from) VALUES($1,$2,'',$3) RETURNING id`,
+            `INSERT INTO layer_item(layer_id, subject_id, note, valid_from,restaurant_managed) VALUES($1,$2,'',$3,true) RETURNING id`,
             [layer.id, winnerRow.subject_id, validFrom],
           );
           layerItemId = inserted.rows[0].id;
@@ -1162,6 +1302,28 @@ export async function withdrawRestaurantPick(
   const client = await pool.connect();
   try {
     await client.query("BEGIN");
+    const pick = await client.query<{
+      area_id: string;
+      city_id: string;
+      pick_date: string;
+    }>(
+      `SELECT r.area_id,d.city_id,d.pick_date::text FROM daily_pick d JOIN daily_pick_run r ON r.id=d.run_id WHERE d.id=$1 AND d.selection_version=2`,
+      [pickId],
+    );
+    if (!pick.rows[0]) throw new Error("Unknown restaurant pick.");
+    await client.query("SELECT pg_advisory_xact_lock(hashtext($1))", [
+      `restaurant_area:${pick.rows[0].area_id}`,
+    ]);
+    await lockDailyPickSlot(
+      client,
+      pick.rows[0].city_id,
+      pick.rows[0].pick_date,
+    );
+    if (actorId)
+      await client.query(
+        `INSERT INTO moderation_action(entity_type,entity_id,action,reason,actor_id) VALUES('places',$1,'hidden',$2,$3)`,
+        [pickId, reason, actorId],
+      );
     const membership = await client.query<{ layer_item_id: string }>(
       `DELETE FROM daily_pick_layer_membership WHERE pick_id=$1 RETURNING layer_item_id`,
       [pickId],
@@ -1172,7 +1334,7 @@ export async function withdrawRestaurantPick(
     );
     for (const { layer_item_id: layerItemId } of membership.rows)
       await client.query(
-        `DELETE FROM layer_item WHERE id=$1 AND added_by IS NULL
+        `DELETE FROM layer_item WHERE id=$1 AND added_by IS NULL AND restaurant_managed
            AND NOT EXISTS (SELECT 1 FROM daily_pick_layer_membership WHERE layer_item_id=$1)`,
         [layerItemId],
       );

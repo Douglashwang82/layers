@@ -6,6 +6,7 @@ import {
   createFakeQualificationAdapter,
   loadRestaurantArea,
   prepareRestaurantPickRun,
+  workRestaurantJob,
   type RestaurantArea,
 } from "../../packages/database/src";
 import {
@@ -209,7 +210,7 @@ describe("Restaurant admin service", () => {
             ratingCount: 120,
             businessStatus: "OPERATIONAL",
             hoursByDate: new Map([
-              [today, { date: today, periods: [{ open: 600, close: 1320 }] }],
+              [today, { date: today, periods: [{ open: 0, close: 1440 }] }],
             ]),
           },
         ],
@@ -234,9 +235,22 @@ describe("Restaurant admin service", () => {
     );
 
     await approveCopy(moderator, prepared.copyId);
-    const publishResult = await publishRun(moderator, prepared.runId, {});
-    expect(publishResult.status).toBe("created");
-    if (publishResult.status !== "created") throw new Error("unreachable");
+    const queued = await publishRun(moderator, prepared.runId, {});
+    expect(queued.status).toBe("queued");
+    expect((await publishRun(moderator, prepared.runId, {})).jobId).toBe(
+      queued.jobId,
+    );
+    const publishResult = await workRestaurantJob(area, {
+      qualification,
+      copy: createFakeCopyAdapter(),
+    });
+    expect(publishResult?.status).toBe("created");
+    if (
+      !publishResult ||
+      publishResult.status !== "created" ||
+      !("pickId" in publishResult)
+    )
+      throw new Error("unreachable");
 
     const pick = await pool.query<{ status: string }>(
       "SELECT status FROM daily_pick WHERE id=$1",
@@ -290,7 +304,7 @@ describe("Restaurant admin service", () => {
             ratingCount: 120,
             businessStatus: "OPERATIONAL",
             hoursByDate: new Map([
-              [today, { date: today, periods: [{ open: 600, close: 1320 }] }],
+              [today, { date: today, periods: [{ open: 0, close: 1440 }] }],
             ]),
           },
         ],

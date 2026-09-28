@@ -1,5 +1,10 @@
 import { pool } from "@taiwanhub/database";
-import { subjectKey, type Actor, type MapState } from "@taiwanhub/shared";
+import {
+  localDate,
+  subjectKey,
+  type Actor,
+  type MapState,
+} from "@taiwanhub/shared";
 import { resolveLayers } from "../layers/repository";
 import type { MapCity } from "./query";
 export const externalPageSize = 12;
@@ -10,6 +15,7 @@ export type ExternalReference = {
   localNote: string | null;
   layers: string[];
   cityReviewStatus: "unreviewed" | "approved";
+  isDailyPick?: boolean;
 };
 /**
  * Authorized external (provider-referenced) places for the same layer/type/
@@ -93,9 +99,21 @@ export async function listExternalReferences(
          FROM layer_item i JOIN place_subject s ON s.id=i.subject_id
          WHERE i.layer_id=$1 AND s.status='active' AND s.catalog_place_id IS NULL
            AND s.city_review_status='approved'
+           AND s.city_id=$3
+           AND (NOT i.restaurant_managed OR EXISTS(SELECT 1 FROM daily_pick_layer_membership m JOIN daily_pick d ON d.id=m.pick_id WHERE m.layer_item_id=i.id AND d.status='published' AND d.pick_date<=$5::date))
+           AND ($4::boolean = false OR EXISTS (
+             SELECT 1 FROM daily_pick_layer_membership m JOIN daily_pick d ON d.id=m.pick_id
+             WHERE m.layer_item_id=i.id AND d.status='published' AND d.pick_date=$5::date
+           ))
            AND (i.valid_from IS NULL OR i.valid_from <= $2) AND (i.valid_until IS NULL OR i.valid_until > $2)
          ORDER BY i.position, i.id`,
-        [layer.id, now],
+        [
+          layer.id,
+          now,
+          city.id,
+          layer.rule.kind === "daily_pick",
+          localDate(now, city.timezone),
+        ],
       );
       for (const row of rows.rows) add({ ...row, slug: layer.slug });
       continue;
@@ -118,6 +136,14 @@ export async function listExternalReferences(
     ? ordered.filter((r) => (r.localNote ?? "").toLowerCase().includes(q))
     : ordered;
   const page = matching.slice(cursor, cursor + externalPageSize);
+  if (page.length) {
+    const picks = await pool.query<{ subject_id: string }>(
+      `SELECT subject_id FROM daily_pick WHERE city_id=$1 AND pick_date=$2 AND status='published' AND subject_id=ANY($3::uuid[])`,
+      [city.id, localDate(now, city.timezone), page.map((r) => r.subjectId)],
+    );
+    const picked = new Set(picks.rows.map((r) => r.subject_id));
+    for (const ref of page) ref.isDailyPick = picked.has(ref.subjectId);
+  }
   return {
     ...empty,
     references: page,

@@ -2,9 +2,18 @@ import { describe, expect, it, vi } from "vitest";
 import {
   createAnthropicCopyAdapter,
   createGooglePlacesDiscoveryAdapter,
-  createGooglePlacesQualificationAdapter,
+  createGooglePlacesQualificationAdapter as makeQualification,
   requireConfiguredModel,
 } from "../../packages/database/src/restaurant-providers";
+
+const createGooglePlacesQualificationAdapter: typeof makeQualification = (
+  key,
+  options,
+) =>
+  makeQualification(key, {
+    now: () => new Date("2026-09-26T17:00:00Z"),
+    ...options,
+  });
 
 function respond(body: unknown, init: ResponseInit = {}) {
   const text = typeof body === "string" ? body : JSON.stringify(body);
@@ -14,6 +23,37 @@ function respond(body: unknown, init: ResponseInit = {}) {
 }
 
 describe("createGooglePlacesQualificationAdapter", () => {
+  it("times out a response whose headers arrive but body never finishes", async () => {
+    const adapter = createGooglePlacesQualificationAdapter("test-key", {
+      legalAcknowledged: true,
+      timeoutMs: 10,
+      fetchImpl: vi.fn<typeof fetch>(
+        async () => new Response(new ReadableStream({ start() {} })),
+      ),
+    });
+    await expect(
+      adapter.fetchQuality({ providerPlaceId: "p1", dates: ["2026-09-27"] }),
+    ).rejects.toThrow(/timed out/);
+  });
+  it("does not extrapolate current hours beyond the provider's seven-day window", async () => {
+    const adapter = createGooglePlacesQualificationAdapter("test-key", {
+      legalAcknowledged: true,
+      fetchImpl: respond({
+        currentOpeningHours: {
+          periods: [{ open: { day: 0, hour: 0, minute: 0 } }],
+        },
+      }),
+    });
+    const result = await adapter.fetchQuality({
+      providerPlaceId: "p1",
+      dates: ["2026-09-27", "2026-10-10"],
+    });
+    expect(result.hoursByDate.get("2026-09-27")).toEqual({
+      date: "2026-09-27",
+      periods: [{ open: 0, close: 1440 }],
+    });
+    expect(result.hoursByDate.get("2026-10-10")).toBeNull();
+  });
   it("refuses to call the provider without legalAcknowledged", async () => {
     const fetchImpl = respond({});
     const adapter = createGooglePlacesQualificationAdapter("test-key", {
@@ -106,7 +146,10 @@ describe("createGooglePlacesQualificationAdapter", () => {
       periods: [{ open: 1320, close: 1560 }],
     });
     // The period is attributed only to its open date, per requested dates.
-    expect(result.hoursByDate.get("2026-09-27")).toBeNull();
+    expect(result.hoursByDate.get("2026-09-27")).toEqual({
+      date: "2026-09-27",
+      periods: [],
+    });
   });
 
   it("treats a 24-hour ('always open', no close) period as exactly one day", async () => {

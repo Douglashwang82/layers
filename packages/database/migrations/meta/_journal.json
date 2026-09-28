@@ -134,6 +134,20 @@
       "when": 1790539119661,
       "tag": "0018_next_power_pack",
       "breakpoints": true
+    },
+    {
+      "idx": 19,
+      "version": "7",
+      "when": 1790552264859,
+      "tag": "0019_aromatic_rachel_grey",
+      "breakpoints": true
+    },
+    {
+      "idx": 20,
+      "version": "7",
+      "when": 1790552707900,
+      "tag": "0020_charming_microbe",
+      "breakpoints": true
     }
   ]
 }

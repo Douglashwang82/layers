@@ -36,7 +36,7 @@ function candidate(
       rating: 4.5,
       ratingCount: 100,
       businessStatus: "OPERATIONAL",
-      retrievedAt: new Date("2026-09-27T12:00:00Z"),
+      retrievedAt: new Date("2026-09-27T17:00:00Z"),
     },
     hoursByDate: new Map<string, DailyHoursSource>([
       [
@@ -180,6 +180,18 @@ describe("qualifyRestaurantCandidate", () => {
     const r = qualifyRestaurantCandidate(candidate(), "2026-09-27", noon, []);
     expect(r.qualified).toBe(true);
     expect(r.codes).toEqual([]);
+  });
+  it("rejects stale or future-dated provider snapshots even when their rating is high", () => {
+    for (const retrievedAt of [
+      new Date(noon.getTime() - 31 * 60_000),
+      new Date(noon.getTime() + 2 * 60_000),
+    ]) {
+      const c = candidate();
+      c.quality.retrievedAt = retrievedAt;
+      expect(
+        qualifyRestaurantCandidate(c, "2026-09-27", noon, []).codes,
+      ).toContain("quality_unknown");
+    }
   });
 
   it("fails a 4.2 rating even with many ratings", () => {

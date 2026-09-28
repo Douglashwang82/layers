@@ -55,7 +55,7 @@ function operationalQuality(rating: number, ratingCount: number, date = today) {
     ratingCount,
     businessStatus: "OPERATIONAL" as const,
     hoursByDate: new Map([
-      [date, { date, periods: [{ open: 600, close: 1320 }] }],
+      [date, { date, periods: [{ open: 0, close: 1440 }] }],
     ]),
   };
 }
@@ -750,6 +750,11 @@ describe("Daily restaurant recommendation (version 2) worker", () => {
       moderator.id,
     );
 
+    // Simulate withdrawal after the scheduled date actually began.
+    await pool.query(
+      "UPDATE daily_pick SET withdrawn_at=($2::date + interval '12 hours') AT TIME ZONE 'America/Chicago' WHERE id=$1",
+      [published1.status === "created" ? published1.pickId : "", firstDate],
+    );
     const withinWindow = addDays(firstDate, 10); // < 30 days after
     const qualification2 = createFakeQualificationAdapter(
       new Map([
@@ -801,5 +806,141 @@ describe("Daily restaurant recommendation (version 2) worker", () => {
         copy: createFakeCopyAdapter(),
       }),
     ).rejects.toThrow(/disabled area/);
+  });
+
+  it("fails closed without fresh Google data and preserves the reviewed draft", async () => {
+    const date = addDays(today, 100);
+    const restaurant = await insertCandidate({
+      foodType: "pizza",
+      facts: ["Wood-fired oven.", "House-made dough."],
+    });
+    const qualification = createFakeQualificationAdapter(
+      new Map([
+        [restaurant.providerPlaceId, operationalQuality(4.8, 150, date)],
+      ]),
+    );
+    const prepared = await prepareAndApprove(area, date, qualification);
+    const before = await pool.query(
+      "SELECT * FROM daily_pick_run_candidate WHERE run_id=$1",
+      [prepared.runId],
+    );
+    await expect(
+      prepareRestaurantPickRun(area, date, {
+        qualification,
+        copy: createFakeCopyAdapter(),
+      }),
+    ).rejects.toThrow(/already leased/);
+    const result = await publishRestaurantPickRun(
+      prepared.runId,
+      moderator.id,
+      { qualification: createFakeQualificationAdapter(new Map()) },
+    );
+    expect(result).toMatchObject({
+      status: "stale",
+      reason: "quality_unknown",
+    });
+    expect(
+      (
+        await pool.query(
+          "SELECT * FROM daily_pick_run_candidate WHERE run_id=$1",
+          [prepared.runId],
+        )
+      ).rows,
+    ).toEqual(before.rows);
+    expect(
+      (
+        await pool.query("SELECT id FROM daily_pick WHERE run_id=$1", [
+          prepared.runId,
+        ])
+      ).rowCount,
+    ).toBe(0);
+  });
+
+  it("rechecks a candidate exclusion made while Google qualification is in flight", async () => {
+    const date = addDays(today, 110);
+    const restaurant = await insertCandidate({
+      foodType: "pizza",
+      facts: ["Wood-fired oven.", "House-made dough."],
+    });
+    const qualification = createFakeQualificationAdapter(
+      new Map([
+        [restaurant.providerPlaceId, operationalQuality(4.8, 150, date)],
+      ]),
+    );
+    const prepared = await prepareAndApprove(area, date, qualification);
+    const result = await publishRestaurantPickRun(
+      prepared.runId,
+      moderator.id,
+      {
+        qualification: {
+          async fetchQuality(input) {
+            await pool.query(
+              "UPDATE restaurant_candidate SET state='excluded',updated_at=now() WHERE id=$1",
+              [restaurant.candidateId],
+            );
+            return qualification.fetchQuality(input);
+          },
+        },
+      },
+    );
+    expect(result).toMatchObject({
+      status: "stale",
+      reason: "evidence_or_review_changed",
+    });
+    expect(
+      (
+        await pool.query("SELECT id FROM daily_pick WHERE run_id=$1", [
+          prepared.runId,
+        ])
+      ).rowCount,
+    ).toBe(0);
+  });
+
+  it("serializes adjacent dates so concurrent workers cannot publish the same food type", async () => {
+    const date = addDays(today, 120);
+    const a = await insertCandidate({
+      foodType: "pizza",
+      facts: ["Wood-fired oven.", "House-made dough."],
+    });
+    const b = await insertCandidate({
+      foodType: "pizza",
+      facts: ["Brick oven.", "Sourdough base."],
+    });
+    const tomorrow = addDays(date, 1);
+    const qa = createFakeQualificationAdapter(
+      new Map([[a.providerPlaceId, operationalQuality(4.8, 150, date)]]),
+    );
+    const qb = createFakeQualificationAdapter(
+      new Map([[b.providerPlaceId, operationalQuality(4.8, 150, tomorrow)]]),
+    );
+    const ra = await prepareAndApprove(area, date, qa);
+    const rb = await prepareAndApprove(area, tomorrow, qb);
+    let arrived = 0;
+    let release!: () => void;
+    const barrier = new Promise<void>((r) => {
+      release = r;
+    });
+    const gated = (
+      q: RestaurantQualificationAdapter,
+    ): RestaurantQualificationAdapter => ({
+      async fetchQuality(input) {
+        const result = await q.fetchQuality(input);
+        if (++arrived === 2) release();
+        await barrier;
+        return result;
+      },
+    });
+    const results = await Promise.all([
+      publishRestaurantPickRun(ra.runId, moderator.id, {
+        qualification: gated(qa),
+      }),
+      publishRestaurantPickRun(rb.runId, moderator.id, {
+        qualification: gated(qb),
+      }),
+    ]);
+    expect(results.map((r) => r.status).sort()).toEqual(["created", "stale"]);
+    expect(results.find((r) => r.status === "stale")).toMatchObject({
+      reason: "food_type_recent",
+    });
   });
 });

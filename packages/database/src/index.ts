@@ -90,3 +90,8 @@ export {
   type PublishOutcome,
   type RestaurantArea,
 } from "./daily-pick-restaurant-run";
+export {
+  enqueueRestaurantJob,
+  scheduleRestaurantDay,
+  workRestaurantJob,
+} from "./restaurant-jobs";

@@ -775,6 +775,7 @@ export const layerItem = pgTable(
     customPlaceId: uuid("custom_place_id").references(() => customPlace.id, {
       onDelete: "cascade",
     }),
+    restaurantManaged: boolean("restaurant_managed").notNull().default(false),
     note: text("note").default("").notNull(),
     position: integer("position").default(0).notNull(),
     validFrom: timestamp("valid_from", { withTimezone: true }),
@@ -1680,5 +1681,40 @@ export const dailyPickLayerMembership = pgTable(
     // ON CONFLICT re-publication silently overwrite the earlier pick's row.
     index("daily_pick_layer_membership_item_idx").on(t.layerItemId),
     index("daily_pick_layer_membership_layer_idx").on(t.layerId),
+  ],
+);
+
+/** Durable worker queue; HTTP actions never call paid providers. */
+export const restaurantJob = pgTable(
+  "restaurant_job",
+  {
+    id: id(),
+    areaId: uuid("area_id")
+      .notNull()
+      .references(() => restaurantDiscoveryArea.id, { onDelete: "cascade" }),
+    runId: uuid("run_id").references(() => dailyPickRun.id, {
+      onDelete: "cascade",
+    }),
+    runDate: date("run_date").notNull(),
+    kind: text("kind").notNull(),
+    status: text("status").notNull().default("queued"),
+    requestedBy: uuid("requested_by").references(() => user.id),
+    expectedPickId: uuid("expected_pick_id").references(() => dailyPick.id, {
+      onDelete: "set null",
+    }),
+    leaseOwner: text("lease_owner"),
+    leaseExpiresAt: timestamp("lease_expires_at", { withTimezone: true }),
+    result: jsonb("result"),
+    ...timestamps(),
+  },
+  (t) => [
+    check("restaurant_job_kind_check", sql`${t.kind} IN ('prepare','publish')`),
+    check(
+      "restaurant_job_status_check",
+      sql`${t.status} IN ('queued','running','succeeded','failed')`,
+    ),
+    uniqueIndex("restaurant_job_pending_unique")
+      .on(t.areaId, t.runDate, t.kind)
+      .where(sql`${t.status} IN ('queued','running')`),
   ],
 );

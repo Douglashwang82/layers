@@ -139,6 +139,14 @@ export async function insertDailyPick(
   },
 ) {
   const { place } = input;
+  const restaurantMode = await client.query(
+    `SELECT a.id FROM restaurant_discovery_area a JOIN city c ON c.slug=a.city_slug WHERE c.id=$1 AND a.enabled`,
+    [input.cityId],
+  );
+  if (restaurantMode.rowCount)
+    throw new Error(
+      "Use the restaurant recommendation workflow for this city.",
+    );
   const result = await client.query<{ id: string }>(
     `INSERT INTO daily_pick(city_id,pick_date,place_id,selection_kind,selection_version,description,description_chinese,reasons,reason_text,reason_text_chinese,evidence,replaces_id,created_by)
      VALUES($1,$2::date,$3,$4,$5,$6,$7,$8::jsonb,$9,$10,$11::jsonb,$12,$13)

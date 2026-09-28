@@ -651,7 +651,10 @@ export async function runMapQuery(
     dailyPick: dailyPick && {
       ...dailyPick,
       inResults:
-        !!dailyPick.pick && items.some((i) => i.key === dailyPick!.pick!.key),
+        !!dailyPick.pick &&
+        (dailyPick.pick.kind === "external"
+          ? types.includes("place") && !state.q
+          : items.some((i) => i.key === dailyPick!.pick!.key)),
     },
   };
 }

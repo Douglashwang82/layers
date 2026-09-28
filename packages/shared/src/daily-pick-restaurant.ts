@@ -308,7 +308,13 @@ export function qualifyRestaurantCandidate(
   )
     codes.push("area_unreviewed");
 
-  if (!usableQuality(quality.rating, quality.ratingCount))
+  if (
+    !usableQuality(quality.rating, quality.ratingCount) ||
+    !Number.isFinite(quality.retrievedAt.getTime()) ||
+    now.getTime() - quality.retrievedAt.getTime() >
+      config.maxEvidenceAgeMinutes * 60_000 ||
+    quality.retrievedAt.getTime() - now.getTime() > 60_000
+  )
     codes.push("quality_unknown");
   else {
     if (quality.rating! < config.minRating) codes.push("rating_below_minimum");

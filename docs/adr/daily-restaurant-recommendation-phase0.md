@@ -1,18 +1,18 @@
 # ADR: Daily restaurant recommendation — Phase 0 provider/retention decision
 
-Status: **PENDING. Not approved.** No area has `restaurant_discovery_area.enabled = true` in any real environment. This document records what remains to be decided before one can be enabled; it does not itself authorize anything. See [daily-restaurant-recommendation-implementation-plan.md](../plans/daily-restaurant-recommendation-implementation-plan.md) section 3 for the full Phase 0 requirements this ADR must satisfy.
+Status: **PENDING. Not approved.** This task has not enabled an area in a real environment. This document records what remains to be decided before one can be enabled; it does not itself authorize anything. See [daily-restaurant-recommendation-implementation-plan.md](../plans/daily-restaurant-recommendation-implementation-plan.md) section 3 for the full Phase 0 requirements this ADR must satisfy.
 
 ## 1. What is implemented and safe to exist regardless of this ADR
 
 The offline software described below is real, tested, and does not depend on this decision:
 
 - Pure eligibility/ranking/report rules (`packages/shared/src/daily-pick-restaurant.ts`).
-- Additive schema for candidates, evidence, discovery runs, pick runs, reports, and Discover membership provenance (migrations 0016-0017).
+- Additive schema for candidates, evidence, discovery runs, pick runs, reports, and Discover membership provenance (migrations 0016-0020).
 - A worker (`packages/database/src/daily-pick-restaurant-run.ts`) that discovers, qualifies, ranks, and drafts a report and copy — but can only ever reach `ready_for_review`, `empty`, or `failed`. It has no code path to `published` without a separate, explicit human `approveRestaurantCopy` call followed by `publishRestaurantPickRun`.
-- Adapter interfaces with deterministic fakes for all three provider integrations (discovery, qualification, copy), used by the CLI, integration tests, and simulation.
-- Real Google Places (qualification + Text Search discovery) and Anthropic copy adapters that exist as working, unit-tested code (`packages/database/src/restaurant-providers.ts`) but refuse to make any network call unless constructed with `legalAcknowledged: true` — nothing in this codebase passes that today.
+- Adapter interfaces with deterministic fakes for all three provider integrations (discovery, qualification, copy), used by local fixture runs and automated tests.
+- Real Google Places (qualification + Text Search discovery) and Anthropic copy adapters that exist as working, unit-tested code (`packages/database/src/restaurant-providers.ts`) but refuse to make any network call unless constructed with `legalAcknowledged: true` — the runtime supplies that only after worker and policy flags, approved area configuration, keys, and model configuration pass validation.
 
-None of this requires the decisions below. What it cannot do, by construction, is run against real provider data or publish a real recommendation.
+None of this requires the decisions below. Real provider wiring is implemented but remains disabled by default. No real provider or model request was made during this implementation.
 
 ## 2. Decisions this ADR must record before any area is enabled
 
@@ -28,16 +28,16 @@ Per the plan's Phase 0, each of the following needs an explicit answer, signed o
 ## 3. What "enabling" means operationally, once the ADR above is approved
 
 1. Set `restaurant_discovery_area.config` to the approved geography/query-groups/budgets (versioned; `configVersion` bump for any later change).
-2. Construct the real adapters with `legalAcknowledged: true` and the approved `GOOGLE_PLACES_SERVER_API_KEY` / `DAILY_PICK_LLM_MODEL`, and wire them into whatever calls `prepareRestaurantPickRun` (the current CLI intentionally only supports the fake adapters; a new, separately authorized entrypoint is needed here).
+2. Configure the server-only credentials, explicit worker/policy flags, approved model, and validated area configuration documented in the [worker runbook](../guides/restaurant-recommendation-worker.md). The CLI is already wired to real adapters; no further implementation is required to connect them.
 3. Set `restaurant_discovery_area.enabled = true` for that one area only.
 4. Continue requiring human copy approval (`approveRestaurantCopy`) before every publish — this ADR does not lift that requirement; it is a separate, later decision ("automatic publication," see the plan's Phase 4/6) that needs its own pilot-accuracy evidence, not just legal approval.
-5. Enable `.github/workflows/daily-pick-restaurant.yml` for exactly one GitHub environment via `RESTAURANT_WORKER_ENVIRONMENTS`/`RESTAURANT_WORKER_ENABLED` — and only after step 2 above, since the workflow as committed only runs the fake-only CLI and would otherwise just produce harmless pending drafts, not a real run.
+5. Enable `.github/workflows/daily-pick-restaurant.yml` for exactly one GitHub environment via `RESTAURANT_WORKER_ENVIRONMENTS`/`RESTAURANT_WORKER_ENABLED` after the preceding configuration and rollout approvals.
 
 ## 4. Runbook (for when this ADR is approved)
 
-- **Rotation**: `prepareRestaurantPickRun(area, date, { discovery, qualification, copy })` once per area/local-date. A second same-day invocation reclaims the same leased run rather than starting a duplicate attempt (see `claimRestaurantRun`); it is safe to retry on a suspected worker crash.
+- **Rotation**: `prepareRestaurantPickRun(area, date, { discovery, qualification, copy })` once per area/local-date. The scheduler leaves existing dates alone. Explicit admin retries may reclaim expired preparation work; review drafts are preserved until rejected or discarded.
 - **Review**: a moderator inspects the `ready_for_review` run's report (`daily_pick_run_candidate`) and its `restaurant_copy` row, then calls `approveRestaurantCopy` or `rejectRestaurantCopy`.
-- **Publish**: `publishRestaurantPickRun(runId, actorId, { qualification })` re-validates everything against fresh data before committing. Expected non-error outcomes to handle operationally: `copy_not_approved` (review still pending), `stale` (evidence/qualification changed since the report was written — re-run `prepareRestaurantPickRun`), `revision_conflict` (a different pick already exists for that date — re-fetch and pass `expectedPickId` to confirm an intentional replace), `unchanged` (idempotent retry of an already-published run).
+- **Publish**: `publishRestaurantPickRun(runId, actorId, { qualification })` re-validates everything against fresh data before committing. Expected non-error outcomes to handle operationally: `copy_not_approved` (review still pending), `stale` (evidence/qualification changed since the report was written — discard the old draft and queue a new preparation), `revision_conflict` (a different pick already exists for that date — re-fetch and pass `expectedPickId` to confirm an intentional replace), `unchanged` (idempotent retry of an already-published run).
 - **Withdraw**: `withdrawRestaurantPick(pickId, reason, actorId)`. Safe to call any time; it never deletes a Discover `layer_item` that another pick or independent curation still needs.
 - **Recovery**: a run stuck in a non-terminal status past its `lease_expires_at` is safe to reclaim by calling `prepareRestaurantPickRun` again for the same area/date — `claimRestaurantRun` detects the expired lease and resets the run to start of evaluation rather than trusting a half-written report.
 - **Retention**: until section 2 above is resolved, treat every persisted `daily_pick_run_candidate`/`restaurant_evidence` field as provisional; do not add new persisted provider-derived fields without updating this ADR first.

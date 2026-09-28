@@ -2,6 +2,8 @@ import Anthropic from "@anthropic-ai/sdk";
 import { z } from "zod";
 import {
   restaurantCopyOutput,
+  localDate,
+  addDays,
   type BusinessStatus,
   type DailyHoursSource,
   type RestaurantCopyOutput,
@@ -14,7 +16,7 @@ import {
    Every adapter here is an interface plus a deterministic fake implementation
    for offline development, tests and simulation. The real adapters take an
    explicit `legalAcknowledged` flag and refuse to make any network call
-   unless it is `true` — nothing in this codebase currently sets it to true.
+   unless it is `true`; restaurant-runtime.ts enforces the live configuration gates.
    Both real adapters accept an injectable transport (`fetchImpl` /
    `createMessage`) so their response-normalization logic can be unit tested
    completely offline, with no live call and no module-level fetch mocking.
@@ -168,28 +170,58 @@ function requireLegalAcknowledgement(
 }
 
 const maxResponseBytes = 262_144; // 256 KiB: a place/search response is a few KB; this only bounds abuse/misconfiguration.
-async function boundedJson(
-  response: Response,
-  fetchImpl: typeof fetch,
-): Promise<unknown> {
-  void fetchImpl;
-  const text = await response.text();
-  if (text.length > maxResponseBytes)
-    throw new Error(
-      `Places API response exceeded the ${maxResponseBytes}-byte bound.`,
-    );
-  return JSON.parse(text) as unknown;
-}
 async function fetchWithTimeout(
   fetchImpl: typeof fetch,
   input: string,
   init: RequestInit,
   timeoutMs: number,
-) {
+): Promise<{ ok: boolean; status: number; body: unknown }> {
   const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), timeoutMs);
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  const timeout = new Promise<never>((_, reject) => {
+    timer = setTimeout(() => {
+      controller.abort();
+      reject(new Error("Places API request timed out."));
+    }, timeoutMs);
+  });
   try {
-    return await fetchImpl(input, { ...init, signal: controller.signal });
+    return await Promise.race([
+      timeout,
+      (async () => {
+        const response = await fetchImpl(input, {
+          ...init,
+          redirect: "error",
+          signal: controller.signal,
+        });
+        if (!response.ok) {
+          await response.body?.cancel();
+          return { ok: false, status: response.status, body: null };
+        }
+        const reader = response.body?.getReader();
+        if (!reader) throw new Error("Places API returned no body.");
+        const chunks: Uint8Array[] = [];
+        let size = 0;
+        try {
+          while (true) {
+            const { done, value } = await reader.read();
+            if (done) break;
+            size += value.byteLength;
+            if (size > maxResponseBytes)
+              throw new Error(
+                `Places API response exceeded the ${maxResponseBytes}-byte bound.`,
+              );
+            chunks.push(value);
+          }
+          return {
+            ok: true,
+            status: response.status,
+            body: JSON.parse(Buffer.concat(chunks).toString("utf8")) as unknown,
+          };
+        } finally {
+          await reader.cancel().catch(() => {});
+        }
+      })(),
+    ]);
   } finally {
     clearTimeout(timer);
   }
@@ -202,8 +234,8 @@ const googlePlaceDate = z.object({
 });
 const googlePlaceTimePoint = z.object({
   day: z.number().int().min(0).max(6),
-  hour: z.number().int().min(0).max(23),
-  minute: z.number().int().min(0).max(59),
+  hour: z.number().int().min(0).max(23).default(0),
+  minute: z.number().int().min(0).max(59).default(0),
   date: googlePlaceDate.optional(),
 });
 const googlePlacePeriod = z.object({
@@ -242,16 +274,27 @@ function isoDate(d: z.infer<typeof googlePlaceDate>) {
 function normalizeGoogleHours(
   periods: GooglePlacePeriod[] | undefined,
   dates: string[],
+  today: string,
 ): Map<string, DailyHoursSource> {
   const byDate = new Map<string, { open: number; close: number }[]>();
+  const alwaysOpen =
+    periods?.length === 1 &&
+    !periods[0].close &&
+    periods[0].open.day === 0 &&
+    periods[0].open.hour === 0 &&
+    periods[0].open.minute === 0;
+  const dated =
+    periods !== undefined && periods.every((p) => p.open.date && p.close?.date);
   for (const period of periods ?? []) {
     if (!period.open.date) continue;
     const openDate = isoDate(period.open.date);
     if (!dates.includes(openDate)) continue;
     const openMinutes = period.open.hour * 60 + period.open.minute;
     let closeMinutes: number;
-    if (!period.close) closeMinutes = 1440;
-    else if (!period.close.date || isoDate(period.close.date) === openDate)
+    if (!period.close) {
+      if (!alwaysOpen) continue;
+      closeMinutes = 1440;
+    } else if (!period.close.date || isoDate(period.close.date) === openDate)
       closeMinutes = period.close.hour * 60 + period.close.minute;
     else {
       const dayDelta = Math.round(
@@ -276,8 +319,17 @@ function normalizeGoogleHours(
   }
   const result = new Map<string, DailyHoursSource>();
   for (const date of dates) {
-    const periodsForDate = byDate.get(date);
-    result.set(date, periodsForDate ? { date, periods: periodsForDate } : null);
+    const inWindow = date >= today && date <= addDays(today, 6);
+    const periodsForDate =
+      alwaysOpen && inWindow ? [{ open: 0, close: 1440 }] : byDate.get(date);
+    result.set(
+      date,
+      inWindow && periodsForDate
+        ? { date, periods: periodsForDate }
+        : inWindow && dated
+          ? { date, periods: [] }
+          : null,
+    );
   }
   return result;
 }
@@ -288,7 +340,7 @@ function normalizeGoogleHours(
  * hours normalized (including overnight/24-hour/special-day periods) rather
  * than left as an unconditional throw. Still refuses to run at all unless
  * `legalAcknowledged` is explicitly true — nothing in this codebase passes
- * that today.
+ * that without explicit runtime configuration.
  */
 export function createGooglePlacesQualificationAdapter(
   serverApiKey: string,
@@ -296,6 +348,8 @@ export function createGooglePlacesQualificationAdapter(
     legalAcknowledged: boolean;
     fetchImpl?: typeof fetch;
     timeoutMs?: number;
+    timeZone?: string;
+    now?: () => Date;
   },
 ): RestaurantQualificationAdapter {
   const fetchImpl = options.fetchImpl ?? fetch;
@@ -320,9 +374,7 @@ export function createGooglePlacesQualificationAdapter(
       );
       if (!response.ok)
         throw new Error(`Places API request failed: ${response.status}`);
-      const parsed = placeQualityResponse.parse(
-        await boundedJson(response, fetchImpl),
-      );
+      const parsed = placeQualityResponse.parse(response.body);
       return {
         rating: parsed.rating ?? null,
         ratingCount: parsed.userRatingCount ?? null,
@@ -330,8 +382,12 @@ export function createGooglePlacesQualificationAdapter(
         hoursByDate: normalizeGoogleHours(
           parsed.currentOpeningHours?.periods,
           dates,
+          localDate(
+            options.now?.() ?? new Date(),
+            options.timeZone ?? "America/Chicago",
+          ),
         ),
-        retrievedAt: new Date(),
+        retrievedAt: options.now?.() ?? new Date(),
       };
     },
   };
@@ -399,6 +455,7 @@ export function createGooglePlacesDiscoveryAdapter(
             body: JSON.stringify({
               textQuery: `restaurants in ${queryGroup}`,
               includedType: "restaurant",
+              strictTypeFiltering: true,
               ...(nextPageToken ? { pageToken: nextPageToken } : {}),
               ...(options.areaRectangle
                 ? {
@@ -418,9 +475,7 @@ export function createGooglePlacesDiscoveryAdapter(
           throw new Error(
             `Places Text Search request failed: ${response.status}`,
           );
-        const parsed = textSearchResponse.parse(
-          await boundedJson(response, fetchImpl),
-        );
+        const parsed = textSearchResponse.parse(response.body);
         for (const place of parsed.places ?? [])
           found.push({
             providerPlaceId: place.id,
@@ -483,14 +538,14 @@ export function createAnthropicCopyAdapter(
 ): RestaurantCopyAdapter {
   const model = requireConfiguredModel(options.model);
   const timeoutMs = options.timeoutMs ?? 15000;
-  const client = new Anthropic({ apiKey });
+  const client = new Anthropic({ apiKey, maxRetries: 0 });
   const createMessage =
     options.createMessage ??
     (async ({ model: m, system, userContent, timeoutMs: t }) => {
       const message = await client.messages.create(
         {
           model: m,
-          max_tokens: 512,
+          max_tokens: 1200,
           system,
           messages: [{ role: "user", content: userContent }],
         },

@@ -1,3 +1,4 @@
+export { restaurantAdminEn, restaurantAdminZh } from "./restaurant-admin-copy";
 export type Locale = "en" | "zh-TW";
 export const en = {
   home: "Home",

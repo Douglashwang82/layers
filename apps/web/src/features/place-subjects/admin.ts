@@ -185,6 +185,10 @@ async function linkCatalogPlace(
         twin.id,
         item.note,
       ]);
+    await tx.query(
+      "UPDATE daily_pick_layer_membership SET layer_item_id=$2 WHERE layer_item_id=$1",
+      [item.id, twin.id],
+    );
     await tx.query("DELETE FROM layer_item WHERE id=$1", [item.id]);
   }
   await tx.query(

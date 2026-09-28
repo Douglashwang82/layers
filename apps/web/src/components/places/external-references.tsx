@@ -165,6 +165,7 @@ export function ExternalReferences({
             {row.state !== "resolved" && (
               <span className="chip">{t.awaitingLocation}</span>
             )}
+            {row.isDailyPick && <span className="badge">{t.dailyPick}</span>}
             {row.localNote && <p className="muted">{row.localNote}</p>}
             <button
               type="button"

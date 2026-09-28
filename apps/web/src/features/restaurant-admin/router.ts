@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
-import { AppError, type Actor } from "@taiwanhub/shared";
+import { AppError, requireModerator, type Actor } from "@taiwanhub/shared";
 import { appUrl } from "@/lib/config";
 import {
   addEvidence,
@@ -8,6 +8,10 @@ import {
   curateCandidate,
   getRunDetail,
   listAreas,
+  listJobs,
+  queuePreparation,
+  cancelRun,
+  confirmCandidateArea,
   listCandidates,
   listRuns,
   publishRun,
@@ -76,11 +80,13 @@ export async function handleRestaurantAdminRoute(
   const method = request.method;
   const [first, second, third, fourth, fifth] = rest;
   try {
+    requireModerator(actor);
     if (method === "GET") {
       if (!first) return ok(await listAreas(actor));
       if (first === "runs" && second && !third)
         return ok(await getRunDetail(actor, z.uuid().parse(second)));
       const areaId = z.uuid().parse(first);
+      if (second === "jobs") return ok(await listJobs(actor, areaId));
       if (!second) return ok(await listRuns(actor, areaId));
       if (second === "candidates" && !third)
         return ok(await listCandidates(actor, areaId));
@@ -88,6 +94,8 @@ export async function handleRestaurantAdminRoute(
     }
     checkOrigin(request);
     const body = await readJsonBody(request);
+    if (first === "runs" && second && third === "cancel" && method === "POST")
+      return ok(await cancelRun(actor, z.uuid().parse(second)));
     if (first === "runs" && second && third === "publish" && method === "POST")
       return ok(await publishRun(actor, z.uuid().parse(second), body));
     if (
@@ -119,6 +127,22 @@ export async function handleRestaurantAdminRoute(
       );
     if (first) {
       const areaId = z.uuid().parse(first);
+      if (second === "prepare" && method === "POST")
+        return ok(await queuePreparation(actor, areaId, body), 202);
+      if (
+        second === "candidates" &&
+        third &&
+        fourth === "confirm-area" &&
+        method === "POST"
+      )
+        return ok(
+          await confirmCandidateArea(
+            actor,
+            areaId,
+            z.uuid().parse(third),
+            body,
+          ),
+        );
       if (second === "candidates" && third && !fourth && method === "PATCH")
         return ok(
           await curateCandidate(actor, areaId, z.uuid().parse(third), body),

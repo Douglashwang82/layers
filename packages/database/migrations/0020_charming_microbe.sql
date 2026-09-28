@@ -1,0 +1,1 @@
+ALTER TABLE "layer_item" ADD COLUMN "restaurant_managed" boolean DEFAULT false NOT NULL;

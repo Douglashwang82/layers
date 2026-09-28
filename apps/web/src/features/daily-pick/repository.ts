@@ -74,18 +74,19 @@ export type DailyPickView = {
  * is checked against the catalog place; an external-only version 2 winner
  * (place_id null, subject_id set) is checked against its subject.
  */
-const visible = `d.status='published' AND (
-  (d.place_id IS NOT NULL AND p.status='approved' AND NOT p.is_demo AND p.city_id=d.city_id)
-  OR (d.place_id IS NULL AND d.subject_id IS NOT NULL AND s.status='active' AND s.city_review_status='approved')
-)`;
+const visible = `d.status='published'
+  AND (d.subject_id IS NULL OR (s.status='active' AND s.city_review_status='approved' AND s.city_id=d.city_id))
+  AND ((p.id IS NOT NULL AND p.status='approved' AND NOT p.is_demo AND p.city_id=d.city_id)
+    OR (d.place_id IS NULL AND s.catalog_place_id IS NULL AND s.id IS NOT NULL))`;
+
 const columns = `d.id AS pick_id,d.pick_date::text AS pick_date,d.selection_kind,d.description AS pick_description,d.description_chinese AS pick_description_chinese,d.reason_text,d.reason_text_chinese,
-  d.place_id,d.subject_id,d.food_type,
+  COALESCE(d.place_id,s.catalog_place_id) AS place_id,d.subject_id,d.food_type,
   (SELECT r.provider_place_id FROM place_provider_reference r WHERE r.subject_id=s.id AND r.state='current' LIMIT 1) AS provider_place_id,
   p.*,
   (SELECT r.source_url FROM entity_source es JOIN source_record r ON r.id=es.source_record_id WHERE es.kind='places' AND es.entity_id=p.id ORDER BY es.updated_at DESC LIMIT 1) AS provenance_url,
   (SELECT count(*)::int FROM place_recommendation r WHERE r.place_id=p.id AND r.status='approved') AS responses,
   (SELECT count(*)::int FROM place_recommendation r WHERE r.place_id=p.id AND r.status='approved' AND positive) AS positive`;
-const from = `FROM daily_pick d LEFT JOIN place p ON p.id=d.place_id LEFT JOIN place_subject s ON s.id=d.subject_id`;
+const from = `FROM daily_pick d LEFT JOIN place_subject s ON s.id=d.subject_id LEFT JOIN place p ON p.id=COALESCE(d.place_id,s.catalog_place_id)`;
 /** Only web links are ever rendered as hrefs. */
 function webUrl(value: unknown) {
   if (typeof value !== "string" || !value) return null;

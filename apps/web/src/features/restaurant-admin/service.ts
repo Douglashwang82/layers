@@ -1,30 +1,14 @@
 import { pool } from "@taiwanhub/database";
 import {
   approveRestaurantCopy,
-  publishRestaurantPickRun,
+  enqueueRestaurantJob,
   rejectRestaurantCopy,
   withdrawRestaurantPick,
-  createFakeQualificationAdapter,
 } from "@taiwanhub/database";
 import { AppError, requireModerator, type Actor } from "@taiwanhub/shared";
 import { z } from "zod";
-/**
- * Moderator-only service for the daily restaurant recommendation (version 2)
- * admin surface: area/candidate/evidence curation, run/report visibility,
- * copy review, and publish/withdraw. See
- * daily-pick-restaurant-run.ts/restaurant-providers.ts for the pipeline
- * itself; this module only reads/writes curation state and drives the
- * already-atomic publish/withdraw functions, never provider or model calls.
- *
- * `publish` here always uses the fake qualification adapter for its
- * mandatory fresh-data re-check. That is intentional and safe, not an
- * oversight: no caller anywhere in this codebase constructs the real
- * adapters with `legalAcknowledged: true`, so there is no real adapter to
- * wire in yet, and re-validating against "no data" only ever makes a
- * candidate fail closed (quality_unknown), never pass when it shouldn't.
- * Wiring a real adapter here is a distinct, separately authorized change for
- * once Phase 0 is approved.
- */
+import { patchSubject } from "../place-subjects/admin";
+/** Moderator-only curation and durable worker jobs. No provider calls in HTTP requests. */
 export async function listAreas(actor: Actor | null) {
   requireModerator(actor);
   const result = await pool.query<{
@@ -76,6 +60,7 @@ export async function listCandidates(actor: Actor | null, areaId: string) {
     provider_place_id: string | null;
     city_review_status: string;
     subject_status: string;
+    subject_revision: number;
     evidence_count: number;
     approved_evidence_count: number;
     updated_at: Date;
@@ -83,7 +68,7 @@ export async function listCandidates(actor: Actor | null, areaId: string) {
     `SELECT c.id, c.subject_id, c.state, c.food_type, c.food_type_version, c.food_type_source, c.excluded_reason, c.updated_at,
        COALESCE(p.name, 'Candidate ' || c.id::text) AS label,
        (SELECT r.provider_place_id FROM place_provider_reference r WHERE r.subject_id=s.id AND r.state='current' LIMIT 1) AS provider_place_id,
-       s.city_review_status, s.status AS subject_status,
+       s.city_review_status, s.status AS subject_status, s.revision AS subject_revision,
        (SELECT count(*)::int FROM restaurant_evidence e WHERE e.candidate_id=c.id) AS evidence_count,
        (SELECT count(*)::int FROM restaurant_evidence e WHERE e.candidate_id=c.id AND e.approved_for_copy) AS approved_evidence_count
      FROM restaurant_candidate c
@@ -104,6 +89,7 @@ export async function listCandidates(actor: Actor | null, areaId: string) {
     providerPlaceId: r.provider_place_id,
     cityReviewStatus: r.city_review_status,
     subjectStatus: r.subject_status,
+    subjectRevision: r.subject_revision,
     evidenceCount: r.evidence_count,
     approvedEvidenceCount: r.approved_evidence_count,
     updatedAt: r.updated_at.toISOString(),
@@ -112,7 +98,27 @@ export async function listCandidates(actor: Actor | null, areaId: string) {
 const candidatePatchInput = z.object({
   expectedUpdatedAt: z.iso.datetime(),
   state: z.enum(["reviewing", "approved", "excluded"]).optional(),
-  foodType: z.string().trim().min(1).max(80).nullable().optional(),
+  foodType: z
+    .string()
+    .trim()
+    .min(1)
+    .max(80)
+    .transform((v) => {
+      const normalized = v.toLowerCase().replace(/\s+/g, " ");
+      return (
+        (
+          {
+            taco: "tacos",
+            burger: "burgers",
+            hamburger: "burgers",
+            bbq: "barbecue",
+            pizzas: "pizza",
+          } as Record<string, string>
+        )[normalized] ?? normalized
+      );
+    })
+    .nullable()
+    .optional(),
   foodTypeVersion: z.number().int().min(1).optional(),
   excludedReason: z.string().trim().max(500).optional(),
 });
@@ -195,7 +201,7 @@ export async function setEvidenceApproval(
 ) {
   const a = requireModerator(actor);
   const result = await pool.query<{ id: string }>(
-    `UPDATE restaurant_evidence SET approved_for_copy=$2, approved_by=$3, approved_at=CASE WHEN $2 THEN now() ELSE approved_at END, updated_at=now()
+    `UPDATE restaurant_evidence SET approved_for_copy=$2, approved_by=$3, approved_at=CASE WHEN $2 THEN now() ELSE approved_at END, revision=revision+1, updated_at=now()
      WHERE id=$1 RETURNING id`,
     [evidenceId, approved, a.id],
   );
@@ -254,6 +260,10 @@ export async function getRunDetail(actor: Actor | null, runId: string) {
     [runId],
   );
   if (!run.rows[0]) throw new AppError(404, "NOT_FOUND", "Unknown run.");
+  const currentPick = await pool.query<{ id: string }>(
+    `SELECT d.id FROM daily_pick d JOIN city c ON c.id=d.city_id JOIN restaurant_discovery_area a ON a.city_slug=c.slug WHERE a.id=$1 AND d.pick_date=$2 AND d.status='published'`,
+    [run.rows[0].area_id, run.rows[0].run_date],
+  );
   const report = await pool.query<{
     subject_id: string;
     candidate_label: string;
@@ -298,6 +308,7 @@ export async function getRunDetail(actor: Actor | null, runId: string) {
     copyStatus: run.rows[0].copy_status,
     errorCode: run.rows[0].error_code,
     finalPickId: run.rows[0].final_pick_id,
+    currentPickId: currentPick.rows[0]?.id ?? null,
     report: report.rows.map((r) => ({
       subjectId: r.subject_id,
       label: r.candidate_label,
@@ -348,32 +359,35 @@ export async function publishRun(
 ) {
   const a = requireModerator(actor);
   const input = publishInput.parse(body);
-  // See module doc: the fake adapter here is intentional, not a bypass — no
-  // real (legalAcknowledged) adapter is ever constructed by this codebase.
-  const result = await publishRestaurantPickRun(
+  const run = await pool.query<{
+    area_id: string;
+    run_date: string;
+    status: string;
+  }>(`SELECT area_id,run_date::text,status FROM daily_pick_run WHERE id=$1`, [
     runId,
-    a.id,
-    { qualification: createFakeQualificationAdapter(new Map()) },
-    { expectedPickId: input.expectedPickId ?? null },
+  ]);
+  const row = run.rows[0];
+  if (!row) throw new AppError(404, "NOT_FOUND", "Unknown run.");
+  const approved = await pool.query(
+    "SELECT id FROM restaurant_copy WHERE run_id=$1 AND review_status='approved'",
+    [runId],
   );
-  if (result.status === "copy_not_approved")
+  if (!approved.rowCount)
     throw new AppError(
       409,
       "COPY_NOT_APPROVED",
       "Approve the copy before publishing.",
     );
-  if (result.status === "stale")
-    throw new AppError(
-      409,
-      "STALE",
-      `This run's data changed since it was prepared (${result.reason}). Re-run it.`,
-    );
-  if (result.status === "revision_conflict")
-    throw new AppError(
-      409,
-      "REVISION_CONFLICT",
-      "A different pick is already published for this date; confirm the replacement.",
-    );
+  if (!["ready_for_review", "ready_to_publish"].includes(row.status))
+    throw new AppError(409, "STALE", "This run is not ready to publish.");
+  const result = await enqueueRestaurantJob({
+    areaId: row.area_id,
+    date: row.run_date,
+    kind: "publish",
+    runId,
+    actorId: a.id,
+    expectedPickId: input.expectedPickId,
+  });
   return result;
 }
 const withdrawInput = z.object({ reason: z.string().trim().min(1).max(500) });
@@ -386,4 +400,61 @@ export async function withdrawPublishedPick(
   const input = withdrawInput.parse(body);
   await withdrawRestaurantPick(pickId, input.reason, a.id);
   return { id: pickId };
+}
+
+export async function queuePreparation(
+  actor: Actor | null,
+  areaId: string,
+  body: unknown,
+) {
+  const a = requireModerator(actor);
+  await requireArea(areaId);
+  const { date } = z.object({ date: z.iso.date() }).parse(body);
+  return enqueueRestaurantJob({ areaId, date, kind: "prepare", actorId: a.id });
+}
+export async function listJobs(actor: Actor | null, areaId: string) {
+  requireModerator(actor);
+  return (
+    await pool.query(
+      `SELECT id,kind,status,run_date::text AS date,result FROM restaurant_job WHERE area_id=$1 ORDER BY created_at DESC LIMIT 25`,
+      [areaId],
+    )
+  ).rows;
+}
+export async function cancelRun(actor: Actor | null, runId: string) {
+  requireModerator(actor);
+  const canceled = await pool.query(
+    `UPDATE daily_pick_run SET status='canceled',updated_at=now() WHERE id=$1 AND status IN ('ready_for_review','ready_to_publish') RETURNING id`,
+    [runId],
+  );
+  if (!canceled.rowCount)
+    throw new AppError(
+      409,
+      "CONFLICT",
+      "Only an unpublished review draft can be discarded.",
+    );
+  return { id: runId };
+}
+export async function confirmCandidateArea(
+  actor: Actor | null,
+  areaId: string,
+  candidateId: string,
+  body: unknown,
+) {
+  requireModerator(actor);
+  const input = z
+    .object({
+      expectedRevision: z.number().int().min(1),
+      reason: z.string().trim().min(1).max(500),
+    })
+    .parse(body);
+  const row = await pool.query<{ subject_id: string; city_id: string }>(
+    `SELECT c.subject_id,city.id AS city_id FROM restaurant_candidate c JOIN restaurant_discovery_area a ON a.id=c.area_id JOIN city ON city.slug=a.city_slug WHERE c.id=$1 AND c.area_id=$2`,
+    [candidateId, areaId],
+  );
+  if (!row.rows[0]) throw new AppError(404, "NOT_FOUND", "Unknown candidate.");
+  return patchSubject(actor, row.rows[0].subject_id, {
+    cityId: row.rows[0].city_id,
+    ...input,
+  });
 }

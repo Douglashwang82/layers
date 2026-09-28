@@ -128,8 +128,14 @@
   }
   .header-tools {
     gap: 4px;
+    min-width: 0;
+  }
+  .city-select {
+    min-width: 0;
   }
   .city-select select {
+    min-width: 0;
+    width: 100%;
     max-width: 150px;
   }
   .section {
