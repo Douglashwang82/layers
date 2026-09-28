@@ -24,6 +24,7 @@
     "mail:worker": "tsx packages/database/src/mail-worker.ts",
     "daily-pick:generate": "tsx packages/database/src/daily-pick-cli.ts",
     "daily-pick:restaurant:worker": "tsx packages/database/src/daily-pick-restaurant-cli.ts",
+    "daily-pick:restaurant:tune": "tsx packages/database/src/daily-pick-restaurant-tune.ts",
     "ingest": "tsx packages/database/src/ingestion-cli.ts",
     "db:sync-demo-flags": "tsx packages/database/src/sync-demo-flags.ts",
     "agent:run": "tsx packages/database/src/feed-agent.ts"
