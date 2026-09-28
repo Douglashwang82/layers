@@ -191,7 +191,9 @@ async function printReport(runId: string) {
     score: number | null;
     primary_reason_code: string;
   }>(
-    `SELECT rc.report_position, COALESCE(p.name, 'Candidate ' || rc.subject_id::text) AS label,
+    `SELECT rc.report_position,
+       COALESCE(p.name, (SELECT r.provider_place_id FROM place_provider_reference r WHERE r.subject_id=s.id AND r.state='current' LIMIT 1), rc.subject_id::text)
+         || ' [' || COALESCE((SELECT c.food_type FROM restaurant_candidate c WHERE c.subject_id=rc.subject_id LIMIT 1), 'no food type') || ']' AS label,
        rc.decision, rc.score, rc.primary_reason_code
      FROM daily_pick_run_candidate rc
      JOIN place_subject s ON s.id = rc.subject_id
