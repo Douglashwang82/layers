@@ -66,7 +66,7 @@ export async function listCandidates(actor: Actor | null, areaId: string) {
     updated_at: Date;
   }>(
     `SELECT c.id, c.subject_id, c.state, c.food_type, c.food_type_version, c.food_type_source, c.excluded_reason, c.updated_at,
-       COALESCE(p.name, 'Candidate ' || c.id::text) AS label,
+       COALESCE(p.name, (SELECT r.display_name FROM place_provider_reference r WHERE r.subject_id=s.id AND r.state='current' LIMIT 1), 'Candidate ' || c.id::text) AS label,
        (SELECT r.provider_place_id FROM place_provider_reference r WHERE r.subject_id=s.id AND r.state='current' LIMIT 1) AS provider_place_id,
        s.city_review_status, s.status AS subject_status, s.revision AS subject_revision,
        (SELECT count(*)::int FROM restaurant_evidence e WHERE e.candidate_id=c.id) AS evidence_count,
@@ -275,7 +275,7 @@ export async function getRunDetail(actor: Actor | null, runId: string) {
     primary_reason_code: string;
     reason_codes: string[];
   }>(
-    `SELECT rc.subject_id, COALESCE(p.name, 'Candidate') AS candidate_label, rc.base_rank, rc.eligible_rank, rc.report_position, rc.decision, rc.score, rc.primary_reason_code, rc.reason_codes
+    `SELECT rc.subject_id, COALESCE(p.name, (SELECT r.display_name FROM place_provider_reference r WHERE r.subject_id=s.id AND r.state='current' LIMIT 1), 'Candidate') AS candidate_label, rc.base_rank, rc.eligible_rank, rc.report_position, rc.decision, rc.score, rc.primary_reason_code, rc.reason_codes
      FROM daily_pick_run_candidate rc
      JOIN place_subject s ON s.id = rc.subject_id
      LEFT JOIN place p ON p.id = s.catalog_place_id

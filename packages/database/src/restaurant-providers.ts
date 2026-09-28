@@ -25,8 +25,10 @@ import {
 /** A durable, permission-scoped fact used as discovery/evidence input. Never a raw provider payload. */
 export type DiscoveredRestaurant = {
   providerPlaceId: string;
-  /** A short label for the moderator queue only; not stored as catalog content. */
+  /** A short label for logs and fakes; falls back to the place ID. */
   label: string;
+  /** Google's display name, when returned; stored on the provider reference. */
+  name?: string | null;
   /** Google's primary place type (e.g. "ramen_restaurant"); only its mapped food-type label is stored. */
   primaryType?: string | null;
 };
@@ -516,6 +518,7 @@ export function createGooglePlacesDiscoveryAdapter(
           found.push({
             providerPlaceId: place.id,
             label: place.displayName?.text ?? place.id,
+            name: place.displayName?.text ?? null,
             primaryType: place.primaryType ?? null,
           });
         nextPageToken = parsed.nextPageToken ?? null;

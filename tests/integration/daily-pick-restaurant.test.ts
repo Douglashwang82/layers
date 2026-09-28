@@ -15,6 +15,7 @@ import {
   type RestaurantQualificationAdapter,
 } from "../../packages/database/src";
 import { listExternalReferences } from "../../apps/web/src/features/map/external";
+import { listCandidates } from "../../apps/web/src/features/restaurant-admin/service";
 import {
   listDailyPickHistory,
   loadDailyPickView,
@@ -1033,6 +1034,61 @@ describe("Daily restaurant recommendation (version 2) worker", () => {
       expect(copy.rows[0].en_sentences[0].text).toBe(
         `Today's pick is a ramen restaurant in ${city.name}.`,
       );
+    } finally {
+      await pool.query(
+        `UPDATE restaurant_discovery_area SET config='{}'::jsonb WHERE id=$1`,
+        [area.id],
+      );
+    }
+  });
+
+  it("stores the discovered name and updates it when the same place ID returns a new one", async () => {
+    const placeId = `named-${suffix}`;
+    await pool.query(
+      `UPDATE restaurant_discovery_area SET config=$2::jsonb WHERE id=$1`,
+      [
+        area.id,
+        JSON.stringify({ queryGroups: ["g1"], discoveryBudgetPerRun: 1 }),
+      ],
+    );
+    const namedArea = (await loadRestaurantArea(pool, city.slug))!;
+    const discover = (name: string | null) =>
+      createFakeDiscoveryAdapter({
+        g1: [{ providerPlaceId: placeId, label: name ?? placeId, name }],
+      });
+    const storedName = async () =>
+      (
+        await pool.query<{ display_name: string | null; subject_id: string }>(
+          "SELECT display_name, subject_id FROM place_provider_reference WHERE provider_place_id=$1",
+          [placeId],
+        )
+      ).rows[0];
+    const prepare = (date: string, name: string | null) =>
+      prepareRestaurantPickRun(namedArea, date, {
+        discovery: discover(name),
+        qualification: createFakeQualificationAdapter(new Map()),
+        copy: createFakeCopyAdapter(),
+      });
+    try {
+      await prepare(addDays(today, 300), "Old Noodle House");
+      const first = await storedName();
+      subjectIds.push(first.subject_id);
+      const candidate = await pool.query<{ id: string }>(
+        "SELECT id FROM restaurant_candidate WHERE area_id=$1 AND subject_id=$2",
+        [area.id, first.subject_id],
+      );
+      candidateIds.push(candidate.rows[0].id);
+      expect(first.display_name).toBe("Old Noodle House");
+
+      await prepare(addDays(today, 301), "New Noodle House");
+      expect((await storedName()).display_name).toBe("New Noodle House");
+      const pool1 = await listCandidates(moderator, area.id);
+      expect(pool1.find((c) => c.subjectId === first.subject_id)?.label).toBe(
+        "New Noodle House",
+      );
+
+      await prepare(addDays(today, 302), null);
+      expect((await storedName()).display_name).toBe("New Noodle House");
     } finally {
       await pool.query(
         `UPDATE restaurant_discovery_area SET config='{}'::jsonb WHERE id=$1`,

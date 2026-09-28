@@ -1125,6 +1125,11 @@ export const placeProviderReference = pgTable(
     state: text("state", { enum: ["current", "superseded"] })
       .default("current")
       .notNull(),
+    /** Provider display name, stored by owner decision and refreshed whenever discovery returns a different one. */
+    displayName: text("display_name"),
+    displayNameUpdatedAt: timestamp("display_name_updated_at", {
+      withTimezone: true,
+    }),
     ...timestamps(),
   },
   (t) => [

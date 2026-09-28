@@ -301,9 +301,15 @@ describe("createGooglePlacesDiscoveryAdapter", () => {
       {
         providerPlaceId: "place-1",
         label: "Restaurant 1",
+        name: "Restaurant 1",
         primaryType: "ramen_restaurant",
       },
-      { providerPlaceId: "place-2", label: "Restaurant 2", primaryType: null },
+      {
+        providerPlaceId: "place-2",
+        label: "Restaurant 2",
+        name: "Restaurant 2",
+        primaryType: null,
+      },
     ]);
     expect(outcome.requestCount).toBe(2);
     expect(outcome.truncated).toBe(true);

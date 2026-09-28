@@ -111,12 +111,16 @@ function requireLocalDatabase() {
     );
 }
 
-async function mergeAreaConfig(area: RestaurantArea, opts: Record<string, string>) {
+async function mergeAreaConfig(
+  area: RestaurantArea,
+  opts: Record<string, string>,
+) {
   const patch: Record<string, number> = {};
   for (const [flag, key] of Object.entries(ruleConfigFlagMap)) {
     if (opts[flag] === undefined) continue;
     const value = Number(opts[flag]);
-    if (!Number.isFinite(value)) throw new Error(`Invalid --${flag}: ${opts[flag]}`);
+    if (!Number.isFinite(value))
+      throw new Error(`Invalid --${flag}: ${opts[flag]}`);
     patch[key] = value;
   }
   if (!Object.keys(patch).length) return area;
@@ -136,7 +140,9 @@ async function candidateProviderIds(areaId: string) {
      WHERE c.area_id = $1 AND c.state = 'approved'`,
     [areaId],
   );
-  return result.rows.map((r) => r.provider_place_id).filter((id): id is string => !!id);
+  return result.rows
+    .map((r) => r.provider_place_id)
+    .filter((id): id is string => !!id);
 }
 
 async function buildFixtures(
@@ -168,7 +174,8 @@ async function buildFixtures(
     );
   }
   const rating = opts.rating !== undefined ? Number(opts.rating) : 4.6;
-  const ratingCount = opts["rating-count"] !== undefined ? Number(opts["rating-count"]) : 200;
+  const ratingCount =
+    opts["rating-count"] !== undefined ? Number(opts["rating-count"]) : 200;
   const businessStatus = flags.has("closed")
     ? "CLOSED_TEMPORARILY"
     : ((opts["business-status"] as Fixture["businessStatus"]) ?? "OPERATIONAL");
@@ -233,7 +240,7 @@ async function printReport(
     decision: string;
     primary_reason_code: string;
   }>(
-    `SELECT rc.report_position, p.name AS catalog_name, rc.subject_id,
+    `SELECT rc.report_position, COALESCE(p.name, (SELECT r.display_name FROM place_provider_reference r WHERE r.subject_id=s.id AND r.state='current' LIMIT 1)) AS catalog_name, rc.subject_id,
        (SELECT r.provider_place_id FROM place_provider_reference r WHERE r.subject_id=s.id AND r.state='current' LIMIT 1) AS provider_place_id,
        (SELECT c.food_type FROM restaurant_candidate c WHERE c.subject_id=rc.subject_id LIMIT 1) AS food_type,
        rc.decision, rc.primary_reason_code
@@ -270,8 +277,7 @@ async function main() {
 
   let area = await loadRestaurantArea(pool, citySlug);
   if (!area) throw new Error(`Unknown restaurant discovery area: ${citySlug}`);
-  if (!area.enabled)
-    throw new Error(`Area "${citySlug}" is not enabled.`);
+  if (!area.enabled) throw new Error(`Area "${citySlug}" is not enabled.`);
 
   area = await mergeAreaConfig(area, opts);
 
@@ -285,17 +291,27 @@ async function main() {
   };
 
   const prepared = await prepareRestaurantPickRun(area, date, adapters);
-  console.log(JSON.stringify({ event: "prepare", date, result: prepared }, null, 2));
+  console.log(
+    JSON.stringify({ event: "prepare", date, result: prepared }, null, 2),
+  );
   if ("runId" in prepared) await printReport(prepared.runId, area, fixtures);
 
   if (flags.has("publish")) {
-    if (prepared.status !== "ready_for_review" || !("copyId" in prepared) || !prepared.copyId) {
+    if (
+      prepared.status !== "ready_for_review" ||
+      !("copyId" in prepared) ||
+      !prepared.copyId
+    ) {
       console.log("Nothing to publish: run has no approved winner/copy.");
       return;
     }
-    const anyUser = await pool.query<{ id: string }>('SELECT id FROM "user" LIMIT 1');
+    const anyUser = await pool.query<{ id: string }>(
+      'SELECT id FROM "user" LIMIT 1',
+    );
     if (!anyUser.rows[0])
-      throw new Error("No local user found to record as copy approver; seed the dev DB first.");
+      throw new Error(
+        "No local user found to record as copy approver; seed the dev DB first.",
+      );
     await approveRestaurantCopy(prepared.copyId, anyUser.rows[0].id);
     console.log("Copy approved.");
     // If this date already has a published pick (e.g. a new attempt after a
@@ -307,7 +323,8 @@ async function main() {
       [area.citySlug, date],
     );
     const expectedPickId = current.rows[0]?.id ?? null;
-    if (expectedPickId) console.log(`Replacing published pick ${expectedPickId}.`);
+    if (expectedPickId)
+      console.log(`Replacing published pick ${expectedPickId}.`);
     await enqueueRestaurantJob({
       areaId: area.id,
       date,

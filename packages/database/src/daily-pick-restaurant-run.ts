@@ -400,6 +400,12 @@ async function upsertDiscoveredCandidate(
     }
   }
   if (!subjectId) return false;
+  if (found.name)
+    await pool.query(
+      `UPDATE place_provider_reference SET display_name=$2, display_name_updated_at=now(), updated_at=now()
+       WHERE provider='google' AND provider_place_id=$1 AND display_name IS DISTINCT FROM $2`,
+      [found.providerPlaceId, found.name],
+    );
   const foodType = autoApprove
     ? foodTypeFromProviderType(found.primaryType)
     : null;
@@ -470,7 +476,7 @@ const candidateSelect = `
      (s.city_id IS NOT NULL AND EXISTS (SELECT 1 FROM restaurant_discovery_area a WHERE a.id=c.area_id AND a.city_slug=(SELECT slug FROM city WHERE id=s.city_id))) AS in_area,
      s.catalog_place_id, p.status AS catalog_status, p.is_demo AS catalog_is_demo,
      (SELECT r.provider_place_id FROM place_provider_reference r WHERE r.subject_id=s.id AND r.state='current' LIMIT 1) AS provider_place_id,
-     COALESCE(p.name, 'Candidate ' || c.id::text) AS label,
+     COALESCE(p.name, (SELECT r.display_name FROM place_provider_reference r WHERE r.subject_id=s.id AND r.state='current' LIMIT 1), 'Candidate ' || c.id::text) AS label,
      COALESCE(
        (SELECT jsonb_agg(jsonb_build_object('id', e.id::text, 'label', e.label, 'sourceUrl', e.source_url, 'approvedAt', e.approved_at) ORDER BY e.id)
         FROM restaurant_evidence e WHERE e.candidate_id = c.id AND e.approved_for_copy),
