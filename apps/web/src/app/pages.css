@@ -478,6 +478,194 @@
   margin: 0;
   border-radius: 0 var(--th-radius-sheet) var(--th-radius-sheet) 0;
 }
+/* Sign-in illustration: layers stacked over a map tile, in CSS 3D.
+   Base styles are the resting, separated state, so the reduced-motion rule in
+   globals.css (0.01ms, one iteration, no fill) leaves a legible still frame. */
+.map-stack {
+  --map-stack-tilt: 58deg;
+  --map-stack-yaw: -32deg;
+  height: 264px;
+  display: grid;
+  place-items: end center;
+  padding-bottom: var(--th-space-4);
+  perspective: 900px;
+  perspective-origin: 50% 20%;
+  pointer-events: none;
+  user-select: none;
+}
+.map-stack-scene {
+  position: relative;
+  width: 200px;
+  height: 140px;
+  transform-style: preserve-3d;
+  transform: rotateX(var(--map-stack-tilt)) rotateZ(var(--map-stack-yaw));
+  animation: map-stack-sway 14s ease-in-out infinite;
+}
+.map-stack-tile {
+  position: absolute;
+  inset: 0;
+  border-radius: var(--th-radius-card);
+  border: 1px solid var(--th-divider);
+}
+.map-stack-base {
+  overflow: hidden;
+  background: var(--th-surface);
+  box-shadow: 0 18px 40px -12px rgb(20 38 31 / 0.28);
+}
+.map-stack-base svg {
+  display: block;
+  width: 100%;
+  height: 100%;
+}
+.map-stack-grid {
+  fill: none;
+  stroke: var(--th-divider);
+  stroke-width: 1;
+}
+.map-stack-park {
+  fill: color-mix(in srgb, var(--th-primary) 45%, var(--th-surface));
+}
+.map-stack-bayou {
+  fill: none;
+  stroke: color-mix(in srgb, var(--th-mint) 55%, var(--th-surface));
+  stroke-width: 5;
+  stroke-linecap: round;
+}
+.map-stack-road {
+  fill: none;
+  stroke: var(--th-control-border);
+  stroke-opacity: 0.35;
+  stroke-width: 2.5;
+}
+.map-stack-layer {
+  --map-stack-lift: 36px;
+  transform-style: preserve-3d;
+  background: color-mix(in srgb, var(--map-stack-tone) 18%, transparent);
+  border-color: color-mix(in srgb, var(--map-stack-tone) 70%, transparent);
+  box-shadow:
+    inset 0 0 0 1px rgb(255 255 255 / 0.45),
+    0 10px 24px -10px rgb(20 38 31 / 0.25);
+  transform: translateZ(var(--map-stack-lift));
+  animation: map-stack-settle 9s var(--th-ease) infinite;
+}
+.map-stack-layer[data-tone="mint"] {
+  --map-stack-tone: var(--th-mint);
+  --map-stack-lift: 36px;
+  animation-delay: -0.6s;
+}
+.map-stack-layer[data-tone="sun"] {
+  --map-stack-tone: var(--th-sun);
+  --map-stack-lift: 72px;
+  animation-delay: -0.3s;
+}
+.map-stack-layer[data-tone="coral"] {
+  --map-stack-tone: var(--th-coral);
+  --map-stack-lift: 108px;
+  animation-delay: 0s;
+}
+/* Pins and the brand marker stand upright: undo the scene rotation so they
+   face the viewer while their base stays on the sheet. */
+.map-stack-pin,
+.map-stack-here {
+  position: absolute;
+  transform-origin: 50% 100%;
+  transform: rotateZ(calc(-1 * var(--map-stack-yaw)))
+    rotateX(calc(-1 * var(--map-stack-tilt)));
+}
+.map-stack-pin {
+  width: 14px;
+  height: 18px;
+  margin: -18px 0 0 -7px;
+}
+.map-stack-pin::before {
+  content: "";
+  position: absolute;
+  inset: 0 0 4px;
+  border-radius: 50% 50% 50% 0;
+  transform: rotate(-45deg);
+  background: var(--map-stack-tone);
+  border: 2px solid var(--th-surface);
+  box-shadow: 0 2px 4px rgb(20 38 31 / 0.25);
+}
+.map-stack-here {
+  width: 32px;
+  height: 40px;
+  margin: -40px 0 0 -16px;
+  transform-style: preserve-3d;
+}
+.map-stack-here .brand-mark {
+  position: absolute;
+  inset: 0 0 8px;
+  margin: 0;
+  width: 32px;
+  height: 32px;
+  box-shadow: 0 4px 10px rgb(20 38 31 / 0.3);
+}
+.map-stack-here .brand-mark::after {
+  content: "";
+  position: absolute;
+  left: 50%;
+  bottom: -6px;
+  width: 10px;
+  height: 10px;
+  margin-left: -5px;
+  background: inherit;
+  transform: rotate(45deg);
+  border-radius: 2px;
+}
+/* The ring lies flat on the sheet: reverse the upright transform again. */
+.map-stack-ring {
+  position: absolute;
+  left: 50%;
+  bottom: -14px;
+  width: 28px;
+  height: 28px;
+  margin-left: -14px;
+  border-radius: 50%;
+  border: 2px solid var(--th-brand-text);
+  transform-origin: 50% 50%;
+  transform: rotateX(var(--map-stack-tilt)) rotateZ(var(--map-stack-yaw))
+    scale(0.5);
+  opacity: 0;
+  animation: map-stack-ring 3s ease-out infinite;
+}
+@keyframes map-stack-sway {
+  0%,
+  100% {
+    transform: rotateX(var(--map-stack-tilt)) rotateZ(var(--map-stack-yaw));
+  }
+  50% {
+    transform: rotateX(calc(var(--map-stack-tilt) + 3deg))
+      rotateZ(calc(var(--map-stack-yaw) - 8deg));
+  }
+}
+@keyframes map-stack-settle {
+  0%,
+  14% {
+    transform: translateZ(var(--map-stack-lift));
+  }
+  36%,
+  58% {
+    transform: translateZ(calc(var(--map-stack-lift) * 0.08));
+  }
+  80%,
+  100% {
+    transform: translateZ(var(--map-stack-lift));
+  }
+}
+@keyframes map-stack-ring {
+  0% {
+    transform: rotateX(var(--map-stack-tilt)) rotateZ(var(--map-stack-yaw))
+      scale(0.4);
+    opacity: 0.7;
+  }
+  70%,
+  100% {
+    transform: rotateX(var(--map-stack-tilt)) rotateZ(var(--map-stack-yaw))
+      scale(1.8);
+    opacity: 0;
+  }
+}
 .auth-links {
   font-size: 15px;
 }

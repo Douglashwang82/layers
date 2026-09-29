@@ -1,5 +1,6 @@
 import { getCopy } from "@/lib/i18n";
 import { AuthForm } from "@/components/auth-form";
+import { MapLayersAnimation } from "@/components/map-layers-animation";
 export default async function SignInPage({
   searchParams,
 }: {
@@ -9,9 +10,7 @@ export default async function SignInPage({
   return (
     <div className="auth-page">
       <aside className="auth-aside">
-        <span className="brand-mark" aria-hidden="true">
-          台
-        </span>
+        <MapLayersAnimation />
         <h2>{t.authIntro}</h2>
         <p>{t.authBody}</p>
       </aside>
