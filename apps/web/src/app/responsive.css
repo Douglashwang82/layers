@@ -107,6 +107,22 @@
   .auth-page .form-panel {
     border-radius: 0 0 var(--th-radius-sheet) var(--th-radius-sheet);
   }
+  /* Small screens keep only the sign-in card; the scene is desktop-only. */
+  .auth-stage {
+    display: block;
+    min-height: 0;
+    padding: 0;
+    border: 0;
+    background: none;
+    overflow: visible;
+  }
+  .auth-scene {
+    display: none;
+  }
+  .auth-stage .form-panel {
+    max-width: none;
+    border-radius: var(--th-radius-sheet);
+  }
 }
 @media (max-width: 599px) {
   h1 {
