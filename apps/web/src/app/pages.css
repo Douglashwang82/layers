@@ -484,6 +484,10 @@
 .map-stack {
   --map-stack-tilt: 58deg;
   --map-stack-yaw: -32deg;
+  /* Scene size; `--map-stack-unit` scales the lift between sheets to match. */
+  --map-stack-width: 200px;
+  --map-stack-height: 140px;
+  --map-stack-unit: 1;
   height: 264px;
   display: grid;
   place-items: end center;
@@ -495,8 +499,8 @@
 }
 .map-stack-scene {
   position: relative;
-  width: 200px;
-  height: 140px;
+  width: var(--map-stack-width);
+  height: var(--map-stack-height);
   transform-style: preserve-3d;
   transform: rotateX(var(--map-stack-tilt)) rotateZ(var(--map-stack-yaw));
   animation: map-stack-sway 14s ease-in-out infinite;
@@ -538,7 +542,7 @@
   stroke-width: 2.5;
 }
 .map-stack-layer {
-  --map-stack-lift: 36px;
+  --map-stack-lift: calc(36px * var(--map-stack-unit));
   transform-style: preserve-3d;
   background: color-mix(in srgb, var(--map-stack-tone) 18%, transparent);
   border-color: color-mix(in srgb, var(--map-stack-tone) 70%, transparent);
@@ -550,17 +554,17 @@
 }
 .map-stack-layer[data-tone="mint"] {
   --map-stack-tone: var(--th-mint);
-  --map-stack-lift: 36px;
+  --map-stack-lift: calc(36px * var(--map-stack-unit));
   animation-delay: -0.6s;
 }
 .map-stack-layer[data-tone="sun"] {
   --map-stack-tone: var(--th-sun);
-  --map-stack-lift: 72px;
+  --map-stack-lift: calc(72px * var(--map-stack-unit));
   animation-delay: -0.3s;
 }
 .map-stack-layer[data-tone="coral"] {
   --map-stack-tone: var(--th-coral);
-  --map-stack-lift: 108px;
+  --map-stack-lift: calc(108px * var(--map-stack-unit));
   animation-delay: 0s;
 }
 /* Pins and the brand marker stand upright: undo the scene rotation so they
@@ -668,6 +672,107 @@
 }
 .auth-links {
   font-size: 15px;
+}
+/* Sign-in stage: one backdrop with a mint glow and a fading map grid, the
+   layer animation on the left two thirds, and the sign-in card floating on
+   the right third. Other auth pages keep the plain split layout above. */
+.auth-page-stage {
+  display: block;
+  max-width: 1120px;
+}
+.auth-stage {
+  position: relative;
+  display: grid;
+  grid-template-columns: 2fr 1fr;
+  gap: var(--th-space-8);
+  align-items: center;
+  min-height: min(640px, calc(100vh - var(--th-header-height) - 112px));
+  padding: var(--th-space-8);
+  border: 1px solid var(--th-divider);
+  border-radius: var(--th-radius-sheet);
+  background:
+    radial-gradient(
+      ellipse 58% 68% at 36% 48%,
+      color-mix(in srgb, var(--th-mint) 22%, transparent),
+      transparent 72%
+    ),
+    var(--th-surface-soft);
+  overflow: hidden;
+  isolation: isolate;
+}
+.auth-stage::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  background-image:
+    linear-gradient(var(--th-divider) 1px, transparent 1px),
+    linear-gradient(90deg, var(--th-divider) 1px, transparent 1px);
+  background-size: 40px 40px;
+  background-position: 50% 50%;
+  mask-image: radial-gradient(
+    ellipse 52% 62% at 36% 48%,
+    #000 18%,
+    transparent 78%
+  );
+}
+.auth-scene {
+  position: relative;
+  min-width: 0;
+  display: grid;
+  place-items: center;
+}
+.auth-scene .map-stack {
+  --map-stack-width: 320px;
+  --map-stack-height: 224px;
+  --map-stack-unit: 1.6;
+  height: 400px;
+  perspective: 1300px;
+}
+/* Drifting motes: tiny mint and white dots behind the card. Each keeps its
+   own position and phase from inline custom properties. */
+.auth-mote {
+  position: absolute;
+  left: var(--x);
+  top: var(--y);
+  width: var(--size, 3px);
+  height: var(--size, 3px);
+  border-radius: 50%;
+  background: var(--th-mint);
+  opacity: 0.35;
+  animation: auth-mote-drift var(--speed, 14s) ease-in-out var(--phase, 0s)
+    infinite;
+}
+.auth-mote:nth-child(3n) {
+  background: var(--th-surface);
+  opacity: 0.9;
+}
+.auth-stage .form-panel {
+  position: relative;
+  max-width: 420px;
+  width: 100%;
+  margin: 0;
+  justify-self: end;
+  border-radius: var(--th-radius-sheet);
+  border-color: rgb(255 255 255 / 0.9);
+  background: rgb(255 255 255 / 0.86);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  box-shadow:
+    0 0 0 1px color-mix(in srgb, var(--th-divider) 60%, transparent),
+    0 24px 60px -24px rgb(20 38 31 / 0.35);
+}
+@keyframes auth-mote-drift {
+  0%,
+  100% {
+    transform: translate(0, 0);
+  }
+  33% {
+    transform: translate(10px, -18px);
+  }
+  66% {
+    transform: translate(-8px, -30px);
+  }
 }
 /* Profile */
 .settings-layout {

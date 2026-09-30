@@ -107,6 +107,24 @@
   .auth-page .form-panel {
     border-radius: 0 0 var(--th-radius-sheet) var(--th-radius-sheet);
   }
+  .auth-stage {
+    grid-template-columns: 1fr;
+    gap: 0;
+    min-height: 0;
+    padding: var(--th-space-4);
+  }
+  .auth-scene .map-stack {
+    --map-stack-width: 240px;
+    --map-stack-height: 168px;
+    --map-stack-unit: 1.2;
+    height: 300px;
+    perspective: 1000px;
+  }
+  .auth-stage .form-panel {
+    max-width: none;
+    margin-top: calc(-1 * var(--th-space-6));
+    border-radius: var(--th-radius-sheet);
+  }
 }
 @media (max-width: 599px) {
   h1 {
