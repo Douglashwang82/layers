@@ -544,13 +544,62 @@
 .map-stack-layer {
   --map-stack-lift: calc(36px * var(--map-stack-unit));
   transform-style: preserve-3d;
-  background: color-mix(in srgb, var(--map-stack-tone) 18%, transparent);
-  border-color: color-mix(in srgb, var(--map-stack-tone) 70%, transparent);
-  box-shadow:
-    inset 0 0 0 1px rgb(255 255 255 / 0.45),
-    0 10px 24px -10px rgb(20 38 31 / 0.25);
+  border: 0;
   transform: translateZ(var(--map-stack-lift));
   animation: map-stack-settle 9s var(--th-ease) infinite;
+}
+/* The sheet is one flat SVG in its tone: translucent fill and edge, a tab on
+   the top edge, a faint echo of the street grid, then the layer's own detail. */
+.map-stack-sheet {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  overflow: visible;
+  color: var(--map-stack-tone);
+}
+.map-stack-sheet-fill {
+  fill: currentColor;
+  fill-opacity: 0.18;
+  stroke: currentColor;
+  stroke-opacity: 0.7;
+  stroke-width: 1;
+}
+.map-stack-sheet-tab {
+  fill: currentColor;
+  fill-opacity: 0.85;
+}
+.map-stack-sheet-grid {
+  fill: none;
+  stroke: currentColor;
+  stroke-opacity: 0.18;
+  stroke-width: 0.6;
+}
+.map-stack-fill {
+  fill: currentColor;
+  fill-opacity: 0.55;
+}
+.map-stack-line {
+  fill: none;
+  stroke: currentColor;
+  stroke-opacity: 0.7;
+  stroke-width: 1.5;
+  stroke-linecap: round;
+}
+.map-stack-dash {
+  fill: none;
+  stroke: currentColor;
+  stroke-opacity: 0.8;
+  stroke-width: 1.5;
+  stroke-linecap: round;
+  stroke-dasharray: 4 3;
+}
+.map-stack-ring-art {
+  fill: none;
+  stroke: currentColor;
+  stroke-opacity: 0.6;
+  stroke-width: 1;
+  stroke-dasharray: 2 2.5;
 }
 .map-stack-layer[data-tone="mint"] {
   --map-stack-tone: var(--th-mint);
@@ -673,9 +722,9 @@
 .auth-links {
   font-size: 15px;
 }
-/* Sign-in stage: one backdrop with a mint glow and a fading map grid, the
-   layer animation on the left two thirds, and the sign-in card floating on
-   the right third. Other auth pages keep the plain split layout above. */
+/* Sign-in stage: one plain backdrop, the layer animation on the left two
+   thirds, and the sign-in card floating on the right third. Other auth pages
+   keep the plain split layout above. */
 .auth-page-stage {
   display: block;
   max-width: 1120px;
@@ -690,31 +739,8 @@
   padding: var(--th-space-8);
   border: 1px solid var(--th-divider);
   border-radius: var(--th-radius-sheet);
-  background:
-    radial-gradient(
-      ellipse 58% 68% at 36% 48%,
-      color-mix(in srgb, var(--th-mint) 22%, transparent),
-      transparent 72%
-    ),
-    var(--th-surface-soft);
+  background: var(--th-surface-soft);
   overflow: hidden;
-  isolation: isolate;
-}
-.auth-stage::before {
-  content: "";
-  position: absolute;
-  inset: 0;
-  z-index: -1;
-  background-image:
-    linear-gradient(var(--th-divider) 1px, transparent 1px),
-    linear-gradient(90deg, var(--th-divider) 1px, transparent 1px);
-  background-size: 40px 40px;
-  background-position: 50% 50%;
-  mask-image: radial-gradient(
-    ellipse 52% 62% at 36% 48%,
-    #000 18%,
-    transparent 78%
-  );
 }
 .auth-scene {
   position: relative;
@@ -728,24 +754,6 @@
   --map-stack-unit: 1.6;
   height: 400px;
   perspective: 1300px;
-}
-/* Drifting motes: tiny mint and white dots behind the card. Each keeps its
-   own position and phase from inline custom properties. */
-.auth-mote {
-  position: absolute;
-  left: var(--x);
-  top: var(--y);
-  width: var(--size, 3px);
-  height: var(--size, 3px);
-  border-radius: 50%;
-  background: var(--th-mint);
-  opacity: 0.35;
-  animation: auth-mote-drift var(--speed, 14s) ease-in-out var(--phase, 0s)
-    infinite;
-}
-.auth-mote:nth-child(3n) {
-  background: var(--th-surface);
-  opacity: 0.9;
 }
 .auth-stage .form-panel {
   position: relative;
@@ -761,18 +769,6 @@
   box-shadow:
     0 0 0 1px color-mix(in srgb, var(--th-divider) 60%, transparent),
     0 24px 60px -24px rgb(20 38 31 / 0.35);
-}
-@keyframes auth-mote-drift {
-  0%,
-  100% {
-    transform: translate(0, 0);
-  }
-  33% {
-    transform: translate(10px, -18px);
-  }
-  66% {
-    transform: translate(-8px, -30px);
-  }
 }
 /* Profile */
 .settings-layout {

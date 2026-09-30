@@ -107,22 +107,20 @@
   .auth-page .form-panel {
     border-radius: 0 0 var(--th-radius-sheet) var(--th-radius-sheet);
   }
+  /* Small screens keep only the sign-in card; the scene is desktop-only. */
   .auth-stage {
-    grid-template-columns: 1fr;
-    gap: 0;
+    display: block;
     min-height: 0;
-    padding: var(--th-space-4);
+    padding: 0;
+    border: 0;
+    background: none;
+    overflow: visible;
   }
-  .auth-scene .map-stack {
-    --map-stack-width: 240px;
-    --map-stack-height: 168px;
-    --map-stack-unit: 1.2;
-    height: 300px;
-    perspective: 1000px;
+  .auth-scene {
+    display: none;
   }
   .auth-stage .form-panel {
     max-width: none;
-    margin-top: calc(-1 * var(--th-space-6));
     border-radius: var(--th-radius-sheet);
   }
 }
