@@ -539,6 +539,12 @@ export const en = {
     "We couldn't send a code right now. Wait a minute and try again.",
   joinRateLimited: "Too many code requests. Wait a minute and try again.",
   signInCodeIntro: "Enter your member email and we'll send you a 6-digit code.",
+  signInSceneEyebrow: "A WORLD OF CONNECTIONS",
+  signInSceneTitle: "Your city.",
+  signInSceneAccent: "Your people.",
+  signInSceneDescription:
+    "A little closer to the places, people, and moments that feel like home.",
+  signInSceneFooter: "Life, connected.",
   signInSendCode: "Email me a code",
   signInSending: "Sending…",
   signInCodeRequested:
@@ -1244,6 +1250,11 @@ export const zh: Copy = {
   joinSendFailed: "目前無法寄送驗證碼，請稍候一分鐘再試。",
   joinRateLimited: "驗證碼請求次數過多，請稍候一分鐘再試。",
   signInCodeIntro: "輸入你的會員 Email，我們會寄給你 6 位數驗證碼。",
+  signInSceneEyebrow: "讓每一份連結，成為日常",
+  signInSceneTitle: "你的城市，",
+  signInSceneAccent: "你的歸屬。",
+  signInSceneDescription: "讓喜歡的地方、相識的人與熟悉的日常，離你更近一點。",
+  signInSceneFooter: "生活，從連結開始。",
   signInSendCode: "寄送驗證碼給我",
   signInSending: "寄送中…",
   signInCodeRequested:

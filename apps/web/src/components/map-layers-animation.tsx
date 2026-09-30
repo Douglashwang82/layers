@@ -75,8 +75,8 @@ export function MapLayersAnimation() {
         focusable="false"
       >
         <g transform="translate(380 350)">
-          <path d="M-340 0 0-172 340 0 0 172Z" fill="#e2eae4" />
-          <path d="M-340 0 0 172 340 0V12L0 184-340 12Z" fill="#c6d7cc" />
+          <path d="M-340 0 0-172 340 0 0 172Z" fill="#193e34" />
+          <path d="M-340 0 0 172 340 0V12L0 184-340 12Z" fill="#376353" />
           {CITY_BUILDINGS.toSorted((a, b) => a.x + a.z - b.x - b.z).map(
             (b, i) => {
               const x = (b.x - b.z) * 12,

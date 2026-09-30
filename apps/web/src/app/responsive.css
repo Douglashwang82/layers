@@ -119,9 +119,15 @@
   .auth-scene {
     display: none;
   }
+  .auth-scene-story,
+  .auth-scene-caption,
+  .auth-stage::after {
+    display: none;
+  }
   .auth-stage .form-panel {
     max-width: none;
     border-radius: var(--th-radius-sheet);
+    box-shadow: 0 16px 40px -24px rgb(20 38 31 / 0.18);
   }
 }
 @media (max-width: 599px) {

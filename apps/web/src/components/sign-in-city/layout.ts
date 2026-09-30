@@ -1,5 +1,5 @@
 /** A fictional, deterministic streetscape; never a live map or inventory. */
-export const CITY_COLORS = ["#8ccbb5", "#ebc777", "#e89882"] as const;
+export const CITY_COLORS = ["#397b72", "#87988d", "#ab7965"] as const;
 export const PARK_BLOCKS = new Set([0, 17, 25]);
 export type CityBuilding = {
   x: number;
@@ -21,7 +21,7 @@ export const CITY_BUILDINGS: CityBuilding[] = Array.from(
         0,
         1 - Math.hypot((col - 2.7) / 3.4, (row - 1.8) / 2.8),
       );
-      const h = 0.65 + seed * 1.25 + core * core * 5.8;
+      const h = 0.8 + seed * 2.4 + core * core * 12.5;
       return {
         x: col * 4 - 10 + (slot % 2 ? 0.86 : -0.86),
         z: row * 4 - 8 + (slot < 2 ? -0.86 : 0.86),
@@ -37,13 +37,12 @@ export function smoothStep(value: number) {
   const t = Math.max(0, Math.min(1, value));
   return t * t * (3 - 2 * t);
 }
-/** A held assembled city, staggered reveal, held layers, and gentle return. */
-export function layerLift(seconds: number, layer: number) {
-  const phase = ((seconds % 18) + 18) % 18;
-  const delay = layer * 0.38;
-  return (
-    (smoothStep((phase - 3 - delay) / 3.6) -
-      smoothStep((phase - 11.2 - delay) / 3.8)) *
-    (1.3 + layer * 1.65)
-  );
+/** A finite entrance blends into a slow orbit, without a loop reset. */
+export function cityCameraPose(seconds: number) {
+  const entrance = 1 - smoothStep(seconds / 4.5);
+  return {
+    azimuth: 0.78 + Math.sin(seconds * 0.075) * 0.14 + entrance * 0.12,
+    elevation: 0.55 + entrance * 0.07,
+    distance: 43 + entrance * 7,
+  };
 }

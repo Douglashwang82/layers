@@ -1,27 +1,26 @@
 import { describe, expect, it } from "vitest";
 import {
   CITY_BUILDINGS,
-  layerLift,
+  cityCameraPose,
 } from "../../apps/web/src/components/sign-in-city/layout";
 
 describe("decorative city motion", () => {
-  it("keeps the city assembled during the entrance and across loop boundaries", () => {
-    for (let layer = 0; layer < 3; layer++) {
-      for (const time of [0, 1, 2.9, 17.99, 18, 19])
-        expect(layerLift(time, layer)).toBe(0);
-      expect(layerLift(9, layer)).toBeGreaterThan(1);
+  it("eases the entrance into a bounded, continuous camera orbit", () => {
+    expect(cityCameraPose(0).distance).toBeGreaterThan(
+      cityCameraPose(5).distance,
+    );
+    for (let time = 0; time < 180; time += 0.1) {
+      const pose = cityCameraPose(time);
+      const next = cityCameraPose(time + 1 / 60);
+      expect(pose.distance).toBeGreaterThanOrEqual(43);
+      expect(pose.distance).toBeLessThanOrEqual(50);
+      expect(pose.elevation).toBeGreaterThan(0.5);
+      expect(pose.elevation).toBeLessThan(0.65);
+      expect(Math.abs(next.azimuth - pose.azimuth)).toBeLessThan(0.003);
+      expect(Math.abs(next.distance - pose.distance)).toBeLessThan(0.06);
     }
   });
-  it("bounds the layer travel and repeats without a jump", () => {
-    for (let time = 0; time < 36; time += 0.05) {
-      const heights = [0, 1, 2].map((layer) => layerLift(time, layer));
-      expect(heights.every((height) => height >= 0 && height <= 4.6)).toBe(
-        true,
-      );
-      expect(layerLift(time + 18, 1)).toBeCloseTo(heights[1], 8);
-    }
-  });
-  it("keeps building footprints disjoint even when the layers collapse", () => {
+  it("keeps district building footprints disjoint and inside the island", () => {
     expect(CITY_BUILDINGS.length).toBeGreaterThanOrEqual(80);
     for (let i = 0; i < CITY_BUILDINGS.length; i++) {
       const a = CITY_BUILDINGS[i];
