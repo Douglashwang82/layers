@@ -83,8 +83,11 @@ export const petShape = {
     halfWidth: 0.594,
     halfHeight: 0.521,
     /** How far the face sits inside the skin, and the soft lip around it. */
-    inset: 0.04,
-    rim: 0.014,
+    inset: 0.065,
+    rim: 0.02,
+    /** Painted occlusion: the lip shading the face edge, and the border crease. */
+    shade: 0.32,
+    crease: 0.3,
   },
   eyes: { x: 0.297, y: 1.294, halfWidth: 0.142, halfHeight: 0.224 },
   /** Glossy jelly skin: grazing-angle glow and saturated inner light. */
@@ -180,8 +183,8 @@ function inset(x: number, y: number) {
   const d = faceDistance(x, y),
     { inset, rim } = petShape.face;
   return (
-    -inset * (1 - smooth(d, 0.84, 1.0)) +
-    rim * Math.exp(-(((d - 1.05) / 0.06) ** 2))
+    -inset * (1 - smooth(d, 0.9, 1.01)) +
+    rim * Math.exp(-(((d - 1.04) / 0.05) ** 2))
   );
 }
 
@@ -292,6 +295,15 @@ float faceD = length(vec2(vRest.x / uFace.y, (vRest.y - uFace.x) / uFace.z));
 float faceAA = fwidth(faceD);
 float faceMask = (1.0 - smoothstep(0.985 - faceAA, 0.985 + faceAA, faceD)) * step(uFace.w, vRest.z);
 diffuseColor.rgb = mix(diffuseColor.rgb, uFaceColor, faceMask);
+// Painted occlusion for the recess (the scene casts no shadows): the skin lip
+// shades the face just inside its edge, most on the side facing the upper-left
+// key light, and a thin crease darkens the skin where it folds into the face.
+vec2 faceQ = vec2(vRest.x / uFace.y, (vRest.y - uFace.x) / uFace.z);
+float faceSide = 0.45 + 0.55 * dot(normalize(faceQ + vec2(1e-5)), vec2(-0.85, 0.53));
+float faceFront = step(uFace.w, vRest.z);
+float lipShade = smoothstep(0.72, 0.985, faceD) * faceMask * max(faceSide, 0.15);
+float crease = (1.0 - smoothstep(0.985, 1.05, faceD)) * (1.0 - faceMask) * faceFront;
+diffuseColor.rgb *= 1.0 - uFaceShade.x * lipShade - uFaceShade.y * crease;
 `;
 
 // Jelly: light scattered inside the body glows at grazing angles and keeps
@@ -339,10 +351,13 @@ function liquid<T extends THREE.Material>(
         value: new THREE.Vector4(y, halfWidth, halfHeight, centerZ(y)),
       };
       shader.uniforms.uFaceColor = { value: new THREE.Color(color) };
+      shader.uniforms.uFaceShade = {
+        value: new THREE.Vector2(petShape.face.shade, petShape.face.crease),
+      };
       shader.fragmentShader = shader.fragmentShader
         .replace(
           "#include <common>",
-          "#include <common>\nvarying vec3 vRest;\nuniform vec4 uFace;\nuniform vec3 uFaceColor;\nuniform vec3 uJellyRim;\nuniform vec3 uJellyCore;",
+          "#include <common>\nvarying vec3 vRest;\nuniform vec4 uFace;\nuniform vec3 uFaceColor;\nuniform vec2 uFaceShade;\nuniform vec3 uJellyRim;\nuniform vec3 uJellyCore;",
         )
         .replace("#include <color_fragment>", faceGLSL)
         .replace(
