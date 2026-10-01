@@ -18,7 +18,7 @@ test("provider failure leaves list selection usable without a floating orphan co
   ).toBeVisible();
 });
 
-test("V2 companion keeps reference artwork and all three expressions", async ({
+test("V2 companion renders real geometry and all three expressions", async ({
   page,
 }) => {
   await page.goto("/mascot");
@@ -28,14 +28,39 @@ test("V2 companion keeps reference artwork and all three expressions", async ({
   });
   await expect(pet).toBeVisible();
   await expect(pet).toHaveAttribute("data-pose", "front");
-  await expect(pet.locator("svg image")).toHaveCount(3);
-  for (const art of await pet.locator("svg image").all()) {
-    await expect(art).toHaveAttribute("href", "/mascot/reference-v2.jpg");
-  }
+  await expect(pet.locator("[data-renderer='three'] canvas")).toBeVisible();
+  await expect(pet.locator("svg image")).toHaveCount(0);
   await page.getByRole("button", { name: "Curious", exact: true }).click();
   await expect(pet).toHaveAttribute("data-pose", "curious");
   await page.getByRole("button", { name: "Happy blink", exact: true }).click();
   await expect(pet).toHaveAttribute("data-pose", "happy");
+});
+
+test("WebGL failure preserves the reference fallback and interaction", async ({
+  page,
+}) => {
+  await page.addInitScript(() => {
+    const original = HTMLCanvasElement.prototype.getContext;
+    HTMLCanvasElement.prototype.getContext = function (
+      this: HTMLCanvasElement,
+      type: string,
+      ...args: unknown[]
+    ) {
+      if (type.startsWith("webgl")) return null;
+      return Reflect.apply(original, this, [type, ...args]);
+    } as typeof original;
+  });
+  await page.goto("/mascot");
+  await expect(page.locator(".marker-pet svg image")).toHaveAttribute(
+    "href",
+    "/mascot/reference-v2.jpg",
+  );
+  await page.getByRole("button", { name: "Happy blink", exact: true }).click();
+  await expect(page.locator(".marker-pet")).toHaveAttribute(
+    "data-pose",
+    "happy",
+  );
+  await expect(page.locator(".marker-pet canvas")).toHaveCount(0);
 });
 
 test("keyboard greeting plays once and returns to its resting interaction state", async ({

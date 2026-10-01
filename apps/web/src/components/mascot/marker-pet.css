@@ -17,6 +17,8 @@
   outline-offset: 3px;
 }
 .marker-pet__body,
+.marker-pet__render,
+.marker-pet__render canvas,
 .marker-pet__frame,
 .marker-pet__frame svg {
   position: absolute;

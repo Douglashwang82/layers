@@ -5,6 +5,65 @@ import "./marker-pet.css";
 
 export type PetPose = "front" | "curious" | "happy";
 
+function PetRender({ pose, animate }: { pose: PetPose; animate: boolean }) {
+  const host = useRef<HTMLSpanElement>(null);
+  const scene = useRef<ReturnType<
+    typeof import("./pet-scene").createPetScene
+  > | null>(null);
+  const [ready, setReady] = useState(false);
+  const [reduced, setReduced] = useState(false);
+  useEffect(() => {
+    const media = window.matchMedia("(prefers-reduced-motion: reduce)");
+    const change = () => setReduced(media.matches);
+    change();
+    media.addEventListener("change", change);
+    return () => media.removeEventListener("change", change);
+  }, []);
+  useEffect(() => {
+    let cancelled = false;
+    import("./pet-scene")
+      .then(({ createPetScene }) => {
+        if (cancelled || !host.current) return;
+        try {
+          scene.current = createPetScene(host.current, () => {
+            scene.current?.dispose();
+            scene.current = null;
+            setReady(false);
+          });
+          setReady(true);
+        } catch {
+          setReady(false);
+        }
+      })
+      .catch(() => {
+        if (!cancelled) setReady(false);
+      });
+    return () => {
+      cancelled = true;
+      scene.current?.dispose();
+      scene.current = null;
+    };
+  }, []);
+  useEffect(() => {
+    scene.current?.update(pose, animate && !reduced);
+  }, [pose, animate, reduced, ready]);
+  return (
+    <>
+      {!ready && (
+        <span className="marker-pet__frame" data-visible="true">
+          <PetArtwork pose={pose} />
+        </span>
+      )}
+      <span
+        ref={host}
+        className="marker-pet__render"
+        data-renderer={ready ? "three" : "fallback"}
+        aria-hidden="true"
+      />
+    </>
+  );
+}
+
 // Windows into the supplied V2 board, not redrawn or generated substitutes.
 // Each source tip is translated to (120, 240) in a 240 × 256 viewport.
 const frames: Record<PetPose, { x: number; y: number; outline: string }> = {
@@ -97,15 +156,7 @@ export function MarkerPet({
     >
       <span className="marker-pet__anchor" aria-hidden="true" />
       <span className="marker-pet__body">
-        {(["front", "curious", "happy"] as const).map((frame) => (
-          <span
-            key={frame}
-            className="marker-pet__frame"
-            data-visible={currentPose === frame}
-          >
-            <PetArtwork pose={frame} />
-          </span>
-        ))}
+        <PetRender pose={currentPose} animate={animate} />
       </span>
     </button>
   );
