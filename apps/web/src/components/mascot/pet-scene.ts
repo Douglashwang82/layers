@@ -172,7 +172,7 @@ export function createPetScene(host: HTMLElement, unavailable: () => void) {
   function update(next: PetPose, enabled: boolean) {
     from = yaw;
     started = performance.now();
-    target = next === "front" ? 0 : next === "happy" ? 0.29 : 0.42;
+    target = next === "front" ? 0 : next === "happy" ? 0.29 : 0.27;
     model.expression(next === "happy");
     squishTarget = next === "curious" ? 1 : 0;
     // The squish spring brings its own wobble in and out of curious.

@@ -74,6 +74,8 @@ export const petShape = {
   ] as [number, number][],
   /** Front-to-back thickness relative to the front silhouette width. */
   depth: 1.15,
+  /** Front cross-section superellipse exponent (2 = ellipse, higher = broader front). */
+  squareness: 2.6,
   /** How far the belly bulges forward over the tip (V2 3/4 and hero views). */
   lean: 0.4,
   skin: "#f07c5c",
@@ -84,7 +86,7 @@ export const petShape = {
     halfHeight: 0.521,
     /** How far the face sits inside the skin, and the soft lip around it. */
     inset: 0.025,
-    rim: 0.02,
+    rim: 0.012,
     /** Painted occlusion: the lip shading the face edge, and the border crease. */
     shade: 0.32,
     crease: 0.3,
@@ -103,11 +105,11 @@ export const petShape = {
   flow: { breathe: 0.018, sway: 0.035, ripple: 0.022 },
   /** Curious pose: settle lower and wider, lean forward and to the side. */
   squish: {
-    compress: 0.09,
+    compress: 0.35,
     bulge: 0.07,
     blunt: 0.3,
-    shear: -0.07,
-    lean: 0.09,
+    shear: -0.03,
+    lean: 0.035,
     tilt: 0.07,
   },
 };
@@ -183,6 +185,15 @@ function depthAt(y: number) {
   return 1 + (petShape.depth - 1) * smooth(y / HEIGHT, 0, 0.25);
 }
 
+/**
+ * Superellipse exponent of the front half of each cross-section: above 2 the
+ * front is broader and flatter, so the face sits on a gentle plane and the
+ * body's front corners wrap past it in 3/4 view, as in V2. The nub stays round.
+ */
+function squarenessAt(y: number) {
+  return 2 + (petShape.squareness - 2) * smooth(y / HEIGHT, 0.08, 0.3);
+}
+
 function faceDistance(x: number, y: number) {
   const { y: cy, halfWidth, halfHeight } = petShape.face;
   return Math.hypot(x / halfWidth, (y - cy) / halfHeight);
@@ -193,16 +204,17 @@ function inset(x: number, y: number) {
     { inset, rim } = petShape.face;
   return (
     -inset * (1 - smooth(d, 0.9, 1.01)) +
-    rim * Math.exp(-(((d - 1.04) / 0.05) ** 2))
+    rim * Math.exp(-(((d - 1.03) / 0.035) ** 2))
   );
 }
 
 /** Front skin surface depth at a front-view point, including the face recess. */
 export function frontZ(x: number, y: number) {
-  const a = radiusAt(y);
+  const a = radiusAt(y),
+    n = squarenessAt(y);
   return (
     centerZ(y) +
-    depthAt(y) * a * Math.sqrt(Math.max(0, 1 - (x * x) / (a * a))) +
+    depthAt(y) * a * Math.pow(Math.max(0, 1 - Math.abs(x / a) ** n), 1 / n) +
     inset(x, y)
   );
 }
@@ -213,12 +225,16 @@ function bodyGeometry() {
   for (let r = 1; r < RINGS; r++) {
     const { x: a, y } = profile[r];
     const b = a * depthAt(y),
-      zc = centerZ(y);
+      zc = centerZ(y),
+      power = 2 / squarenessAt(y);
     for (let s = 0; s < SEGMENTS; s++) {
       const angle = (s / SEGMENTS) * Math.PI * 2;
-      const x = a * Math.cos(angle),
+      const side = Math.cos(angle),
         front = Math.sin(angle);
-      let z = zc + b * front;
+      // Superellipse on the front half (|x/a|^n + |z/b|^n = 1), ellipse behind.
+      const x =
+        front > 0 ? a * Math.sign(side) * Math.abs(side) ** power : a * side;
+      let z = zc + b * (front > 0 ? front ** power : front);
       if (front > 0) z += inset(x, y) * smooth(front, 0.1, 0.4);
       positions.push(x, y, z);
     }
@@ -247,6 +263,11 @@ function bodyGeometry() {
   geometry.computeVertexNormals();
   return geometry;
 }
+
+// Curious squish compresses only above the face's top edge (softplus ramp,
+// softness 0.2); CROWN_REST zeroes the ramp at the tip.
+const CROWN_FROM = petShape.face.y + petShape.face.halfHeight;
+const CROWN_REST = 0.5 * (-CROWN_FROM + Math.hypot(CROWN_FROM, 0.2));
 
 // Liquid motion runs on the GPU in root space, so the face, eyes and skin move
 // together and the tip (y = 0) never leaves its map coordinate.
@@ -287,9 +308,13 @@ vec3 petSquish(vec3 p) {
   float belly = sin(3.14159265 * clamp(h * 1.1, 0.0, 1.0));
   float base = 1.0 - smoothstep(0.02, 0.32, h);
   axis *= 1.0 + uSquish * (uSquishShape.y * belly + uSquishShape.z * base);
-  p = vec3(axis.x, p.y * (1.0 - uSquish * uSquishShape.x), axis.y + zc);
+  // The crown settles down onto the face (soft ramp from the face's top edge),
+  // so the face plate keeps its V2 size and stays high on the body.
+  float crown = p.y - ${CROWN_FROM.toFixed(3)};
+  float settle = 0.5 * (crown + sqrt(crown * crown + 0.04)) - ${CROWN_REST.toFixed(5)};
+  p = vec3(axis.x, p.y - uSquish * uSquishShape.x * settle, axis.y + zc);
   // Shear around the face height so the face plate turns into an oblique oval.
-  float faceY = ${petShape.face.y.toFixed(3)} * (1.0 - uSquish * uSquishShape.x);
+  float faceY = ${petShape.face.y.toFixed(3)};
   p.x += uSquish * uSquishShape.w * (p.y - faceY) * smoothstep(0.05, 0.35, h);
   // Bend: the base stays planted while the upper body leans.
   float bend = uSquish * smoothstep(0.0, 0.6, h);
