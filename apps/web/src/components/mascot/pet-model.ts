@@ -196,7 +196,12 @@ function squarenessAt(y: number) {
 
 function faceDistance(x: number, y: number) {
   const { y: cy, halfWidth, halfHeight } = petShape.face;
-  return Math.hypot(x / halfWidth, (y - cy) / halfHeight);
+  const v = (y - cy) / halfHeight;
+  // V2 has a narrower forehead and a full, softly flattened lower cheek.
+  return Math.hypot(
+    x / (halfWidth * (1 - 0.12 * THREE.MathUtils.clamp(v, -1, 1))),
+    v,
+  );
 }
 
 function inset(x: number, y: number) {
@@ -349,14 +354,15 @@ vec3 objectNormal = normalize(cross(
 
 const faceGLSL = /* glsl */ `
 #include <color_fragment>
-float faceD = length(vec2(vRest.x / uFace.y, (vRest.y - uFace.x) / uFace.z));
+float faceV = (vRest.y - uFace.x) / uFace.z;
+vec2 faceQ = vec2(vRest.x / (uFace.y * (1.0 - 0.12 * clamp(faceV, -1.0, 1.0))), faceV);
+float faceD = length(faceQ);
 float faceAA = fwidth(faceD);
 float faceMask = (1.0 - smoothstep(0.985 - faceAA, 0.985 + faceAA, faceD)) * step(uFace.w, vRest.z);
 diffuseColor.rgb = mix(diffuseColor.rgb, uFaceColor, faceMask);
 // Painted occlusion for the recess (the scene casts no shadows): the skin lip
 // shades the face just inside its edge, most on the side facing the upper-left
 // key light, and a thin crease darkens the skin where it folds into the face.
-vec2 faceQ = vec2(vRest.x / uFace.y, (vRest.y - uFace.x) / uFace.z);
 float faceSide = 0.45 + 0.55 * dot(normalize(faceQ + vec2(1e-5)), vec2(-0.85, 0.53));
 float faceFront = step(uFace.w, vRest.z);
 float lipShade = smoothstep(0.72, 0.985, faceD) * faceMask * max(faceSide, 0.15);
@@ -488,8 +494,8 @@ export function createPetModel() {
         new THREE.MeshPhysicalMaterial({
           color: petShape.skin,
           roughness: petShape.jelly.roughness,
-          clearcoat: 1,
-          clearcoatRoughness: petShape.jelly.clearcoatRoughness,
+          clearcoat: 0.45,
+          clearcoatRoughness: Math.max(0.2, petShape.jelly.clearcoatRoughness),
           sheen: 0.25,
           sheenColor: "#ffc4aa",
           sheenRoughness: 0.4,
@@ -520,8 +526,8 @@ export function createPetModel() {
   const eyeColors: number[] = [];
   for (let i = 0; i < sphere.attributes.position.count; i++) {
     const color = new THREE.Color("#180e13").lerp(
-      new THREE.Color("#8e4330"),
-      smooth(-sphere.attributes.position.getY(i), 0.2, 1),
+      new THREE.Color("#754333"),
+      smooth(-sphere.attributes.position.getY(i), -0.15, 1),
     );
     eyeColors.push(color.r, color.g, color.b);
   }

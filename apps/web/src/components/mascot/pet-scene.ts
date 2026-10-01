@@ -172,9 +172,10 @@ export function createPetScene(host: HTMLElement, unavailable: () => void) {
   function update(next: PetPose, enabled: boolean) {
     from = yaw;
     started = performance.now();
-    target = next === "front" ? 0 : next === "happy" ? 0.29 : 0.27;
+    // V2's three-quarter view exposes the left cheek and foreshortens the far eye.
+    target = next === "front" ? 0 : next === "happy" ? 0.29 : 0.34;
     model.expression(next === "happy");
-    squishTarget = next === "curious" ? 1 : 0;
+    squishTarget = next === "curious" ? 0.35 : 0;
     // The squish spring brings its own wobble in and out of curious.
     if (
       enabled &&
