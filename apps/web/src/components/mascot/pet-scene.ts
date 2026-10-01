@@ -164,7 +164,8 @@ export function createPetScene(host: HTMLElement, unavailable: () => void) {
       squish = squishTarget;
       squishVelocity = 0;
     }
-    model.squish(squish);
+    model.squish(squish * 0.35);
+    model.curious(squish);
     const settling = render(now);
     if (flowing || settling || squishing || yaw !== target)
       raf = requestAnimationFrame(frame);
@@ -173,9 +174,9 @@ export function createPetScene(host: HTMLElement, unavailable: () => void) {
     from = yaw;
     started = performance.now();
     // V2's three-quarter view exposes the left cheek and foreshortens the far eye.
-    target = next === "front" ? 0 : next === "happy" ? 0.29 : 0.34;
+    target = next === "front" ? 0 : next === "happy" ? 0.29 : 0.16;
     model.expression(next === "happy");
-    squishTarget = next === "curious" ? 0.35 : 0;
+    squishTarget = next === "curious" ? 1 : 0;
     // The squish spring brings its own wobble in and out of curious.
     if (
       enabled &&

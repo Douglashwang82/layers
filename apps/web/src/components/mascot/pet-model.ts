@@ -305,6 +305,21 @@ vec3 petFlow(vec3 p) {
 uniform float uSquish;
 uniform vec4 uSquishShape; // compress, bulge, blunt, shear
 uniform vec2 uSquishTilt; // forward lean, side tilt (radians)
+uniform float uCurious;
+// Turn the face and its inset together, including the eyes and catchlights.
+// Fade into the back and the anchored tip rather than rotating a floating plate.
+vec3 petCurious(vec3 p) {
+  float h = clamp(p.y / 2.52, 0.0, 1.0);
+  float zc = uLean * pow(sin(3.14159265 * h), 1.1);
+  float front = smoothstep(0.0, 0.65, p.z - zc);
+  float angle = uCurious * 0.34 * front * smoothstep(0.08, 0.32, h);
+  vec2 face = vec2(p.x, p.y - ${petShape.face.y.toFixed(3)});
+  p.xy = vec2(face.x * cos(angle) - face.y * sin(angle),
+              face.x * sin(angle) + face.y * cos(angle));
+  p.y += ${petShape.face.y.toFixed(3)};
+  p.x *= 1.0 + 0.1 * uCurious * (1.0 - front);
+  return p;
+}
 vec3 petSquish(vec3 p) {
   if (uSquish == 0.0) return p;
   float h = clamp(p.y / ${HEIGHT.toFixed(2)}, 0.0, 1.0);
@@ -330,11 +345,11 @@ vec3 petSquish(vec3 p) {
 }
 vec3 petDeform(vec3 p) {
 #ifdef PET_IN_ROOT
-  return petSquish(petFlow(p));
+  return petSquish(petFlow(petCurious(p)));
 #else
   mat4 toRoot = inverse(uRoot) * modelMatrix;
   vec4 r = toRoot * vec4(p, 1.0);
-  r.xyz = petSquish(petFlow(r.xyz));
+  r.xyz = petSquish(petFlow(petCurious(r.xyz)));
   return (inverse(toRoot) * r).xyz;
 #endif
 }
@@ -388,6 +403,7 @@ type FlowUniforms = {
   uAmp: THREE.IUniform<THREE.Vector3>;
   uRoot: THREE.IUniform<THREE.Matrix4>;
   uSquish: THREE.IUniform<number>;
+  uCurious: THREE.IUniform<number>;
   uSquishShape: THREE.IUniform<THREE.Vector4>;
   uSquishTilt: THREE.IUniform<THREE.Vector2>;
 };
@@ -408,11 +424,10 @@ function liquid<T extends THREE.Material>(
         "#include <begin_vertex>",
         `vec3 transformed = petDeform(position);${options.face ? "\nvRest = position;" : ""}`,
       );
-    if (options.root)
-      shader.vertexShader = shader.vertexShader.replace(
-        "#include <beginnormal_vertex>",
-        normalGLSL,
-      );
+    shader.vertexShader = shader.vertexShader.replace(
+      "#include <beginnormal_vertex>",
+      normalGLSL,
+    );
     if (options.face) {
       shader.uniforms.uFace = {
         value: new THREE.Vector4(y, halfWidth, halfHeight, centerZ(y)),
@@ -475,6 +490,7 @@ export function createPetModel() {
     },
     uRoot: { value: new THREE.Matrix4() },
     uSquish: { value: 0 },
+    uCurious: { value: 0 },
     uSquishShape: {
       value: new THREE.Vector4(
         petShape.squish.compress,
@@ -584,6 +600,19 @@ export function createPetModel() {
     expression(happy: boolean) {
       open.visible = !happy;
       closed.visible = happy;
+    },
+    /** Art-directed perspective for the V2 hero's near and far eyes. */
+    curious(amount: number) {
+      const blend = THREE.MathUtils.clamp(amount, 0, 1);
+      uniforms.uCurious.value = blend;
+      open.children.forEach((eye, i) => {
+        const near = i === 0;
+        eye.scale.set(
+          THREE.MathUtils.lerp(1, near ? 1.12 : 0.88, blend),
+          THREE.MathUtils.lerp(1, near ? 1.06 : 0.94, blend),
+          1,
+        );
+      });
     },
     /**
      * Seat each catchlight where the key light mirrors into the camera: the
