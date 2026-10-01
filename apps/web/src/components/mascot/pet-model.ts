@@ -317,7 +317,11 @@ vec3 petCurious(vec3 p) {
   p.xy = vec2(face.x * cos(angle) - face.y * sin(angle),
               face.x * sin(angle) + face.y * cos(angle));
   p.y += ${petShape.face.y.toFixed(3)};
-  p.x *= 1.0 + 0.1 * uCurious * (1.0 - front);
+  // Hero silhouette: full shoulders, a left-offset crown, and a right belly.
+  // Both offsets vanish at the tip so the geographic anchor stays fixed.
+  p.x *= 1.0 + 0.10 * uCurious * (1.0 - front);
+  float bellySide = smoothstep(-0.4, 0.4, p.x) * (1.0 - front);
+  p.x += uCurious * (0.08 * sin(3.14159265 * h) * bellySide - 0.24 * pow(h, 8.0));
   return p;
 }
 vec3 petSquish(vec3 p) {
