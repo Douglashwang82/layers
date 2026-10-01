@@ -1,6 +1,6 @@
 import { getCopy } from "@/lib/i18n";
 import { AuthForm } from "@/components/auth-form";
-import { MapLayersAnimation } from "@/components/map-layers-animation";
+import { SignInPet } from "@/components/mascot/sign-in-pet";
 export default async function SignInPage({
   searchParams,
 }: {
@@ -11,7 +11,7 @@ export default async function SignInPage({
     <div className="auth-page auth-page-stage">
       <div className="auth-stage">
         <div className="auth-scene" aria-hidden="true">
-          <MapLayersAnimation />
+          <SignInPet />
         </div>
         <div className="auth-scene-story">
           <p className="auth-scene-eyebrow">

@@ -1,6 +1,7 @@
 # Sign-in motion redesign — UI team handoff
 
-Status: implementation plan; visual direction is not yet selected.
+Status: superseded. The sign-in page now uses the Warm Pin mascot; see
+[the sign-in mascot stage guide](../guides/sign-in-mascot-stage.md).
 
 ## Brief and decision history
 

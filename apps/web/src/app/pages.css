@@ -481,7 +481,7 @@
 .auth-links {
   font-size: 15px;
 }
-/* Cinematic sign-in: a dark architectural world with an independent form. */
+/* Sign-in stage: V2's warm paper board with the hero pet and an independent form. */
 .auth-page-stage {
   display: block;
   max-width: 1680px;
@@ -494,61 +494,28 @@
   grid-template-columns: minmax(0, 1fr) minmax(320px, 370px);
   gap: 48px;
   align-items: center;
-  min-height: 790px;
+  min-height: 720px;
   padding: 48px;
-  border: 1px solid #23443a;
+  border: 1px solid #efe2d7;
   border-radius: 28px;
-  background: #061916;
+  background:
+    radial-gradient(
+      ellipse 60% 55% at 32% 62%,
+      #fff9f4 0%,
+      rgb(255 249 244 / 0) 70%
+    ),
+    #fbf3ec;
   overflow: hidden;
   isolation: isolate;
 }
-.auth-stage::after {
-  content: "";
-  position: absolute;
-  inset: 0;
-  z-index: 1;
-  background: linear-gradient(
-    90deg,
-    transparent 42%,
-    rgb(6 25 22 / 0.15) 60%,
-    #061916 81%
-  );
-  pointer-events: none;
-}
+/* The pet stands in the open space between the story and the form. */
 .auth-scene {
   position: absolute;
-  inset: 0 19% 0 -9%;
-  min-width: 0;
-}
-.auth-scene::before {
-  content: "";
-  position: absolute;
-  inset: 0 0 auto;
-  z-index: 1;
-  height: 130px;
-  background: linear-gradient(#061916, transparent);
+  inset: 0 470px 0 0;
+  display: grid;
+  place-items: end center;
+  padding: 0 0 92px 18%;
   pointer-events: none;
-}
-.sign-in-city {
-  position: relative;
-  width: 100%;
-  height: 100%;
-  isolation: isolate;
-}
-.sign-in-city-fallback,
-.sign-in-city-canvas {
-  position: absolute;
-  inset: 0;
-  display: block;
-  width: 100%;
-  height: 100%;
-}
-.sign-in-city-fallback {
-  padding-top: 130px;
-  opacity: 0.65;
-}
-.sign-in-city[data-ready="true"] .sign-in-city-fallback {
-  visibility: hidden;
 }
 .auth-scene-story {
   position: relative;
@@ -564,12 +531,12 @@
   font-size: 10px;
   font-weight: 600;
   letter-spacing: 0.2em;
-  color: #aac4b5;
+  color: #85584a;
 }
 .auth-scene-eyebrow > span {
   width: 20px;
   height: 1px;
-  background: #c7f464;
+  background: #ea7356;
 }
 .auth-scene-story h2 {
   margin: 0;
@@ -577,17 +544,17 @@
   line-height: 0.99;
   font-weight: 500;
   letter-spacing: -0.055em;
-  color: #f3f6ed;
+  color: #4b2c22;
 }
 .auth-scene-story h2 em {
   font-family: Georgia, "Noto Serif TC", serif;
   font-weight: 400;
-  color: #c7f464;
+  color: #d9603f;
 }
 .auth-scene-description {
   max-width: 300px;
   margin: 24px 0 0;
-  color: #b1c6ba;
+  color: #85614f;
   font-size: 14px;
   line-height: 1.65;
 }
@@ -600,7 +567,7 @@
   display: flex;
   gap: 12px;
   align-items: center;
-  color: #a6bfb1;
+  color: #82604f;
   font-size: 11px;
   letter-spacing: 0.08em;
   pointer-events: none;
@@ -608,12 +575,12 @@
 .auth-scene-caption > span:first-child {
   width: 5px;
   height: 5px;
-  background: #c7f464;
+  background: #ea7356;
   border-radius: 50%;
 }
 .auth-scene-caption-line {
   height: 1px;
-  background: #29473c;
+  background: #ead8cc;
   flex: 1;
   margin-left: 12px;
 }
@@ -626,10 +593,10 @@
   margin: 0;
   padding: 36px 32px;
   justify-self: end;
-  border: 1px solid #e0e7dc;
+  border: 1px solid #efe2d7;
   border-radius: 24px;
-  background: #f8faf4;
-  box-shadow: 0 32px 100px rgb(0 0 0 / 0.28);
+  background: #fffdfb;
+  box-shadow: 0 28px 80px -24px rgb(120 70 48 / 0.22);
 }
 .auth-stage .form-panel h1 {
   font-size: 34px;
@@ -656,7 +623,8 @@
     right: 390px;
   }
   .auth-scene {
-    inset: 60px 20% 0 -25%;
+    inset: 0 380px 0 0;
+    padding: 0 0 80px 12%;
   }
 }
 /* Profile */

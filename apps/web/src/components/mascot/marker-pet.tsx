@@ -4,15 +4,22 @@ import { useEffect, useId, useRef, useState } from "react";
 import type { PetShape } from "./pet-shape";
 import "./marker-pet.css";
 
-export type PetPose = "front" | "curious" | "happy";
+/** `hero` is V2's large upright three-quarter view (the sign-in stage). */
+export type PetPose = "front" | "curious" | "happy" | "hero";
 
-function PetRender({
+/**
+ * The live pet. `animate` enables transitions at all; `idle` additionally
+ * runs the continuous liquid motion (pose changes still animate without it).
+ */
+export function PetRender({
   pose,
   animate,
+  idle = true,
   shape,
 }: {
   pose: PetPose;
   animate: boolean;
+  idle?: boolean;
   shape?: PetShape;
 }) {
   const host = useRef<HTMLSpanElement>(null);
@@ -54,8 +61,8 @@ function PetRender({
     };
   }, []);
   useEffect(() => {
-    scene.current?.update(pose, animate && !reduced);
-  }, [pose, animate, reduced, ready]);
+    scene.current?.update(pose, animate && !reduced, idle);
+  }, [pose, animate, idle, reduced, ready]);
   useEffect(() => {
     if (shape) scene.current?.setShape(shape);
   }, [shape, ready]);
@@ -78,7 +85,10 @@ function PetRender({
 
 // Windows into the supplied V2 board, not redrawn or generated substitutes.
 // Each source tip is translated to (120, 240) in a 240 × 256 viewport.
-const frames: Record<PetPose, { x: number; y: number; outline: string }> = {
+const views: Record<
+  Exclude<PetPose, "hero">,
+  { x: number; y: number; outline: string }
+> = {
   front: {
     x: 594,
     y: 109,
@@ -101,7 +111,8 @@ const frames: Record<PetPose, { x: number; y: number; outline: string }> = {
 
 export function PetArtwork({ pose }: { pose: PetPose }) {
   const id = useId();
-  const frame = frames[pose];
+  // The board's small 3/4 window stands in for the hero until WebGL is ready.
+  const frame = views[pose === "hero" ? "curious" : pose];
   return (
     <svg viewBox="0 0 240 256" aria-hidden="true" focusable="false">
       <defs>

@@ -1,0 +1,82 @@
+.sign-in-pet {
+  --pet-ease: cubic-bezier(0.22, 1, 0.36, 1);
+  position: relative;
+  width: clamp(260px, 27vw, 400px);
+  aspect-ratio: 240 / 256;
+}
+.sign-in-pet__body {
+  position: absolute;
+  inset: 0;
+  /* The tip sits at 93.75% of the frame, as on the map. */
+  transform-origin: 50% 93.75%;
+  animation: sign-in-pet-enter 700ms var(--pet-ease) both;
+}
+/* V2's soft contact shadow, cast down and to the right of the tip. */
+.sign-in-pet__shadow {
+  position: absolute;
+  left: 30%;
+  top: 89%;
+  width: 56%;
+  height: 9%;
+  border-radius: 50%;
+  background: radial-gradient(
+    closest-side,
+    rgb(150 96 72 / 0.26),
+    rgb(150 96 72 / 0)
+  );
+  animation: sign-in-pet-shadow 700ms var(--pet-ease) both;
+}
+.sign-in-pet__marks {
+  position: absolute;
+  left: 74%;
+  top: 6%;
+  width: 16%;
+  overflow: visible;
+}
+.sign-in-pet__marks path {
+  fill: none;
+  stroke: #ef8762;
+  stroke-width: 7;
+  stroke-linecap: round;
+  transform-box: fill-box;
+  transform-origin: 0 100%;
+  animation: sign-in-pet-mark 520ms var(--pet-ease) both;
+}
+.sign-in-pet__marks path:nth-child(1) {
+  animation-delay: 900ms;
+}
+.sign-in-pet__marks path:nth-child(2) {
+  animation-delay: 980ms;
+}
+.sign-in-pet__marks path:nth-child(3) {
+  animation-delay: 1060ms;
+}
+/* Later greetings (code sent) re-key the marks; they pop without the delay. */
+.sign-in-pet[data-pose="happy"] .sign-in-pet__marks path {
+  animation-delay: 0ms;
+}
+@keyframes sign-in-pet-enter {
+  from {
+    opacity: 0;
+    transform: translateY(-28px);
+  }
+}
+@keyframes sign-in-pet-shadow {
+  from {
+    opacity: 0;
+    transform: scale(0.6);
+  }
+}
+@keyframes sign-in-pet-mark {
+  from {
+    opacity: 0;
+    transform: scale(0.4);
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .sign-in-pet__body,
+  .sign-in-pet__shadow,
+  .sign-in-pet__marks path {
+    animation: none;
+  }
+}

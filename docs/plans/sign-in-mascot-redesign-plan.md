@@ -1,7 +1,9 @@
 # Sign-in redesign with the Warm Pin mascot
 
-Status: proposal, awaiting decisions (see the last section). Nothing below is
-implemented yet.
+Status: superseded by the shipped stage in
+[the sign-in mascot stage guide](../guides/sign-in-mascot-stage.md). It uses
+the live Three.js pet instead of the image-based option A below, keeps the
+existing headline, and shows no mascot on mobile.
 
 This replaces the [sign-in motion handoff](sign-in-motion-ui-handoff.md) and
 its rough [motion studies](../design/sign-in-motion-studies/). The user asked

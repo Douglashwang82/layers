@@ -134,6 +134,10 @@ export function createPetScene(host: HTMLElement, unavailable: () => void) {
     squish = 0,
     squishVelocity = 0,
     squishTarget = 0,
+    // The 3/4 face turn has its own spring: hero turns without squishing.
+    turn = 0,
+    turnVelocity = 0,
+    turnTarget = 0,
     lastFrame = 0,
     rebuild = 0,
     pendingShape: PetShape | null = null;
@@ -166,19 +170,29 @@ export function createPetScene(host: HTMLElement, unavailable: () => void) {
       squish = squishTarget;
       squishVelocity = 0;
     }
+    turnVelocity += (170 * (turnTarget - turn) - 13 * turnVelocity) * dt;
+    turn += turnVelocity * dt;
+    const turning =
+      Math.abs(turnTarget - turn) > 1e-3 || Math.abs(turnVelocity) > 1e-3;
+    if (!turning) {
+      turn = turnTarget;
+      turnVelocity = 0;
+    }
     model.squish(squish * 0.35);
-    model.curious(squish);
+    model.curious(turn);
     const settling = render(now);
-    if (flowing || settling || squishing || yaw !== target)
+    if (flowing || settling || squishing || turning || yaw !== target)
       raf = requestAnimationFrame(frame);
   }
-  function update(next: PetPose, enabled: boolean) {
+  function update(next: PetPose, enabled: boolean, idle = true) {
     from = yaw;
     started = performance.now();
     // V2's three-quarter view exposes the left cheek and foreshortens the far eye.
     target = next === "front" ? 0 : next === "happy" ? 0.29 : 0.16;
     model.expression(next === "happy");
-    squishTarget = next === "curious" ? 1 : 0;
+    // V2's hero is fuller than the upright drop: it carries part of the squish.
+    squishTarget = next === "curious" ? 1 : next === "hero" ? 0.55 : 0;
+    turnTarget = next === "curious" || next === "hero" ? 1 : 0;
     // The squish spring brings its own wobble in and out of curious.
     if (
       enabled &&
@@ -189,7 +203,7 @@ export function createPetScene(host: HTMLElement, unavailable: () => void) {
     )
       jiggleAt = started;
     pose = next;
-    flowing = enabled;
+    flowing = enabled && idle;
     lastFrame = started;
     if (!enabled) {
       from = target;
@@ -197,6 +211,8 @@ export function createPetScene(host: HTMLElement, unavailable: () => void) {
       jiggleAt = -Infinity;
       squish = squishTarget;
       squishVelocity = 0;
+      turn = turnTarget;
+      turnVelocity = 0;
     }
     if (!raf) frame();
   }
@@ -217,7 +233,7 @@ export function createPetScene(host: HTMLElement, unavailable: () => void) {
     model.root.rotation.y = yaw;
     model.expression(pose === "happy");
     model.squish(squish * 0.35);
-    model.curious(squish);
+    model.curious(turn);
     render();
   }
   function resize() {

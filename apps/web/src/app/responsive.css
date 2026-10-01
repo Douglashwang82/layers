@@ -120,8 +120,7 @@
     display: none;
   }
   .auth-scene-story,
-  .auth-scene-caption,
-  .auth-stage::after {
+  .auth-scene-caption {
     display: none;
   }
   .auth-stage .form-panel {
