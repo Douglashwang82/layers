@@ -196,12 +196,12 @@ function squarenessAt(y: number) {
 
 function faceDistance(x: number, y: number) {
   const { y: cy, halfWidth, halfHeight } = petShape.face;
-  const v = (y - cy) / halfHeight;
-  // V2 has a narrower forehead and a full, softly flattened lower cheek.
-  return Math.hypot(
-    x / (halfWidth * (1 - 0.12 * THREE.MathUtils.clamp(v, -1, 1))),
-    v,
-  );
+  const v = (y - cy) / (halfHeight * 1.08);
+  // The reference is a full cheek with a tapered forehead and a soft, flat chin.
+  const u =
+    x / (halfWidth * 1.08 * (1 - 0.18 * THREE.MathUtils.clamp(v, -1, 1)));
+  const n = 2 + 0.3 * smooth(-v, 0, 0.8);
+  return (Math.abs(u) ** n + Math.abs(v) ** n) ** (1 / n);
 }
 
 function inset(x: number, y: number) {
@@ -373,9 +373,10 @@ vec3 objectNormal = normalize(cross(
 
 const faceGLSL = /* glsl */ `
 #include <color_fragment>
-float faceV = (vRest.y - uFace.x) / uFace.z;
-vec2 faceQ = vec2(vRest.x / (uFace.y * (1.0 - 0.12 * clamp(faceV, -1.0, 1.0))), faceV);
-float faceD = length(faceQ);
+float faceV = (vRest.y - uFace.x) / (uFace.z * 1.08);
+vec2 faceQ = vec2(vRest.x / (uFace.y * 1.08 * (1.0 - 0.18 * clamp(faceV, -1.0, 1.0))), faceV);
+float faceN = 2.0 + 0.3 * smoothstep(0.0, 0.8, -faceV);
+float faceD = pow(pow(abs(faceQ.x), faceN) + pow(abs(faceQ.y), faceN), 1.0 / faceN);
 float faceAA = fwidth(faceD);
 float faceMask = (1.0 - smoothstep(0.985 - faceAA, 0.985 + faceAA, faceD)) * step(uFace.w, vRest.z);
 diffuseColor.rgb = mix(diffuseColor.rgb, uFaceColor, faceMask);
@@ -513,9 +514,9 @@ export function createPetModel() {
       liquid(
         new THREE.MeshPhysicalMaterial({
           color: petShape.skin,
-          roughness: petShape.jelly.roughness,
-          clearcoat: 0.45,
-          clearcoatRoughness: Math.max(0.2, petShape.jelly.clearcoatRoughness),
+          roughness: Math.min(1, petShape.jelly.roughness + 0.12),
+          clearcoat: 0.25,
+          clearcoatRoughness: Math.max(0.32, petShape.jelly.clearcoatRoughness),
           sheen: 0.25,
           sheenColor: "#ffc4aa",
           sheenRoughness: 0.4,
