@@ -129,7 +129,12 @@ export function createPetScene(host: HTMLElement, unavailable: () => void) {
     from = 0,
     started = 0,
     jiggleAt = -Infinity,
-    pose: PetPose | null = null;
+    pose: PetPose | null = null,
+    // Curious squish runs on an underdamped spring so it settles like jelly.
+    squish = 0,
+    squishVelocity = 0,
+    squishTarget = 0,
+    lastFrame = 0;
   // Every flow frequency is a multiple of 0.1 rad/s, so wrapping time at
   // 20π seconds is seamless and keeps shader floats precise.
   const loop = 20 * Math.PI;
@@ -148,8 +153,20 @@ export function createPetScene(host: HTMLElement, unavailable: () => void) {
     const progress = Math.min(1, (now - started) / 240);
     yaw = THREE.MathUtils.lerp(from, target, 1 - Math.pow(1 - progress, 3));
     model.root.rotation.y = yaw;
+    const dt = Math.min(0.05, Math.max(0, (now - lastFrame) / 1000));
+    lastFrame = now;
+    squishVelocity +=
+      (170 * (squishTarget - squish) - 13 * squishVelocity) * dt;
+    squish += squishVelocity * dt;
+    const squishing =
+      Math.abs(squishTarget - squish) > 1e-3 || Math.abs(squishVelocity) > 1e-3;
+    if (!squishing) {
+      squish = squishTarget;
+      squishVelocity = 0;
+    }
+    model.squish(squish);
     const settling = render(now);
-    if (flowing || settling || yaw !== target)
+    if (flowing || settling || squishing || yaw !== target)
       raf = requestAnimationFrame(frame);
   }
   function update(next: PetPose, enabled: boolean) {
@@ -157,13 +174,25 @@ export function createPetScene(host: HTMLElement, unavailable: () => void) {
     started = performance.now();
     target = next === "front" ? 0 : next === "happy" ? 0.29 : 0.42;
     model.expression(next === "happy");
-    if (enabled && pose && pose !== next) jiggleAt = started;
+    squishTarget = next === "curious" ? 1 : 0;
+    // The squish spring brings its own wobble in and out of curious.
+    if (
+      enabled &&
+      pose &&
+      pose !== next &&
+      pose !== "curious" &&
+      next !== "curious"
+    )
+      jiggleAt = started;
     pose = next;
     flowing = enabled;
+    lastFrame = started;
     if (!enabled) {
       from = target;
       started -= 240;
       jiggleAt = -Infinity;
+      squish = squishTarget;
+      squishVelocity = 0;
     }
     if (!raf) frame();
   }

@@ -75,7 +75,7 @@ export const petShape = {
   /** Front-to-back thickness relative to the front silhouette width. */
   depth: 1.15,
   /** How far the belly bulges forward over the tip (V2 3/4 and hero views). */
-  lean: 0.42,
+  lean: 0.4,
   skin: "#f07c5c",
   face: {
     color: "#f9cbb1",
@@ -83,7 +83,7 @@ export const petShape = {
     halfWidth: 0.594,
     halfHeight: 0.521,
     /** How far the face sits inside the skin, and the soft lip around it. */
-    inset: 0.065,
+    inset: 0.025,
     rim: 0.02,
     /** Painted occlusion: the lip shading the face edge, and the border crease. */
     shade: 0.32,
@@ -101,6 +101,15 @@ export const petShape = {
   },
   /** Idle liquid motion amplitudes. */
   flow: { breathe: 0.018, sway: 0.035, ripple: 0.022 },
+  /** Curious pose: settle lower and wider, lean forward and to the side. */
+  squish: {
+    compress: 0.09,
+    bulge: 0.07,
+    blunt: 0.3,
+    shear: -0.07,
+    lean: 0.09,
+    tilt: 0.07,
+  },
 };
 
 const HEIGHT = 2.52;
@@ -265,13 +274,37 @@ vec3 petFlow(vec3 p) {
   axis.y += lag * 0.6 * sin(uTime * 0.8 + 1.3);
   return vec3(axis.x, p.y, axis.y + zc);
 }
+// Curious squish: the drop settles under its own weight. Every step scales
+// or bends about the tip, so the map anchor (origin) never moves.
+uniform float uSquish;
+uniform vec4 uSquishShape; // compress, bulge, blunt, shear
+uniform vec2 uSquishTilt; // forward lean, side tilt (radians)
+vec3 petSquish(vec3 p) {
+  if (uSquish == 0.0) return p;
+  float h = clamp(p.y / ${HEIGHT.toFixed(2)}, 0.0, 1.0);
+  float zc = uLean * pow(sin(3.14159265 * h), 1.1);
+  vec2 axis = vec2(p.x, p.z - zc);
+  float belly = sin(3.14159265 * clamp(h * 1.1, 0.0, 1.0));
+  float base = 1.0 - smoothstep(0.02, 0.32, h);
+  axis *= 1.0 + uSquish * (uSquishShape.y * belly + uSquishShape.z * base);
+  p = vec3(axis.x, p.y * (1.0 - uSquish * uSquishShape.x), axis.y + zc);
+  // Shear around the face height so the face plate turns into an oblique oval.
+  float faceY = ${petShape.face.y.toFixed(3)} * (1.0 - uSquish * uSquishShape.x);
+  p.x += uSquish * uSquishShape.w * (p.y - faceY) * smoothstep(0.05, 0.35, h);
+  // Bend: the base stays planted while the upper body leans.
+  float bend = uSquish * smoothstep(0.0, 0.6, h);
+  float a = bend * uSquishTilt.x, b = bend * uSquishTilt.y;
+  p.yz = vec2(p.y * cos(a) - p.z * sin(a), p.y * sin(a) + p.z * cos(a));
+  p.xy = vec2(p.x * cos(b) - p.y * sin(b), p.x * sin(b) + p.y * cos(b));
+  return p;
+}
 vec3 petDeform(vec3 p) {
 #ifdef PET_IN_ROOT
-  return petFlow(p);
+  return petSquish(petFlow(p));
 #else
   mat4 toRoot = inverse(uRoot) * modelMatrix;
   vec4 r = toRoot * vec4(p, 1.0);
-  r.xyz = petFlow(r.xyz);
+  r.xyz = petSquish(petFlow(r.xyz));
   return (inverse(toRoot) * r).xyz;
 #endif
 }
@@ -323,6 +356,9 @@ type FlowUniforms = {
   uLean: THREE.IUniform<number>;
   uAmp: THREE.IUniform<THREE.Vector3>;
   uRoot: THREE.IUniform<THREE.Matrix4>;
+  uSquish: THREE.IUniform<number>;
+  uSquishShape: THREE.IUniform<THREE.Vector4>;
+  uSquishTilt: THREE.IUniform<THREE.Vector2>;
 };
 
 function liquid<T extends THREE.Material>(
@@ -407,6 +443,18 @@ export function createPetModel() {
       ),
     },
     uRoot: { value: new THREE.Matrix4() },
+    uSquish: { value: 0 },
+    uSquishShape: {
+      value: new THREE.Vector4(
+        petShape.squish.compress,
+        petShape.squish.bulge,
+        petShape.squish.blunt,
+        petShape.squish.shear,
+      ),
+    },
+    uSquishTilt: {
+      value: new THREE.Vector2(petShape.squish.lean, petShape.squish.tilt),
+    },
   };
   root.add(
     new THREE.Mesh(
@@ -536,6 +584,10 @@ export function createPetModel() {
       }
     },
     /** time in seconds, flow 0..1 idle amount, jiggle a signed stretch impulse. */
+    /** 0 = upright drop, 1 = settled curious squish (may overshoot). */
+    squish(amount: number) {
+      uniforms.uSquish.value = amount;
+    },
     flow(time: number, flow: number, jiggle: number) {
       uniforms.uTime.value = time;
       uniforms.uFlow.value = flow;
