@@ -1,0 +1,84 @@
+.mascot-studio {
+  max-width: 1280px;
+  margin: 0 auto;
+  padding: 48px 24px 100px;
+  color: #513b31;
+}
+.mascot-studio__intro {
+  margin-bottom: 32px;
+}
+.mascot-studio__intro h1 {
+  font-size: clamp(28px, 4vw, 44px);
+  margin: 12px 0;
+}
+.mascot-studio__eyebrow {
+  color: #9b513a;
+  letter-spacing: 0.08em;
+}
+.mascot-studio__grid {
+  display: grid;
+  grid-template-columns: 0.8fr 1.2fr;
+  gap: 32px;
+}
+.mascot-studio__stage {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 32px 20px;
+  background: radial-gradient(ellipse at 50% 35%, #fffaf6, #f8e9dd);
+  border-radius: 32px;
+  text-align: center;
+}
+.mascot-studio__stage > p {
+  font-size: 14px;
+  max-width: 30ch;
+}
+.mascot-studio__poses {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 8px;
+  margin-top: 20px;
+}
+.mascot-studio__poses button {
+  padding: 10px 16px;
+  min-height: 44px;
+  border: 1px solid #dfb49c;
+  border-radius: 24px;
+  background: #fffaf6;
+  color: #513b31;
+}
+.mascot-studio__poses button[aria-pressed="true"] {
+  background: #8c442d;
+  border-color: #8c442d;
+  color: white;
+}
+.mascot-studio__motion {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 44px;
+  margin-top: 16px;
+}
+.mascot-studio__reference {
+  align-self: center;
+}
+.mascot-studio__reference img {
+  display: block;
+  width: 100%;
+  height: auto;
+  border-radius: 24px;
+}
+.mascot-studio__reference p {
+  margin: 24px 0;
+}
+@media (max-width: 800px) {
+  .mascot-studio {
+    padding: 24px 16px 100px;
+  }
+  .mascot-studio__grid {
+    grid-template-columns: 1fr;
+    gap: 24px;
+  }
+}

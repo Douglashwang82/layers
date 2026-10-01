@@ -1,6 +1,18 @@
 export { restaurantAdminEn, restaurantAdminZh } from "./restaurant-admin-copy";
 export type Locale = "en" | "zh-TW";
 export const en = {
+  mascotInspect: "Greet your map companion and view this place",
+  mascotSelectedPlace: "Selected place",
+  mascotTitle: "Your little guide to the city",
+  mascotIntro: "A quiet companion, one discovery at a time.",
+  mascotFront: "Front",
+  mascotCurious: "Curious",
+  mascotHappy: "Happy blink",
+  mascotMotion: "Play gentle motion",
+  mascotHint: "Hover or focus to turn. Tap to greet.",
+  mascotMapHint: "On the map, the tip stays on your selected location.",
+  mascotReference: "V2 design reference",
+  mascotBack: "Explore the map",
   home: "Home",
   explore: "Explore",
   places: "Places",
@@ -744,6 +756,18 @@ export const en = {
 export type Copy = typeof en;
 export const zh: Copy = {
   ...en,
+  mascotInspect: "和地圖夥伴打招呼並查看地點",
+  mascotSelectedPlace: "選取的地點",
+  mascotTitle: "陪你探索城市的小夥伴",
+  mascotIntro: "安靜陪伴，一起發現下一個喜歡的地方。",
+  mascotFront: "正面",
+  mascotCurious: "好奇轉向",
+  mascotHappy: "開心眨眼",
+  mascotMotion: "播放輕柔動態",
+  mascotHint: "滑鼠靠近或鍵盤聚焦時轉向，點一下打招呼。",
+  mascotMapHint: "在地圖上，尖端會固定對準你選取的地點。",
+  mascotReference: "V2 設計參考圖",
+  mascotBack: "開始探索地圖",
   home: "首頁",
   explore: "探索",
   places: "美食地點",

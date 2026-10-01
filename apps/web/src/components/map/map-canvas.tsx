@@ -12,6 +12,8 @@ import { maxMapPoints, type Bounds, type ItemType } from "@taiwanhub/shared";
 import type { MapItem } from "@/features/map/query";
 import type { Copy, Locale } from "@/lib/dictionary";
 import "mapbox-gl/dist/mapbox-gl.css";
+import { SelectedPet } from "./selected-pet";
+import { selectedPetTarget } from "@/lib/marker-pet";
 export type MapCanvasHandle = {
   fitTo: (items: MapItem[]) => void;
   /** Current camera center, used to bias provider search toward what the user sees. */
@@ -136,6 +138,7 @@ export function MapCanvas({
 }) {
   const container = useRef<HTMLDivElement>(null);
   const mapRef = useRef<MapboxMap | null>(null);
+  const [readyMap, setReadyMap] = useState<MapboxMap | null>(null);
   const loadedRef = useRef(false);
   const userMovedRef = useRef(false);
   // The canvas keeps its point budget: extra points reserve room within it.
@@ -288,6 +291,7 @@ export function MapCanvas({
         });
         mapRef.current = map;
         dispose = () => {
+          setReadyMap(null);
           mapRef.current = null;
           map.remove();
         };
@@ -540,6 +544,7 @@ export function MapCanvas({
           });
           map.setPadding(latest.current.padding);
           loadedRef.current = true;
+          setReadyMap(map);
           latest.current.onStatus("ready");
         });
       })
@@ -606,13 +611,38 @@ export function MapCanvas({
     observer.observe(container.current);
     return () => observer.disconnect();
   }, []);
+  const petTarget = selectedPetTarget(
+    catalogItems,
+    extraPoints,
+    selectedKey,
+    extraSelectedKey,
+  );
+  const petItem = catalogItems.find((item) => item.key === petTarget?.key);
+  const petName = petItem
+    ? locale === "zh-TW"
+      ? petItem.nameChinese || petItem.name
+      : petItem.name || petItem.nameChinese
+    : t.mascotSelectedPlace;
   return (
-    <div
-      ref={container}
-      className="map-canvas"
-      role="region"
-      aria-label={t.map}
-      data-attempt={attempt}
-    />
+    <>
+      <div
+        ref={container}
+        className="map-canvas"
+        role="region"
+        aria-label={t.map}
+        data-attempt={attempt}
+      />
+      <SelectedPet
+        map={readyMap}
+        target={petTarget}
+        label={`${t.mascotInspect}: ${petName}`}
+        animate={effects}
+        onActivate={() => {
+          if (!petTarget) return;
+          if (extraSelectedKey) onSelectExtra?.(petTarget.key);
+          else onSelect(petTarget.key);
+        }}
+      />
+    </>
   );
 }
