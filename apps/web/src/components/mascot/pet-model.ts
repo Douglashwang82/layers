@@ -78,7 +78,7 @@ export const petShape = {
   lean: 0.42,
   skin: "#f07c5c",
   face: {
-    color: "#f8c3a6",
+    color: "#f9cbb1",
     y: 1.305,
     halfWidth: 0.594,
     halfHeight: 0.521,
@@ -87,6 +87,15 @@ export const petShape = {
     rim: 0.014,
   },
   eyes: { x: 0.297, y: 1.294, halfWidth: 0.142, halfHeight: 0.224 },
+  /** Glossy jelly skin: grazing-angle glow and saturated inner light. */
+  jelly: {
+    rim: "#ff9b78",
+    rimStrength: 0.22,
+    core: "#e85a4c",
+    coreStrength: 0.1,
+    roughness: 0.3,
+    clearcoatRoughness: 0.08,
+  },
   /** Idle liquid motion amplitudes. */
   flow: { breathe: 0.018, sway: 0.035, ripple: 0.022 },
 };
@@ -285,6 +294,16 @@ float faceMask = (1.0 - smoothstep(0.985 - faceAA, 0.985 + faceAA, faceD)) * ste
 diffuseColor.rgb = mix(diffuseColor.rgb, uFaceColor, faceMask);
 `;
 
+// Jelly: light scattered inside the body glows at grazing angles and keeps
+// the shadow side saturated instead of grey. The face stays matte.
+const jellyGLSL = /* glsl */ `
+#include <emissivemap_fragment>
+vec3 jellyView = isOrthographic ? vec3(0.0, 0.0, 1.0) : normalize(vViewPosition);
+float jellyFacing = saturate(dot(normal, jellyView));
+totalEmissiveRadiance += (1.0 - faceMask) * (
+  uJellyRim * pow(1.0 - jellyFacing, 2.5) + uJellyCore * (1.0 - 0.6 * jellyFacing));
+`;
+
 type FlowUniforms = {
   uTime: THREE.IUniform<number>;
   uFlow: THREE.IUniform<number>;
@@ -323,13 +342,34 @@ function liquid<T extends THREE.Material>(
       shader.fragmentShader = shader.fragmentShader
         .replace(
           "#include <common>",
-          "#include <common>\nvarying vec3 vRest;\nuniform vec4 uFace;\nuniform vec3 uFaceColor;",
+          "#include <common>\nvarying vec3 vRest;\nuniform vec4 uFace;\nuniform vec3 uFaceColor;\nuniform vec3 uJellyRim;\nuniform vec3 uJellyCore;",
         )
         .replace("#include <color_fragment>", faceGLSL)
         .replace(
           "#include <roughnessmap_fragment>",
           "#include <roughnessmap_fragment>\nroughnessFactor = mix(roughnessFactor, 0.56, faceMask);",
+        )
+        .replace("#include <emissivemap_fragment>", jellyGLSL)
+        .replace(
+          "#include <lights_physical_fragment>",
+          `#include <lights_physical_fragment>
+#ifdef USE_CLEARCOAT
+material.clearcoat *= 1.0 - faceMask;
+#endif
+#ifdef USE_SHEEN
+material.sheenColor *= 1.0 - faceMask;
+#endif`,
         );
+      shader.uniforms.uJellyRim = {
+        value: new THREE.Color(petShape.jelly.rim).multiplyScalar(
+          petShape.jelly.rimStrength,
+        ),
+      };
+      shader.uniforms.uJellyCore = {
+        value: new THREE.Color(petShape.jelly.core).multiplyScalar(
+          petShape.jelly.coreStrength,
+        ),
+      };
     }
   };
   material.customProgramCacheKey = () =>
@@ -359,9 +399,12 @@ export function createPetModel() {
       liquid(
         new THREE.MeshPhysicalMaterial({
           color: petShape.skin,
-          roughness: 0.42,
-          clearcoat: 0.25,
-          clearcoatRoughness: 0.35,
+          roughness: petShape.jelly.roughness,
+          clearcoat: 1,
+          clearcoatRoughness: petShape.jelly.clearcoatRoughness,
+          sheen: 0.25,
+          sheenColor: "#ffc4aa",
+          sheenRoughness: 0.4,
         }),
         uniforms,
         { root: true, face: true },
@@ -399,6 +442,7 @@ export function createPetModel() {
   globeMaterial.color.set("white");
   globeMaterial.vertexColors = true;
   const { eyes } = petShape;
+  const glints: { glint: THREE.Mesh; globe: THREE.Mesh }[] = [];
   for (const x of [-eyes.x, eyes.x]) {
     const e = 0.01,
       y = eyes.y;
@@ -416,9 +460,9 @@ export function createPetModel() {
     );
     eye.add(globe);
     const glint = new THREE.Mesh(sphere, highlight);
-    glint.position.set(-0.043, 0.076, 0.092);
     glint.scale.set(0.043, 0.057, 0.012);
     eye.add(glint);
+    glints.push({ glint, globe });
     open.add(eye);
     const points = Array.from({ length: 25 }, (_, i) => {
       const t = (i / 24) * Math.PI;
@@ -446,6 +490,35 @@ export function createPetModel() {
     expression(happy: boolean) {
       open.visible = !happy;
       closed.visible = happy;
+    },
+    /**
+     * Seat each catchlight where the key light mirrors into the camera: the
+     * point on the eye ellipsoid whose normal is the light/view half-vector.
+     * Call after `flow`, which refreshes the world matrices.
+     */
+    aim(light: THREE.Vector3, view = new THREE.Vector3(0, 0, 1)) {
+      const half = new THREE.Vector3(),
+        local = new THREE.Quaternion(),
+        z = new THREE.Vector3(0, 0, 1);
+      for (const { glint, globe } of glints) {
+        globe.getWorldQuaternion(local).invert();
+        half
+          .copy(light)
+          .normalize()
+          .add(view)
+          .normalize()
+          .applyQuaternion(local);
+        const { x: a, y: b, z: c } = globe.scale;
+        const reach = Math.hypot(a * half.x, b * half.y, c * half.z);
+        glint.position
+          .set(
+            (a * a * half.x) / reach,
+            (b * b * half.y) / reach,
+            (c * c * half.z) / reach,
+          )
+          .addScaledVector(half, glint.scale.z * 0.5);
+        glint.quaternion.setFromUnitVectors(z, half);
+      }
     },
     /** time in seconds, flow 0..1 idle amount, jiggle a signed stretch impulse. */
     flow(time: number, flow: number, jiggle: number) {

@@ -1,7 +1,65 @@
 import * as THREE from "three";
-import { RoomEnvironment } from "three/addons/environments/RoomEnvironment.js";
 import { createPetModel } from "./pet-model";
 import type { PetPose } from "./marker-pet";
+
+/**
+ * Reflection studio for the glossy skin: one large softbox at the upper left
+ * (where the key light sits) gives a single sleek highlight, a warm floor
+ * tints the belly, and a dim card on the right draws the far rim.
+ */
+function studio() {
+  const scene = new THREE.Scene();
+  const dome = new THREE.SphereGeometry(10, 32, 16);
+  const tones: number[] = [];
+  const floor = new THREE.Color("#f1a483").multiplyScalar(0.55),
+    horizon = new THREE.Color("#fde9dd").multiplyScalar(0.45),
+    sky = new THREE.Color("#fff6ef").multiplyScalar(0.35);
+  for (let i = 0; i < dome.attributes.position.count; i++) {
+    const y = dome.attributes.position.getY(i) / 10;
+    const tone =
+      y < 0
+        ? horizon.clone().lerp(floor, THREE.MathUtils.smoothstep(-y, 0, 0.5))
+        : horizon.clone().lerp(sky, THREE.MathUtils.smoothstep(y, 0, 0.6));
+    tones.push(tone.r, tone.g, tone.b);
+  }
+  dome.setAttribute("color", new THREE.Float32BufferAttribute(tones, 3));
+  scene.add(
+    new THREE.Mesh(
+      dome,
+      new THREE.MeshBasicMaterial({ side: THREE.BackSide, vertexColors: true }),
+    ),
+  );
+  const card = (
+    width: number,
+    height: number,
+    brightness: number,
+    at: [number, number, number],
+  ) => {
+    const mesh = new THREE.Mesh(
+      new THREE.PlaneGeometry(width, height),
+      new THREE.MeshBasicMaterial({
+        color: new THREE.Color("#fff4ea").multiplyScalar(brightness),
+        side: THREE.DoubleSide,
+      }),
+    );
+    mesh.position.set(...at);
+    mesh.lookAt(0, 0, 0);
+    scene.add(mesh);
+  };
+  card(3.6, 3, 20, [-4.4, 6.2, -1]);
+  card(1.6, 5, 1.6, [5.5, 0.8, -1.5]);
+  return {
+    scene,
+    dispose() {
+      scene.traverse((object) => {
+        if (object instanceof THREE.Mesh) {
+          object.geometry.dispose();
+          (object.material as THREE.Material).dispose();
+        }
+      });
+    },
+  };
+}
 
 export function createPetScene(host: HTMLElement, unavailable: () => void) {
   const renderer = new THREE.WebGLRenderer({
@@ -17,11 +75,11 @@ export function createPetScene(host: HTMLElement, unavailable: () => void) {
   const scene = new THREE.Scene();
   const model = createPetModel();
   scene.add(model.root);
-  const room = new RoomEnvironment(),
+  const room = studio(),
     generator = new THREE.PMREMGenerator(renderer);
   let environment: THREE.WebGLRenderTarget;
   try {
-    environment = generator.fromScene(room, 0.06);
+    environment = generator.fromScene(room.scene, 0.04);
   } catch (error) {
     model.dispose();
     renderer.dispose();
@@ -32,9 +90,9 @@ export function createPetScene(host: HTMLElement, unavailable: () => void) {
     generator.dispose();
   }
   scene.environment = environment.texture;
-  scene.environmentIntensity = 0.28;
+  scene.environmentIntensity = 0.6;
   // V2 lighting: soft key from the upper left, warm floor bounce on the belly.
-  scene.add(new THREE.HemisphereLight(0xfff0e6, 0xf6b090, 0.6));
+  scene.add(new THREE.HemisphereLight(0xfff0e6, 0xf6b090, 0.4));
   const key = new THREE.DirectionalLight(0xfff0e4, 2.9);
   key.position.set(-5, 1.4, 3);
   scene.add(key);
@@ -75,6 +133,7 @@ export function createPetScene(host: HTMLElement, unavailable: () => void) {
     // A damped spring: stretch up, settle back like a drop of liquid.
     const jiggle = t < 1.2 ? 0.07 * Math.exp(-5 * t) * Math.sin(16 * t) : 0;
     model.flow(flowing ? (now / 1000) % loop : 0, flowing ? 1 : 0, jiggle);
+    model.aim(key.position);
     renderer.render(scene, camera);
     return t < 1.2;
   }

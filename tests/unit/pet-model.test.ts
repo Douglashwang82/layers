@@ -70,6 +70,34 @@ describe("sculpted map pet", () => {
     }
     model.dispose();
   });
+  it("seats each catchlight toward the key light as the head turns", () => {
+    const model = createPetModel();
+    const light = new Vector3(-5, 1.4, 3);
+    const glints = () =>
+      model.root.children[1].children.map((eye) =>
+        eye.children[1]
+          .getWorldPosition(new Vector3())
+          .sub(eye.children[0].getWorldPosition(new Vector3())),
+      );
+    model.flow(0, 0, 0);
+    model.aim(light);
+    model.root.updateMatrixWorld(true);
+    const front = glints();
+    for (const offset of front) {
+      // Upper left of the pupil, on the side facing the light and camera.
+      expect(offset.x).toBeLessThan(0);
+      expect(offset.y).toBeGreaterThan(0);
+      expect(offset.z).toBeGreaterThan(0);
+    }
+    model.root.rotation.y = 0.42;
+    model.flow(0, 0, 0);
+    model.aim(light);
+    model.root.updateMatrixWorld(true);
+    glints().forEach((offset, i) =>
+      expect(offset.distanceTo(front[i])).toBeGreaterThan(0.005),
+    );
+    model.dispose();
+  });
   it("disposes shared GPU resources once", () => {
     const model = createPetModel();
     const resources = new Set<object>();
