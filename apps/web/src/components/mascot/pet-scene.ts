@@ -113,6 +113,11 @@ export function createPetScene(host: HTMLElement, unavailable: () => void) {
     20,
   );
   camera.position.set(0, 0, 6);
+  // Compile every program now, including the hidden happy eyes; compiling on
+  // the first tap stalls the main thread on slow or software-rendered GPUs.
+  model.expression(true);
+  renderer.compile(scene, camera);
+  model.expression(false);
   const canvas = renderer.domElement;
   canvas.setAttribute("aria-hidden", "true");
   let disposed = false,

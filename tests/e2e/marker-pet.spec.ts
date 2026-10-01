@@ -70,16 +70,31 @@ test("keyboard greeting plays once and returns to its resting interaction state"
   const pet = page.locator(".marker-pet");
   await pet.focus();
   await expect(pet).toHaveAttribute("data-pose", "curious");
+  // The greeting lasts 650 ms while WebGL keeps rendering, so record its state
+  // when React commits it rather than racing assertion polling to catch it.
+  await pet.evaluate((element) => {
+    const log: string[][] = [];
+    Object.assign(window, { petGreetingLog: log });
+    new MutationObserver(() => {
+      const body = getComputedStyle(
+        element.querySelector(".marker-pet__body")!,
+      );
+      log.push([
+        element.getAttribute("data-celebrating")!,
+        body.animationName,
+        body.animationIterationCount,
+      ]);
+    }).observe(element, { attributeFilter: ["data-celebrating"] });
+  });
   await pet.press("Enter");
-  await expect(pet).toHaveAttribute("data-celebrating", "true");
-  await expect(pet.locator(".marker-pet__body")).toHaveCSS(
-    "animation-name",
-    "pet-success",
-  );
-  await expect(pet.locator(".marker-pet__body")).toHaveCSS(
-    "animation-iteration-count",
-    "1",
-  );
+  await expect
+    .poll(() =>
+      page.evaluate(
+        () =>
+          (window as unknown as { petGreetingLog: string[][] }).petGreetingLog,
+      ),
+    )
+    .toContainEqual(["true", "pet-success", "1"]);
   await expect(pet).toHaveAttribute("data-celebrating", "false");
   await expect(pet).toHaveAttribute("data-pose", "curious");
 });
