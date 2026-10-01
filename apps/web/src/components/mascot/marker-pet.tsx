@@ -1,11 +1,20 @@
 "use client";
 
 import { useEffect, useId, useRef, useState } from "react";
+import type { PetShape } from "./pet-shape";
 import "./marker-pet.css";
 
 export type PetPose = "front" | "curious" | "happy";
 
-function PetRender({ pose, animate }: { pose: PetPose; animate: boolean }) {
+function PetRender({
+  pose,
+  animate,
+  shape,
+}: {
+  pose: PetPose;
+  animate: boolean;
+  shape?: PetShape;
+}) {
   const host = useRef<HTMLSpanElement>(null);
   const scene = useRef<ReturnType<
     typeof import("./pet-scene").createPetScene
@@ -47,6 +56,9 @@ function PetRender({ pose, animate }: { pose: PetPose; animate: boolean }) {
   useEffect(() => {
     scene.current?.update(pose, animate && !reduced);
   }, [pose, animate, reduced, ready]);
+  useEffect(() => {
+    if (shape) scene.current?.setShape(shape);
+  }, [shape, ready]);
   return (
     <>
       {!ready && (
@@ -114,12 +126,15 @@ export function MarkerPet({
   pose = "front",
   context = "map",
   animate = true,
+  shape,
   onActivate,
 }: {
   label: string;
   pose?: PetPose;
   context?: "map" | "display";
   animate?: boolean;
+  /** Overrides the default form; used by the /mascot tuning panel. */
+  shape?: PetShape;
   onActivate?: () => void;
 }) {
   const [exploring, setExploring] = useState(false);
@@ -156,7 +171,7 @@ export function MarkerPet({
     >
       <span className="marker-pet__anchor" aria-hidden="true" />
       <span className="marker-pet__body">
-        <PetRender pose={currentPose} animate={animate} />
+        <PetRender pose={currentPose} animate={animate} shape={shape} />
       </span>
     </button>
   );

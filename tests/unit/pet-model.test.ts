@@ -70,12 +70,34 @@ describe("sculpted map pet", () => {
     }
     model.dispose();
   });
+  it("builds from tuned values without changing the shared defaults", () => {
+    const before = structuredClone(petShape);
+    const tuned = structuredClone(petShape);
+    tuned.eyes.x = 0.35;
+    tuned.depth = 1.4;
+    const model = createPetModel(tuned);
+    const eyes = model.root.children[1].children;
+    expect(eyes.map((eye) => Math.abs(eye.position.x))).toEqual([0.35, 0.35]);
+    for (const eye of eyes)
+      expect(eye.position.z).toBeCloseTo(
+        frontZ(eye.position.x, eye.position.y, tuned) + 0.02,
+        5,
+      );
+    // A deeper body pushes the face plane, and so the eyes, further forward.
+    const defaults = createPetModel();
+    expect(eyes[0].position.z).toBeGreaterThan(
+      defaults.root.children[1].children[0].position.z,
+    );
+    expect(petShape).toEqual(before);
+    model.dispose();
+    defaults.dispose();
+  });
   it("seats each catchlight toward the key light as the head turns", () => {
     const model = createPetModel();
     const light = new Vector3(-5, 1.4, 3);
     const glints = () =>
       model.root.children[1].children.map((eye) =>
-        eye.children[1]
+        eye.children[2]
           .getWorldPosition(new Vector3())
           .sub(eye.children[0].getWorldPosition(new Vector3())),
       );

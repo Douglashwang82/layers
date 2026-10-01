@@ -1,14 +1,18 @@
 "use client";
 
-import { useState } from "react";
+import { useState, type CSSProperties } from "react";
 import Link from "next/link";
 import type { Copy } from "@/lib/dictionary";
 import { MarkerPet, type PetPose } from "./marker-pet";
+import { petShape } from "./pet-shape";
+import { DEFAULT_PET_SIZE, PetTuner } from "./pet-tuner";
 import "./mascot-studio.css";
 
 export function MascotStudio({ t }: { t: Copy }) {
   const [pose, setPose] = useState<PetPose>("front");
   const [animate, setAnimate] = useState(true);
+  const [shape, setShape] = useState(() => structuredClone(petShape));
+  const [size, setSize] = useState(DEFAULT_PET_SIZE);
   return (
     <div className="mascot-studio">
       <div className="mascot-studio__intro">
@@ -17,11 +21,16 @@ export function MascotStudio({ t }: { t: Copy }) {
         <p>{t.mascotIntro}</p>
       </div>
       <div className="mascot-studio__grid">
-        <section className="mascot-studio__stage" aria-label={t.mascotTitle}>
+        <section
+          className="mascot-studio__stage"
+          aria-label={t.mascotTitle}
+          style={{ "--pet-size": `${size}px` } as CSSProperties}
+        >
           <MarkerPet
             label={t.mascotHint}
             pose={pose}
             animate={animate}
+            shape={shape}
             context="display"
           />
           <div
@@ -56,6 +65,13 @@ export function MascotStudio({ t }: { t: Copy }) {
           </label>
           <p>{t.mascotHint}</p>
         </section>
+        <PetTuner
+          t={t}
+          shape={shape}
+          size={size}
+          onShape={setShape}
+          onSize={setSize}
+        />
         <section
           className="mascot-studio__reference"
           aria-label={t.mascotReference}

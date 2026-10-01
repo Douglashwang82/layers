@@ -1,5 +1,5 @@
 import * as THREE from "three";
-import { createPetModel } from "./pet-model";
+import { createPetModel, type PetShape } from "./pet-model";
 import type { PetPose } from "./marker-pet";
 
 /**
@@ -46,7 +46,7 @@ function studio() {
     mesh.lookAt(0, 0, 0);
     scene.add(mesh);
   };
-  card(3.6, 3, 20, [-4.4, 6.2, -1]);
+  card(6, 5, 5, [-4.4, 6.2, -1]);
   card(1.6, 5, 1.6, [5.5, 0.8, -1.5]);
   return {
     scene,
@@ -73,7 +73,7 @@ export function createPetScene(host: HTMLElement, unavailable: () => void) {
   renderer.toneMappingExposure = 1.05;
   renderer.setClearColor(0, 0);
   const scene = new THREE.Scene();
-  const model = createPetModel();
+  let model = createPetModel();
   scene.add(model.root);
   const room = studio(),
     generator = new THREE.PMREMGenerator(renderer);
@@ -134,7 +134,9 @@ export function createPetScene(host: HTMLElement, unavailable: () => void) {
     squish = 0,
     squishVelocity = 0,
     squishTarget = 0,
-    lastFrame = 0;
+    lastFrame = 0,
+    rebuild = 0,
+    pendingShape: PetShape | null = null;
   // Every flow frequency is a multiple of 0.1 rad/s, so wrapping time at
   // 20π seconds is seamless and keeps shader floats precise.
   const loop = 20 * Math.PI;
@@ -198,6 +200,26 @@ export function createPetScene(host: HTMLElement, unavailable: () => void) {
     }
     if (!raf) frame();
   }
+  /** Swap in a model built from new tuning values, at most once per frame. */
+  function setShape(shape: PetShape) {
+    pendingShape = shape;
+    if (!rebuild) rebuild = requestAnimationFrame(applyShape);
+  }
+  function applyShape() {
+    rebuild = 0;
+    if (disposed || !pendingShape) return;
+    const next = createPetModel(pendingShape);
+    pendingShape = null;
+    scene.remove(model.root);
+    model.dispose();
+    model = next;
+    scene.add(model.root);
+    model.root.rotation.y = yaw;
+    model.expression(pose === "happy");
+    model.squish(squish * 0.35);
+    model.curious(squish);
+    render();
+  }
   function resize() {
     const width = Math.max(1, host.clientWidth),
       h = Math.max(1, host.clientHeight);
@@ -226,6 +248,7 @@ export function createPetScene(host: HTMLElement, unavailable: () => void) {
     if (disposed) return;
     disposed = true;
     cancelAnimationFrame(raf);
+    cancelAnimationFrame(rebuild);
     observer.disconnect();
     intersection.disconnect();
     document.removeEventListener("visibilitychange", visibility);
@@ -247,5 +270,5 @@ export function createPetScene(host: HTMLElement, unavailable: () => void) {
     dispose();
     throw error;
   }
-  return { update, dispose };
+  return { update, setShape, dispose };
 }

@@ -68,6 +68,8 @@ test("keyboard greeting plays once and returns to its resting interaction state"
 }) => {
   await page.goto("/mascot");
   const pet = page.locator(".marker-pet");
+  // The canvas mounts from an effect, so React's focus handler is attached.
+  await expect(pet.locator("[data-renderer='three'] canvas")).toBeVisible();
   await pet.focus();
   await expect(pet).toHaveAttribute("data-pose", "curious");
   // The greeting lasts 650 ms while WebGL keeps rendering, so record its state
@@ -137,4 +139,31 @@ test("Traditional Chinese mobile preview fits without horizontal scrolling", asy
       () => document.documentElement.scrollWidth <= window.innerWidth,
     ),
   ).toBe(true);
+});
+
+test("tuning panel resizes and reshapes the preview, and resets", async ({
+  page,
+}) => {
+  await page.goto("/mascot");
+  const pet = page.locator(".marker-pet");
+  await expect(pet.locator("[data-renderer='three'] canvas")).toBeVisible();
+  const size = page.getByRole("slider", { name: "Size", exact: true });
+  await size.fill("400");
+  await expect(
+    page.getByText("Larger than the 320 px hero guidance"),
+  ).toBeVisible();
+  await expect
+    .poll(async () => Math.round((await pet.boundingBox())!.width))
+    .toBe(400);
+  await page.getByRole("slider", { name: "Eye spacing" }).fill("0.4");
+  await page.getByText("Current values").click();
+  await expect(page.locator(".pet-tuner__values pre")).toContainText(
+    '"x": 0.4',
+  );
+  await expect(pet.locator("canvas")).toHaveCount(1);
+  await page.getByRole("button", { name: "Reset", exact: true }).click();
+  await expect(size).toHaveValue("280");
+  await expect(page.locator(".pet-tuner__values pre")).toContainText(
+    '"x": 0.297',
+  );
 });

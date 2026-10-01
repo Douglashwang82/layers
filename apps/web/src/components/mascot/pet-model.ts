@@ -1,118 +1,10 @@
 import * as THREE from "three";
+import { petShape, type PetShape } from "./pet-shape";
+
+export { petShape, type PetShape } from "./pet-shape";
 
 // Front view in reference-v2.jpg: the pin is 225.5 px tall from tip to crown.
 const PX = 2.52 / 225.5;
-
-/**
- * Tuning knobs. Lengths are model units (the pin is 2.52 tall) unless noted.
- * The origin is the geographic tip; all poses and motion keep it planted.
- */
-export const petShape = {
-  /** Front silhouette traced from V2: [height above tip, half-width] in reference px. */
-  outline: [
-    [0, 0],
-    [1, 4.5],
-    [5, 12.5],
-    [9, 15.5],
-    [13, 19.5],
-    [17, 22],
-    [21, 25],
-    [25, 28],
-    [29, 31],
-    [33, 35],
-    [37, 38],
-    [41, 42],
-    [45, 46],
-    [49, 49.5],
-    [53, 53],
-    [57, 56.5],
-    [61, 60],
-    [65, 63],
-    [69, 65.5],
-    [73, 68],
-    [77, 70.5],
-    [81, 72],
-    [85, 74],
-    [89, 76],
-    [93, 77],
-    [97, 78.5],
-    [101, 79.5],
-    [105, 81],
-    [109, 81],
-    [113, 82],
-    [117, 82.5],
-    [121, 82.5],
-    [125, 83],
-    [129, 82.5],
-    [133, 82.5],
-    [137, 82],
-    [141, 81.5],
-    [145, 81],
-    [149, 80.5],
-    [153, 79.5],
-    [157, 78.5],
-    [161, 76.5],
-    [165, 75.5],
-    [169, 74],
-    [173, 72],
-    [177, 69.5],
-    [181, 67.5],
-    [185, 65.5],
-    [189, 62.5],
-    [193, 59.5],
-    [197, 56.5],
-    [201, 52.5],
-    [205, 48],
-    [209, 43.5],
-    [213, 38],
-    [217, 31],
-    [221, 22],
-    [223, 16],
-    [224, 12],
-    [225, 5.5],
-    [225.5, 0],
-  ] as [number, number][],
-  /** Front-to-back thickness relative to the front silhouette width. */
-  depth: 1.15,
-  /** Front cross-section superellipse exponent (2 = ellipse, higher = broader front). */
-  squareness: 2.6,
-  /** How far the belly bulges forward over the tip (V2 3/4 and hero views). */
-  lean: 0.4,
-  skin: "#f07c5c",
-  face: {
-    color: "#f9cbb1",
-    y: 1.305,
-    halfWidth: 0.594,
-    halfHeight: 0.521,
-    /** How far the face sits inside the skin, and the soft lip around it. */
-    inset: 0.025,
-    rim: 0.012,
-    /** Painted occlusion: the lip shading the face edge, and the border crease. */
-    shade: 0.32,
-    crease: 0.3,
-  },
-  eyes: { x: 0.297, y: 1.294, halfWidth: 0.142, halfHeight: 0.224 },
-  /** Glossy jelly skin: grazing-angle glow and saturated inner light. */
-  jelly: {
-    rim: "#ff9b78",
-    rimStrength: 0.22,
-    core: "#e85a4c",
-    coreStrength: 0.1,
-    roughness: 0.3,
-    clearcoatRoughness: 0.08,
-  },
-  /** Idle liquid motion amplitudes. */
-  flow: { breathe: 0.018, sway: 0.035, ripple: 0.022 },
-  /** Curious pose: settle lower and wider, lean forward and to the side. */
-  squish: {
-    compress: 0.35,
-    bulge: 0.07,
-    blunt: 0.3,
-    shear: -0.03,
-    lean: 0.035,
-    tilt: 0.07,
-  },
-};
 
 const HEIGHT = 2.52;
 const RINGS = 200,
@@ -153,6 +45,11 @@ const profile = (() => {
     );
     points.push(p);
   }
+  // Smoothing lifts the end points off the poles; rescale so the ends land
+  // exactly on the tip and crown, or the pole vertices leave a tiny spike.
+  const low = points[0].y,
+    high = points[points.length - 1].y;
+  for (const p of points) p.y = ((p.y - low) / (high - low)) * HEIGHT;
   points[0].x = points[points.length - 1].x = 0;
   return points;
 })();
@@ -175,27 +72,32 @@ function radiusAt(y: number) {
 }
 
 /** Forward offset of each cross-section's center; zero at tip and crown. */
-function centerZ(y: number) {
+function centerZ(y: number, s: PetShape) {
   const h = THREE.MathUtils.clamp(y / HEIGHT, 0, 1);
-  return petShape.lean * Math.pow(Math.sin(Math.PI * h), 1.1);
+  return s.lean * Math.pow(Math.sin(Math.PI * h), 1.1);
 }
 
 /** The nub stays round; the body above it is deeper than it is wide. */
-function depthAt(y: number) {
-  return 1 + (petShape.depth - 1) * smooth(y / HEIGHT, 0, 0.25);
+function depthAt(y: number, s: PetShape) {
+  return 1 + (s.depth - 1) * smooth(y / HEIGHT, 0, 0.25);
 }
 
 /**
  * Superellipse exponent of the front half of each cross-section: above 2 the
  * front is broader and flatter, so the face sits on a gentle plane and the
- * body's front corners wrap past it in 3/4 view, as in V2. The nub stays round.
+ * body's front corners wrap past it in 3/4 view, as in V2. Only the face band
+ * is broadened: the lower body, nub and crown stay round like V2's, and a flat
+ * front there reads as a dark crease down the belly.
  */
-function squarenessAt(y: number) {
-  return 2 + (petShape.squareness - 2) * smooth(y / HEIGHT, 0.08, 0.3);
+function squarenessAt(y: number, s: PetShape) {
+  const h = y / HEIGHT;
+  return (
+    2 + (s.squareness - 2) * smooth(h, 0.16, 0.34) * (1 - smooth(h, 0.8, 0.96))
+  );
 }
 
-function faceDistance(x: number, y: number) {
-  const { y: cy, halfWidth, halfHeight } = petShape.face;
+function faceDistance(x: number, y: number, s: PetShape) {
+  const { y: cy, halfWidth, halfHeight } = s.face;
   const v = (y - cy) / (halfHeight * 1.08);
   // The reference is a full cheek with a tapered forehead and a soft, flat chin.
   const u =
@@ -204,9 +106,9 @@ function faceDistance(x: number, y: number) {
   return (Math.abs(u) ** n + Math.abs(v) ** n) ** (1 / n);
 }
 
-function inset(x: number, y: number) {
-  const d = faceDistance(x, y),
-    { inset, rim } = petShape.face;
+function inset(x: number, y: number, s: PetShape) {
+  const d = faceDistance(x, y, s),
+    { inset, rim } = s.face;
   return (
     -inset * (1 - smooth(d, 0.9, 1.01)) +
     rim * Math.exp(-(((d - 1.03) / 0.035) ** 2))
@@ -214,24 +116,24 @@ function inset(x: number, y: number) {
 }
 
 /** Front skin surface depth at a front-view point, including the face recess. */
-export function frontZ(x: number, y: number) {
+export function frontZ(x: number, y: number, s: PetShape = petShape) {
   const a = radiusAt(y),
-    n = squarenessAt(y);
+    n = squarenessAt(y, s);
   return (
-    centerZ(y) +
-    depthAt(y) * a * Math.pow(Math.max(0, 1 - Math.abs(x / a) ** n), 1 / n) +
-    inset(x, y)
+    centerZ(y, s) +
+    depthAt(y, s) * a * Math.pow(Math.max(0, 1 - Math.abs(x / a) ** n), 1 / n) +
+    inset(x, y, s)
   );
 }
 
-function bodyGeometry() {
+function bodyGeometry(shape: PetShape) {
   const positions: number[] = [0, 0, 0],
     indices: number[] = [];
   for (let r = 1; r < RINGS; r++) {
     const { x: a, y } = profile[r];
-    const b = a * depthAt(y),
-      zc = centerZ(y),
-      power = 2 / squarenessAt(y);
+    const b = a * depthAt(y, shape),
+      zc = centerZ(y, shape),
+      power = 2 / squarenessAt(y, shape);
     for (let s = 0; s < SEGMENTS; s++) {
       const angle = (s / SEGMENTS) * Math.PI * 2;
       const side = Math.cos(angle),
@@ -240,11 +142,11 @@ function bodyGeometry() {
       const x =
         front > 0 ? a * Math.sign(side) * Math.abs(side) ** power : a * side;
       let z = zc + b * (front > 0 ? front ** power : front);
-      if (front > 0) z += inset(x, y) * smooth(front, 0.1, 0.4);
+      if (front > 0) z += inset(x, y, shape) * smooth(front, 0.1, 0.4);
       positions.push(x, y, z);
     }
   }
-  positions.push(0, HEIGHT, centerZ(HEIGHT));
+  positions.push(0, HEIGHT, centerZ(HEIGHT, shape));
   const ring = (r: number, s: number) =>
     1 + (r - 1) * SEGMENTS + (s % SEGMENTS);
   const top = positions.length / 3 - 1;
@@ -270,9 +172,42 @@ function bodyGeometry() {
 }
 
 // Curious squish compresses only above the face's top edge (softplus ramp,
-// softness 0.2); CROWN_REST zeroes the ramp at the tip.
-const CROWN_FROM = petShape.face.y + petShape.face.halfHeight;
-const CROWN_REST = 0.5 * (-CROWN_FROM + Math.hypot(CROWN_FROM, 0.2));
+// softness 0.2); the rest term zeroes the ramp at the tip. Passed as a uniform
+// (crown start, rest, face height) because every shape shares one program.
+function squishFrame(s: PetShape) {
+  const from = s.face.y + s.face.halfHeight;
+  return new THREE.Vector3(
+    from,
+    0.5 * (-from + Math.hypot(from, 0.2)),
+    s.face.y,
+  );
+}
+
+// One contour drives both the skin recess and its painted face. Pose-specific
+// shear restores V2's oblique oval instead of rotating a rounded triangle.
+const faceContourGLSL = /* glsl */ `
+uniform vec4 uFace;
+uniform vec2 uFaceRelief;
+vec4 petFaceForm() {
+  vec4 form = mix(vec4(1.08, 1.08, 0.0, 0.18),
+                  vec4(1.10, 0.94, 0.25, 0.04), uCurious);
+  return mix(form, vec4(1.02, 1.02, 0.16, 0.06), uHappy);
+}
+vec2 petFaceQ(vec3 p, vec4 form) {
+  float dy = p.y - uFace.x;
+  float v = dy / (uFace.z * form.y);
+  return vec2((p.x - form.z * dy) /
+    (uFace.y * form.x * (1.0 - form.w * clamp(v, -1.0, 1.0))), v);
+}
+float petFaceD(vec2 q) {
+  float n = 2.0 + 0.3 * smoothstep(0.0, 0.8, -q.y);
+  return pow(pow(abs(q.x), n) + pow(abs(q.y), n), 1.0 / n);
+}
+float petFaceInset(float d) {
+  return -uFaceRelief.x * (1.0 - smoothstep(0.9, 1.01, d))
+    + uFaceRelief.y * exp(-pow((d - 1.03) / 0.035, 2.0));
+}
+`;
 
 // Liquid motion runs on the GPU in root space, so the face, eyes and skin move
 // together and the tip (y = 0) never leaves its map coordinate.
@@ -305,18 +240,23 @@ vec3 petFlow(vec3 p) {
 uniform float uSquish;
 uniform vec4 uSquishShape; // compress, bulge, blunt, shear
 uniform vec2 uSquishTilt; // forward lean, side tilt (radians)
+uniform vec3 uSquishFrame; // crown start, crown rest, face height
 uniform float uCurious;
+uniform float uHappy;
+#ifdef PET_FACE
+${faceContourGLSL}
+#endif
 // Turn the face and its inset together, including the eyes and catchlights.
 // Fade into the back and the anchored tip rather than rotating a floating plate.
 vec3 petCurious(vec3 p) {
   float h = clamp(p.y / 2.52, 0.0, 1.0);
   float zc = uLean * pow(sin(3.14159265 * h), 1.1);
-  float front = smoothstep(0.0, 0.65, p.z - zc);
-  float angle = uCurious * 0.34 * front * smoothstep(0.08, 0.32, h);
-  vec2 face = vec2(p.x, p.y - ${petShape.face.y.toFixed(3)});
+  float front = smoothstep(-0.25, 0.8, p.z - zc);
+  float angle = (uCurious * 0.34 + uHappy * 0.18) * front * smoothstep(0.0, 0.58, h);
+  vec2 face = vec2(p.x, p.y - uSquishFrame.z);
   p.xy = vec2(face.x * cos(angle) - face.y * sin(angle),
               face.x * sin(angle) + face.y * cos(angle));
-  p.y += ${petShape.face.y.toFixed(3)};
+  p.y += uSquishFrame.z;
   // Hero silhouette: full shoulders, a left-offset crown, and a right belly.
   // Both offsets vanish at the tip so the geographic anchor stays fixed.
   p.x *= 1.0 + 0.10 * uCurious * (1.0 - front);
@@ -334,12 +274,11 @@ vec3 petSquish(vec3 p) {
   axis *= 1.0 + uSquish * (uSquishShape.y * belly + uSquishShape.z * base);
   // The crown settles down onto the face (soft ramp from the face's top edge),
   // so the face plate keeps its V2 size and stays high on the body.
-  float crown = p.y - ${CROWN_FROM.toFixed(3)};
-  float settle = 0.5 * (crown + sqrt(crown * crown + 0.04)) - ${CROWN_REST.toFixed(5)};
+  float crown = p.y - uSquishFrame.x;
+  float settle = 0.5 * (crown + sqrt(crown * crown + 0.04)) - uSquishFrame.y;
   p = vec3(axis.x, p.y - uSquish * uSquishShape.x * settle, axis.y + zc);
   // Shear around the face height so the face plate turns into an oblique oval.
-  float faceY = ${petShape.face.y.toFixed(3)};
-  p.x += uSquish * uSquishShape.w * (p.y - faceY) * smoothstep(0.05, 0.35, h);
+  p.x += uSquish * uSquishShape.w * (p.y - uSquishFrame.z) * smoothstep(0.05, 0.35, h);
   // Bend: the base stays planted while the upper body leans.
   float bend = uSquish * smoothstep(0.0, 0.6, h);
   float a = bend * uSquishTilt.x, b = bend * uSquishTilt.y;
@@ -349,6 +288,16 @@ vec3 petSquish(vec3 p) {
 }
 vec3 petDeform(vec3 p) {
 #ifdef PET_IN_ROOT
+#ifdef PET_FACE
+  if (p.z > uFace.w) {
+    float rest = petFaceD(petFaceQ(p, vec4(1.08, 1.08, 0.0, 0.18)));
+    float posed = petFaceD(petFaceQ(p, petFaceForm()));
+    float poseBlend = max(uCurious, uHappy);
+    float relief = mix(1.0, 0.65, poseBlend);
+    float raisedLip = uFaceRelief.y * exp(-pow((posed - 1.03) / 0.035, 2.0));
+    p.z += relief * (petFaceInset(posed) - 0.9 * poseBlend * raisedLip) - petFaceInset(rest);
+  }
+#endif
   return petSquish(petFlow(petCurious(p)));
 #else
   mat4 toRoot = inverse(uRoot) * modelMatrix;
@@ -367,37 +316,39 @@ vec3 restTangent = normalize(cross(normal, abs(normal.y) < 0.99 ? vec3(0.0, 1.0,
 vec3 restBitangent = cross(normal, restTangent);
 vec3 flowed = petDeform(position);
 vec3 objectNormal = normalize(cross(
-  petDeform(position + restTangent * 0.01) - flowed,
-  petDeform(position + restBitangent * 0.01) - flowed));
+  petDeform(position + restTangent * 0.02) - flowed,
+  petDeform(position + restBitangent * 0.02) - flowed));
 `;
 
 const faceGLSL = /* glsl */ `
 #include <color_fragment>
-float faceV = (vRest.y - uFace.x) / (uFace.z * 1.08);
-vec2 faceQ = vec2(vRest.x / (uFace.y * 1.08 * (1.0 - 0.18 * clamp(faceV, -1.0, 1.0))), faceV);
-float faceN = 2.0 + 0.3 * smoothstep(0.0, 0.8, -faceV);
-float faceD = pow(pow(abs(faceQ.x), faceN) + pow(abs(faceQ.y), faceN), 1.0 / faceN);
+vec2 faceQ = petFaceQ(vRest, petFaceForm());
+float faceD = petFaceD(faceQ);
 float faceAA = fwidth(faceD);
 float faceMask = (1.0 - smoothstep(0.985 - faceAA, 0.985 + faceAA, faceD)) * step(uFace.w, vRest.z);
-diffuseColor.rgb = mix(diffuseColor.rgb, uFaceColor, faceMask);
-// Painted occlusion for the recess (the scene casts no shadows): the skin lip
+// V2's pad is a pinkish apricot that deepens toward its edge.
+vec3 faceTone = mix(uFaceColor, uFaceEdge, smoothstep(0.45, 0.985, faceD));
+diffuseColor.rgb = mix(diffuseColor.rgb, faceTone, faceMask);
+// Painted occlusion for the recess (the scene casts no shadows): the skin
 // shades the face just inside its edge, most on the side facing the upper-left
-// key light, and a thin crease darkens the skin where it folds into the face.
+// key light, and a thin dark line marks where the skin folds into the face.
 float faceSide = 0.45 + 0.55 * dot(normalize(faceQ + vec2(1e-5)), vec2(-0.85, 0.53));
 float faceFront = step(uFace.w, vRest.z);
-float lipShade = smoothstep(0.72, 0.985, faceD) * faceMask * max(faceSide, 0.15);
-float crease = (1.0 - smoothstep(0.985, 1.05, faceD)) * (1.0 - faceMask) * faceFront;
+float lipShade = smoothstep(0.8, 0.985, faceD) * faceMask * max(faceSide, 0.15);
+float crease = (1.0 - smoothstep(0.985, 1.02, faceD)) * (1.0 - faceMask) * faceFront;
 diffuseColor.rgb *= 1.0 - uFaceShade.x * lipShade - uFaceShade.y * crease;
 `;
 
-// Jelly: light scattered inside the body glows at grazing angles and keeps
-// the shadow side saturated instead of grey. The face stays matte.
+// Satin skin as in V2: silhouette edges deepen toward a saturated coral (not a
+// bright rim), and a faint inner light keeps the shadow side warm, not grey.
+// Runs before lighting, so changing diffuseColor here shades the edge.
 const jellyGLSL = /* glsl */ `
 #include <emissivemap_fragment>
 vec3 jellyView = isOrthographic ? vec3(0.0, 0.0, 1.0) : normalize(vViewPosition);
 float jellyFacing = saturate(dot(normal, jellyView));
-totalEmissiveRadiance += (1.0 - faceMask) * (
-  uJellyRim * pow(1.0 - jellyFacing, 2.5) + uJellyCore * (1.0 - 0.6 * jellyFacing));
+float skinEdge = pow(1.0 - jellyFacing, 2.0) * (1.0 - faceMask);
+diffuseColor.rgb = mix(diffuseColor.rgb, uJellyRim, saturate(skinEdge * uJellyEdge));
+totalEmissiveRadiance += (1.0 - faceMask) * uJellyCore * (1.0 - 0.6 * jellyFacing);
 `;
 
 type FlowUniforms = {
@@ -409,18 +360,21 @@ type FlowUniforms = {
   uRoot: THREE.IUniform<THREE.Matrix4>;
   uSquish: THREE.IUniform<number>;
   uCurious: THREE.IUniform<number>;
+  uHappy: THREE.IUniform<number>;
   uSquishShape: THREE.IUniform<THREE.Vector4>;
   uSquishTilt: THREE.IUniform<THREE.Vector2>;
+  uSquishFrame: THREE.IUniform<THREE.Vector3>;
 };
 
 function liquid<T extends THREE.Material>(
   material: T,
   uniforms: FlowUniforms,
+  s: PetShape,
   options: { root?: boolean; face?: boolean } = {},
 ) {
   if (options.root) material.defines = { ...material.defines, PET_IN_ROOT: "" };
   if (options.face) material.defines = { ...material.defines, PET_FACE: "" };
-  const { y, halfWidth, halfHeight, color } = petShape.face;
+  const { y, halfWidth, halfHeight, color } = s.face;
   material.onBeforeCompile = (shader) => {
     Object.assign(shader.uniforms, uniforms);
     shader.vertexShader = shader.vertexShader
@@ -435,16 +389,20 @@ function liquid<T extends THREE.Material>(
     );
     if (options.face) {
       shader.uniforms.uFace = {
-        value: new THREE.Vector4(y, halfWidth, halfHeight, centerZ(y)),
+        value: new THREE.Vector4(y, halfWidth, halfHeight, centerZ(y, s)),
       };
       shader.uniforms.uFaceColor = { value: new THREE.Color(color) };
+      shader.uniforms.uFaceEdge = { value: new THREE.Color(s.face.edgeColor) };
+      shader.uniforms.uFaceRelief = {
+        value: new THREE.Vector2(s.face.inset, s.face.rim),
+      };
       shader.uniforms.uFaceShade = {
-        value: new THREE.Vector2(petShape.face.shade, petShape.face.crease),
+        value: new THREE.Vector2(s.face.shade, s.face.crease),
       };
       shader.fragmentShader = shader.fragmentShader
         .replace(
           "#include <common>",
-          "#include <common>\nvarying vec3 vRest;\nuniform vec4 uFace;\nuniform vec3 uFaceColor;\nuniform vec2 uFaceShade;\nuniform vec3 uJellyRim;\nuniform vec3 uJellyCore;",
+          `#include <common>\nvarying vec3 vRest;\nuniform float uCurious;\nuniform float uHappy;\nuniform vec3 uFaceColor;\nuniform vec3 uFaceEdge;\nuniform vec2 uFaceShade;\nuniform vec3 uJellyRim;\nuniform float uJellyEdge;\nuniform vec3 uJellyCore;\n${faceContourGLSL}`,
         )
         .replace("#include <color_fragment>", faceGLSL)
         .replace(
@@ -462,14 +420,11 @@ material.clearcoat *= 1.0 - faceMask;
 material.sheenColor *= 1.0 - faceMask;
 #endif`,
         );
-      shader.uniforms.uJellyRim = {
-        value: new THREE.Color(petShape.jelly.rim).multiplyScalar(
-          petShape.jelly.rimStrength,
-        ),
-      };
+      shader.uniforms.uJellyRim = { value: new THREE.Color(s.jelly.rim) };
+      shader.uniforms.uJellyEdge = { value: s.jelly.rimStrength * 2.5 };
       shader.uniforms.uJellyCore = {
-        value: new THREE.Color(petShape.jelly.core).multiplyScalar(
-          petShape.jelly.coreStrength,
+        value: new THREE.Color(s.jelly.core).multiplyScalar(
+          s.jelly.coreStrength,
         ),
       };
     }
@@ -479,92 +434,130 @@ material.sheenColor *= 1.0 - faceMask;
   return material;
 }
 
-export function createPetModel() {
+/** A happy-eye arc that is thickest at its crest and tapers to round ends. */
+function smileGeometry(curve: THREE.Curve<THREE.Vector3>, s: PetShape) {
+  const segments = 48,
+    radial = 12,
+    { thickness, taper } = s.smile;
+  const tube = new THREE.TubeGeometry(curve, segments, thickness, radial);
+  const position = tube.attributes.position,
+    center = new THREE.Vector3(),
+    point = new THREE.Vector3();
+  for (let i = 0; i <= segments; i++) {
+    const u = i / segments;
+    curve.getPointAt(u, center);
+    const scale = taper + (1 - taper) * Math.pow(Math.sin(Math.PI * u), 0.6);
+    for (let j = 0; j <= radial; j++) {
+      const k = i * (radial + 1) + j;
+      point.fromBufferAttribute(position, k).sub(center).multiplyScalar(scale);
+      position.setXYZ(
+        k,
+        center.x + point.x,
+        center.y + point.y,
+        center.z + point.z,
+      );
+    }
+  }
+  tube.computeVertexNormals();
+  return {
+    tube,
+    cap: new THREE.SphereGeometry(thickness * taper, 12, 8),
+    ends: [curve.getPointAt(0), curve.getPointAt(1)],
+  };
+}
+
+export function createPetModel(s: PetShape = petShape) {
   const root = new THREE.Group();
   const uniforms: FlowUniforms = {
     uTime: { value: 0 },
     uFlow: { value: 0 },
     uJiggle: { value: 0 },
-    uLean: { value: petShape.lean },
+    uLean: { value: s.lean },
     uAmp: {
-      value: new THREE.Vector3(
-        petShape.flow.breathe,
-        petShape.flow.sway,
-        petShape.flow.ripple,
-      ),
+      value: new THREE.Vector3(s.flow.breathe, s.flow.sway, s.flow.ripple),
     },
     uRoot: { value: new THREE.Matrix4() },
     uSquish: { value: 0 },
     uCurious: { value: 0 },
+    uHappy: { value: 0 },
     uSquishShape: {
       value: new THREE.Vector4(
-        petShape.squish.compress,
-        petShape.squish.bulge,
-        petShape.squish.blunt,
-        petShape.squish.shear,
+        s.squish.compress,
+        s.squish.bulge,
+        s.squish.blunt,
+        s.squish.shear,
       ),
     },
     uSquishTilt: {
-      value: new THREE.Vector2(petShape.squish.lean, petShape.squish.tilt),
+      value: new THREE.Vector2(s.squish.lean, s.squish.tilt),
     },
+    uSquishFrame: { value: squishFrame(s) },
   };
   root.add(
     new THREE.Mesh(
-      bodyGeometry(),
+      bodyGeometry(s),
       liquid(
         new THREE.MeshPhysicalMaterial({
-          color: petShape.skin,
-          roughness: Math.min(1, petShape.jelly.roughness + 0.12),
-          clearcoat: 0.25,
-          clearcoatRoughness: Math.max(0.32, petShape.jelly.clearcoatRoughness),
-          sheen: 0.25,
-          sheenColor: "#ffc4aa",
-          sheenRoughness: 0.4,
+          color: s.skin,
+          roughness: s.jelly.roughness,
+          clearcoat: 0.12,
+          clearcoatRoughness: s.jelly.clearcoatRoughness,
+          sheen: 0.35,
+          sheenColor: "#ffc9b2",
+          sheenRoughness: 0.65,
         }),
         uniforms,
+        s,
         { root: true, face: true },
       ),
     ),
   );
   const open = new THREE.Group(),
     closed = new THREE.Group();
+  // Soft, low-specular eyes: the catchlight is the only bright spot, as in V2
+  // (no streak reflections from the studio cards).
   const eyeMaterial = liquid(
     new THREE.MeshPhysicalMaterial({
-      color: "#251310",
-      envMapIntensity: 0.08,
-      roughness: 0.16,
-      specularIntensity: 0.2,
-      clearcoat: 0.12,
-      clearcoatRoughness: 0.1,
+      color: s.eyes.top,
+      envMapIntensity: 0.03,
+      roughness: 0.32,
+      specularIntensity: 0.08,
     }),
     uniforms,
+    s,
+  );
+  const rimMaterial = liquid(
+    new THREE.MeshPhysicalMaterial({ color: s.eyes.rimColor, roughness: 0.5 }),
+    uniforms,
+    s,
   );
   const highlight = liquid(
     new THREE.MeshBasicMaterial({ color: "#fff8ee" }),
     uniforms,
+    s,
   );
   const sphere = new THREE.SphereGeometry(1, 40, 32);
   const eyeColors: number[] = [];
   for (let i = 0; i < sphere.attributes.position.count; i++) {
-    const color = new THREE.Color("#180e13").lerp(
-      new THREE.Color("#754333"),
-      smooth(-sphere.attributes.position.getY(i), -0.15, 1),
+    const color = new THREE.Color(s.eyes.top).lerp(
+      new THREE.Color(s.eyes.bottom),
+      smooth(-sphere.attributes.position.getY(i), 0.05, 1),
     );
     eyeColors.push(color.r, color.g, color.b);
   }
   sphere.setAttribute("color", new THREE.Float32BufferAttribute(eyeColors, 3));
-  const globeMaterial = liquid(eyeMaterial.clone(), uniforms);
+  const globeMaterial = liquid(eyeMaterial.clone(), uniforms, s);
   globeMaterial.color.set("white");
   globeMaterial.vertexColors = true;
-  const { eyes } = petShape;
+  const { eyes } = s;
   const glints: { glint: THREE.Mesh; globe: THREE.Mesh }[] = [];
   for (const x of [-eyes.x, eyes.x]) {
     const e = 0.01,
       y = eyes.y;
-    const slopeX = (frontZ(x + e, y) - frontZ(x - e, y)) / (2 * e),
-      slopeY = (frontZ(x, y + e) - frontZ(x, y - e)) / (2 * e);
+    const slopeX = (frontZ(x + e, y, s) - frontZ(x - e, y, s)) / (2 * e),
+      slopeY = (frontZ(x, y + e, s) - frontZ(x, y - e, s)) / (2 * e);
     const eye = new THREE.Group();
-    eye.position.set(x, y, frontZ(x, y) + 0.02);
+    eye.position.set(x, y, frontZ(x, y, s) + 0.02);
     eye.rotation.set(Math.atan(slopeY), Math.atan(-slopeX), 0, "YXZ");
     const globe = new THREE.Mesh(sphere, globeMaterial);
     // Sized so the front-view projection matches the V2 eye.
@@ -574,6 +567,16 @@ export function createPetModel() {
       0.1,
     );
     eye.add(globe);
+    // A light bevel just outside the iris, like V2's eye set into the face.
+    const rim = new THREE.Mesh(sphere, rimMaterial);
+    rim.scale.set(
+      globe.scale.x + eyes.rimWidth,
+      globe.scale.y + eyes.rimWidth,
+      0.065,
+    );
+    // Set back so it never shares depth with the iris (no speckled seam).
+    rim.position.z = -0.015;
+    eye.add(rim);
     const glint = new THREE.Mesh(sphere, highlight);
     glint.scale.set(0.043, 0.057, 0.012);
     eye.add(glint);
@@ -581,22 +584,17 @@ export function createPetModel() {
     open.add(eye);
     const points = Array.from({ length: 25 }, (_, i) => {
       const t = (i / 24) * Math.PI;
-      const px = x + Math.cos(t) * 0.15,
-        py = y - 0.04 + Math.sin(t) * 0.13;
-      return new THREE.Vector3(px, py, frontZ(px, py) + 0.03);
+      const px = x + Math.cos(t) * (x < 0 ? 0.15 : 0.12),
+        py = y - 0.04 + Math.sin(t) * (x < 0 ? 0.13 : 0.12);
+      return new THREE.Vector3(px, py, frontZ(px, py, s) + 0.03);
     });
-    closed.add(
-      new THREE.Mesh(
-        new THREE.TubeGeometry(
-          new THREE.CatmullRomCurve3(points),
-          32,
-          0.032,
-          10,
-          false,
-        ),
-        eyeMaterial,
-      ),
-    );
+    const arc = smileGeometry(new THREE.CatmullRomCurve3(points), s);
+    closed.add(new THREE.Mesh(arc.tube, eyeMaterial));
+    for (const end of arc.ends) {
+      const cap = new THREE.Mesh(arc.cap, eyeMaterial);
+      cap.position.copy(end);
+      closed.add(cap);
+    }
   }
   root.add(open, closed);
   closed.visible = false;
@@ -605,6 +603,7 @@ export function createPetModel() {
     expression(happy: boolean) {
       open.visible = !happy;
       closed.visible = happy;
+      uniforms.uHappy.value = happy ? 1 : 0;
     },
     /** Art-directed perspective for the V2 hero's near and far eyes. */
     curious(amount: number) {
@@ -626,6 +625,7 @@ export function createPetModel() {
      */
     aim(light: THREE.Vector3, view = new THREE.Vector3(0, 0, 1)) {
       const half = new THREE.Vector3(),
+        normal = new THREE.Vector3(),
         local = new THREE.Quaternion(),
         z = new THREE.Vector3(0, 0, 1);
       for (const { glint, globe } of glints) {
@@ -638,14 +638,20 @@ export function createPetModel() {
           .applyQuaternion(local);
         const { x: a, y: b, z: c } = globe.scale;
         const reach = Math.hypot(a * half.x, b * half.y, c * half.z);
+        let u = (a * half.x) / reach,
+          v = (b * half.y) / reach;
+        // Keep it inside the iris, as in V2, even when the eye turns away.
+        const spread = Math.hypot(u, v);
+        if (spread > 0.55) {
+          u *= 0.55 / spread;
+          v *= 0.55 / spread;
+        }
+        const w = Math.sqrt(Math.max(0, 1 - u * u - v * v));
+        normal.set(u / a, v / b, w / c).normalize();
         glint.position
-          .set(
-            (a * a * half.x) / reach,
-            (b * b * half.y) / reach,
-            (c * c * half.z) / reach,
-          )
-          .addScaledVector(half, glint.scale.z * 0.5);
-        glint.quaternion.setFromUnitVectors(z, half);
+          .set(a * u, b * v, c * w)
+          .addScaledVector(normal, glint.scale.z * 0.5);
+        glint.quaternion.setFromUnitVectors(z, normal);
       }
     },
     /** time in seconds, flow 0..1 idle amount, jiggle a signed stretch impulse. */
