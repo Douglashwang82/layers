@@ -481,7 +481,12 @@
 .auth-links {
   font-size: 15px;
 }
-/* Sign-in stage: V2's warm paper board with the hero pet and an independent form. */
+/*
+ * Sign-in: the left two thirds is a lit stage for the hero pet, the right
+ * third a clean sign-in section. All colour and light live on the stage.
+ * Light comes from the upper left, as in V2's hero render: a bright pool and
+ * soft beam there, a warm floor, and the pet's shadow falling lower right.
+ */
 .auth-page-stage {
   display: block;
   max-width: 1680px;
@@ -489,142 +494,64 @@
   padding: 0 24px;
 }
 .auth-stage {
+  display: grid;
+  grid-template-columns: minmax(0, 2fr) minmax(340px, 1fr);
+  min-height: max(640px, calc(100vh - 160px));
+}
+.auth-scene {
   position: relative;
   display: grid;
-  grid-template-columns: minmax(0, 1fr) minmax(320px, 370px);
-  gap: 48px;
-  align-items: center;
-  min-height: 720px;
-  padding: 48px;
-  border: 1px solid #efe2d7;
+  place-items: center;
   border-radius: 28px;
-  background:
-    radial-gradient(
-      ellipse 60% 55% at 32% 62%,
-      #fff9f4 0%,
-      rgb(255 249 244 / 0) 70%
-    ),
-    #fbf3ec;
   overflow: hidden;
   isolation: isolate;
-}
-/* The pet stands in the open space between the story and the form. */
-.auth-scene {
-  position: absolute;
-  inset: 0 470px 0 0;
-  display: grid;
-  place-items: end center;
-  padding: 0 0 92px 18%;
+  background:
+    /* light pool where the key light enters */
+    radial-gradient(
+      ellipse 62% 58% at 16% 10%,
+      rgb(255 252 248 / 0.95) 0%,
+      rgb(255 252 248 / 0) 62%
+    ),
+    /* soft beam travelling down to the right */
+    linear-gradient(
+        128deg,
+        rgb(255 250 244 / 0.55) 0%,
+        rgb(255 250 244 / 0) 46%
+      ),
+    /* the far side falls off into warm shadow */
+    radial-gradient(
+        ellipse 70% 60% at 96% 100%,
+        rgb(205 146 118 / 0.2) 0%,
+        rgb(205 146 118 / 0) 70%
+      ),
+    /* floor: a little deeper below the horizon */
+    linear-gradient(180deg, #fbf2ea 0%, #f9eee5 62%, #f3e2d6 100%);
   pointer-events: none;
 }
-.auth-scene-story {
-  position: relative;
-  z-index: 2;
-  align-self: start;
-  pointer-events: none;
-}
-.auth-scene-eyebrow {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  margin: 0 0 24px;
-  font-size: 10px;
-  font-weight: 600;
-  letter-spacing: 0.2em;
-  color: #85584a;
-}
-.auth-scene-eyebrow > span {
-  width: 20px;
-  height: 1px;
-  background: #ea7356;
-}
-.auth-scene-story h2 {
-  margin: 0;
-  font-size: clamp(44px, 5.3vw, 82px);
-  line-height: 0.99;
-  font-weight: 500;
-  letter-spacing: -0.055em;
-  color: #4b2c22;
-}
-.auth-scene-story h2 em {
-  font-family: Georgia, "Noto Serif TC", serif;
-  font-weight: 400;
-  color: #d9603f;
-}
-.auth-scene-description {
-  max-width: 300px;
-  margin: 24px 0 0;
-  color: #85614f;
-  font-size: 14px;
-  line-height: 1.65;
-}
-.auth-scene-caption {
-  position: absolute;
-  z-index: 2;
-  bottom: 35px;
-  left: 48px;
-  right: 470px;
-  display: flex;
-  gap: 12px;
-  align-items: center;
-  color: #82604f;
-  font-size: 11px;
-  letter-spacing: 0.08em;
-  pointer-events: none;
-}
-.auth-scene-caption > span:first-child {
-  width: 5px;
-  height: 5px;
-  background: #ea7356;
-  border-radius: 50%;
-}
-.auth-scene-caption-line {
-  height: 1px;
-  background: #ead8cc;
-  flex: 1;
-  margin-left: 12px;
-}
-.auth-stage .form-panel {
-  grid-column: 2;
-  position: relative;
-  z-index: 3;
-  width: 100%;
-  max-width: 370px;
-  margin: 0;
-  padding: 36px 32px;
-  justify-self: end;
-  border: 1px solid #efe2d7;
-  border-radius: 24px;
-  background: #fffdfb;
-  box-shadow: 0 28px 80px -24px rgb(120 70 48 / 0.22);
+/* Desktop: the sign-in section is plain page, not a card (mobile keeps it). */
+@media (min-width: 801px) {
+  .auth-stage .form-panel {
+    grid-column: 2;
+    align-self: center;
+    justify-self: center;
+    width: 100%;
+    max-width: 380px;
+    margin: 0;
+    padding: 40px 32px;
+    border: 0;
+    border-radius: 0;
+    background: none;
+    box-shadow: none;
+  }
 }
 .auth-stage .form-panel h1 {
   font-size: 34px;
   letter-spacing: -0.045em;
   font-weight: 500;
 }
-.auth-stage .form-panel input {
-  background: #fff;
-}
 @media (min-width: 801px) and (max-width: 1099px) {
   .auth-stage {
-    padding: 32px;
-    gap: 24px;
-    grid-template-columns: minmax(0, 1fr) 320px;
-  }
-  .auth-scene-story h2 {
-    font-size: 48px;
-  }
-  .auth-scene-description {
-    max-width: 240px;
-  }
-  .auth-scene-caption {
-    left: 32px;
-    right: 390px;
-  }
-  .auth-scene {
-    inset: 0 380px 0 0;
-    padding: 0 0 80px 12%;
+    grid-template-columns: minmax(0, 1.4fr) minmax(320px, 1fr);
   }
 }
 /* Profile */

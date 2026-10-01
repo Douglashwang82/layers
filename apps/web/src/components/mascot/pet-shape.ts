@@ -114,7 +114,9 @@ export const petShape = {
     core: "#e85a4c",
     coreStrength: 0.05,
     roughness: 0.62,
+    clearcoat: 0.12,
     clearcoatRoughness: 0.55,
+    sheen: 0.35,
   },
   /** Idle liquid motion amplitudes. */
   flow: { breathe: 0.018, sway: 0.035, ripple: 0.022 },

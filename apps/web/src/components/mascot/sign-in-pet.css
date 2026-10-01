@@ -1,7 +1,7 @@
 .sign-in-pet {
   --pet-ease: cubic-bezier(0.22, 1, 0.36, 1);
   position: relative;
-  width: clamp(260px, 27vw, 400px);
+  width: clamp(300px, 30vw, 520px);
   aspect-ratio: 240 / 256;
 }
 .sign-in-pet__body {
@@ -11,19 +11,28 @@
   transform-origin: 50% 93.75%;
   animation: sign-in-pet-enter 700ms var(--pet-ease) both;
 }
-/* V2's soft contact shadow, cast down and to the right of the tip. */
+/*
+ * Light from the upper left (as in V2's hero): a tight contact shadow under
+ * the tip, and a long soft shadow falling to the lower right.
+ */
 .sign-in-pet__shadow {
   position: absolute;
-  left: 30%;
-  top: 89%;
-  width: 56%;
-  height: 9%;
-  border-radius: 50%;
-  background: radial-gradient(
-    closest-side,
-    rgb(150 96 72 / 0.26),
-    rgb(150 96 72 / 0)
-  );
+  left: 38%;
+  top: 88.5%;
+  width: 84%;
+  height: 11%;
+  background:
+    radial-gradient(
+      ellipse 13% 34% at 14% 46%,
+      rgb(122 72 52 / 0.34) 0%,
+      rgb(122 72 52 / 0) 100%
+    ),
+    radial-gradient(
+      ellipse 44% 45% at 48% 52%,
+      rgb(150 96 72 / 0.2) 0%,
+      rgb(150 96 72 / 0) 100%
+    );
+  transform-origin: 14% 46%;
   animation: sign-in-pet-shadow 700ms var(--pet-ease) both;
 }
 .sign-in-pet__marks {

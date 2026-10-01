@@ -119,10 +119,6 @@
   .auth-scene {
     display: none;
   }
-  .auth-scene-story,
-  .auth-scene-caption {
-    display: none;
-  }
   .auth-stage .form-panel {
     max-width: none;
     border-radius: var(--th-radius-sheet);

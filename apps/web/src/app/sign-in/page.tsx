@@ -10,26 +10,11 @@ export default async function SignInPage({
   return (
     <div className="auth-page auth-page-stage">
       <div className="auth-stage">
+        {/* Left two thirds: the lit pet stage. Decorative only. */}
         <div className="auth-scene" aria-hidden="true">
           <SignInPet />
         </div>
-        <div className="auth-scene-story">
-          <p className="auth-scene-eyebrow">
-            <span />
-            {t.signInSceneEyebrow}
-          </p>
-          <h2>
-            {t.signInSceneTitle}
-            <br />
-            <em>{t.signInSceneAccent}</em>
-          </h2>
-          <p className="auth-scene-description">{t.signInSceneDescription}</p>
-        </div>
-        <p className="auth-scene-caption">
-          <span />
-          {t.signInSceneFooter}
-          <span className="auth-scene-caption-line" />
-        </p>
+        {/* Right third: a clean sign-in section. */}
         <div className="form-panel">
           <AuthForm
             t={t}

@@ -218,9 +218,17 @@ uniform float uJiggle;
 uniform float uLean;
 uniform vec3 uAmp;
 uniform mat4 uRoot;
+uniform vec4 uFaceZone; // face centre y, half width, half height, front z
 vec3 petFlow(vec3 p) {
   float h = clamp(p.y / ${HEIGHT.toFixed(2)}, 0.0, 1.0);
-  float w = smoothstep(0.05, 0.65, h);
+  // The face plate and eyes move as one rigid piece: inside this zone the
+  // motion weight is frozen at the face centre and the ripple is removed,
+  // so the flow never reshapes the face.
+  vec2 faceQ = vec2(p.x / (uFaceZone.y * 1.15), (p.y - uFaceZone.x) / (uFaceZone.z * 1.15));
+  float faceZone = (1.0 - smoothstep(0.85, 1.3, length(faceQ)))
+    * smoothstep(uFaceZone.w, uFaceZone.w + 0.4, p.z);
+  float w = mix(smoothstep(0.05, 0.65, h),
+    smoothstep(0.05, 0.65, uFaceZone.x / ${HEIGHT.toFixed(2)}), faceZone);
   float zc = uLean * pow(sin(3.14159265 * h), 1.1);
   vec2 axis = vec2(p.x, p.z - zc);
   float stretch = uAmp.x * sin(uTime * 1.7) * uFlow + uJiggle;
@@ -229,7 +237,7 @@ vec3 petFlow(vec3 p) {
   float ang = atan(axis.y, axis.x);
   float ripple = 0.6 * sin(2.0 * ang + 7.0 * h - 2.2 * uTime)
     + 0.4 * sin(3.0 * ang - 5.0 * h + 1.5 * uTime + 1.7);
-  axis += normalize(axis + vec2(1e-5)) * ripple * uAmp.z * uFlow * w;
+  axis += normalize(axis + vec2(1e-5)) * ripple * uAmp.z * uFlow * w * (1.0 - faceZone);
   float lag = w * w * uFlow * uAmp.y;
   axis.x += lag * sin(uTime * 1.1);
   axis.y += lag * 0.6 * sin(uTime * 0.8 + 1.3);
@@ -358,6 +366,7 @@ type FlowUniforms = {
   uLean: THREE.IUniform<number>;
   uAmp: THREE.IUniform<THREE.Vector3>;
   uRoot: THREE.IUniform<THREE.Matrix4>;
+  uFaceZone: THREE.IUniform<THREE.Vector4>;
   uSquish: THREE.IUniform<number>;
   uCurious: THREE.IUniform<number>;
   uHappy: THREE.IUniform<number>;
@@ -477,6 +486,14 @@ export function createPetModel(s: PetShape = petShape) {
       value: new THREE.Vector3(s.flow.breathe, s.flow.sway, s.flow.ripple),
     },
     uRoot: { value: new THREE.Matrix4() },
+    uFaceZone: {
+      value: new THREE.Vector4(
+        s.face.y,
+        s.face.halfWidth,
+        s.face.halfHeight,
+        centerZ(s.face.y, s),
+      ),
+    },
     uSquish: { value: 0 },
     uCurious: { value: 0 },
     uHappy: { value: 0 },
@@ -500,9 +517,9 @@ export function createPetModel(s: PetShape = petShape) {
         new THREE.MeshPhysicalMaterial({
           color: s.skin,
           roughness: s.jelly.roughness,
-          clearcoat: 0.12,
+          clearcoat: s.jelly.clearcoat,
           clearcoatRoughness: s.jelly.clearcoatRoughness,
-          sheen: 0.35,
+          sheen: s.jelly.sheen,
           sheenColor: "#ffc9b2",
           sheenRoughness: 0.65,
         }),

@@ -2,6 +2,7 @@
 
 import { useEffect, useId, useRef, useState } from "react";
 import type { PetShape } from "./pet-shape";
+import type { PetLighting } from "./pet-scene";
 import "./marker-pet.css";
 
 /** `hero` is V2's large upright three-quarter view (the sign-in stage). */
@@ -16,12 +17,16 @@ export function PetRender({
   animate,
   idle = true,
   shape,
+  lighting = "map",
 }: {
   pose: PetPose;
   animate: boolean;
   idle?: boolean;
   shape?: PetShape;
+  lighting?: PetLighting;
 }) {
+  // The scene is built with the first shape; later changes rebuild it.
+  const initial = useRef({ shape, lighting });
   const host = useRef<HTMLSpanElement>(null);
   const scene = useRef<ReturnType<
     typeof import("./pet-scene").createPetScene
@@ -41,11 +46,15 @@ export function PetRender({
       .then(({ createPetScene }) => {
         if (cancelled || !host.current) return;
         try {
-          scene.current = createPetScene(host.current, () => {
-            scene.current?.dispose();
-            scene.current = null;
-            setReady(false);
-          });
+          scene.current = createPetScene(
+            host.current,
+            () => {
+              scene.current?.dispose();
+              scene.current = null;
+              setReady(false);
+            },
+            initial.current,
+          );
           setReady(true);
         } catch {
           setReady(false);
@@ -64,7 +73,8 @@ export function PetRender({
     scene.current?.update(pose, animate && !reduced, idle);
   }, [pose, animate, idle, reduced, ready]);
   useEffect(() => {
-    if (shape) scene.current?.setShape(shape);
+    if (shape && shape !== initial.current.shape)
+      scene.current?.setShape(shape);
   }, [shape, ready]);
   return (
     <>

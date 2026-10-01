@@ -7,7 +7,7 @@ import type { PetPose } from "./marker-pet";
  * (where the key light sits) gives a single sleek highlight, a warm floor
  * tints the belly, and a dim card on the right draws the far rim.
  */
-function studio() {
+function studio(lighting: PetLighting) {
   const scene = new THREE.Scene();
   const dome = new THREE.SphereGeometry(10, 32, 16);
   const tones: number[] = [];
@@ -34,9 +34,14 @@ function studio() {
     height: number,
     brightness: number,
     at: [number, number, number],
+    round = false,
   ) => {
+    // A round softbox mirrors as a soft oval highlight, like light on jelly.
+    const geometry = round
+      ? new THREE.CircleGeometry(0.5, 48).scale(width, height, 1)
+      : new THREE.PlaneGeometry(width, height);
     const mesh = new THREE.Mesh(
-      new THREE.PlaneGeometry(width, height),
+      geometry,
       new THREE.MeshBasicMaterial({
         color: new THREE.Color("#fff4ea").multiplyScalar(brightness),
         side: THREE.DoubleSide,
@@ -46,7 +51,11 @@ function studio() {
     mesh.lookAt(0, 0, 0);
     scene.add(mesh);
   };
-  card(6, 5, 5, [-4.4, 6.2, -1]);
+  // The stage's jelly finish wants a crisp, bright softbox; the map's matte
+  // finish a broad, dim one. Both sit up-left so the highlight lands on the
+  // upper-left shoulder, where V2's hero is brightest.
+  if (lighting === "stage") card(3.6, 2.8, 24, [-4.2, 6.4, -0.6], true);
+  else card(6, 5, 5, [-4.4, 6.2, -1]);
   card(1.6, 5, 1.6, [5.5, 0.8, -1.5]);
   return {
     scene,
@@ -61,7 +70,21 @@ function studio() {
   };
 }
 
-export function createPetScene(host: HTMLElement, unavailable: () => void) {
+/**
+ * `map` is the small marker; `stage` is the sign-in hero, lit like V2's large
+ * render: a high upper-left key, a long shadow to the lower right (drawn by
+ * the page), and a warm floor bounce.
+ */
+export type PetLighting = "map" | "stage";
+
+export function createPetScene(
+  host: HTMLElement,
+  unavailable: () => void,
+  {
+    lighting = "map",
+    shape,
+  }: { lighting?: PetLighting; shape?: PetShape } = {},
+) {
   const renderer = new THREE.WebGLRenderer({
     alpha: true,
     antialias: true,
@@ -73,9 +96,9 @@ export function createPetScene(host: HTMLElement, unavailable: () => void) {
   renderer.toneMappingExposure = 1.05;
   renderer.setClearColor(0, 0);
   const scene = new THREE.Scene();
-  let model = createPetModel();
+  let model = createPetModel(shape);
   scene.add(model.root);
-  const room = studio(),
+  const room = studio(lighting),
     generator = new THREE.PMREMGenerator(renderer);
   let environment: THREE.WebGLRenderTarget;
   try {
@@ -90,11 +113,12 @@ export function createPetScene(host: HTMLElement, unavailable: () => void) {
     generator.dispose();
   }
   scene.environment = environment.texture;
-  scene.environmentIntensity = 0.6;
+  scene.environmentIntensity = lighting === "stage" ? 0.7 : 0.6;
   // V2 lighting: soft key from the upper left, warm floor bounce on the belly.
   scene.add(new THREE.HemisphereLight(0xfff0e6, 0xf6b090, 0.4));
   const key = new THREE.DirectionalLight(0xfff0e4, 2.9);
-  key.position.set(-5, 1.4, 3);
+  if (lighting === "stage") key.position.set(-4, 4.2, 3.2);
+  else key.position.set(-5, 1.4, 3);
   scene.add(key);
   const fill = new THREE.DirectionalLight(0xffffff, 0.6);
   fill.position.set(3, 1, 2);
