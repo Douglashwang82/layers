@@ -499,6 +499,9 @@
   min-height: max(640px, calc(100vh - 160px));
 }
 .auth-scene {
+  /* The form comes first in the DOM; the stage is placed on the left. */
+  grid-column: 1;
+  grid-row: 1;
   position: relative;
   display: grid;
   place-items: center;
@@ -527,6 +530,9 @@
     /* floor: a little deeper below the horizon */
     linear-gradient(180deg, #fbf2ea 0%, #f9eee5 62%, #f3e2d6 100%);
   pointer-events: none;
+}
+.auth-scene .sign-in-pet__pause {
+  pointer-events: auto;
 }
 /* Desktop: the sign-in section is plain page, not a card (mobile keeps it). */
 @media (min-width: 801px) {

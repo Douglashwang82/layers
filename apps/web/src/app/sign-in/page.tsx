@@ -10,11 +10,7 @@ export default async function SignInPage({
   return (
     <div className="auth-page auth-page-stage">
       <div className="auth-stage">
-        {/* Left two thirds: the lit pet stage. Decorative only. */}
-        <div className="auth-scene" aria-hidden="true">
-          <SignInPet />
-        </div>
-        {/* Right third: a clean sign-in section. */}
+        {/* Right third: a clean sign-in section, first in reading and tab order. */}
         <div className="form-panel">
           <AuthForm
             t={t}
@@ -24,6 +20,10 @@ export default async function SignInPage({
               !!process.env.GOOGLE_CLIENT_SECRET
             }
           />
+        </div>
+        {/* Left two thirds (placed by CSS): the lit pet stage and its pause. */}
+        <div className="auth-scene">
+          <SignInPet pauseLabel={t.signInPetPause} />
         </div>
       </div>
     </div>

@@ -51,10 +51,10 @@ function studio(lighting: PetLighting) {
     mesh.lookAt(0, 0, 0);
     scene.add(mesh);
   };
-  // The stage's jelly finish wants a crisp, bright softbox; the map's matte
-  // finish a broad, dim one. Both sit up-left so the highlight lands on the
-  // upper-left shoulder, where V2's hero is brightest.
-  if (lighting === "stage") card(3.6, 2.8, 24, [-4.2, 6.4, -0.6], true);
+  // The stage's jelly finish gets a large, soft round softbox (a hazy oval
+  // highlight); the map's matte finish a broad, dim one. Both sit up-left so
+  // the highlight lands on the upper-left shoulder, where V2's hero is brightest.
+  if (lighting === "stage") card(5, 4, 12, [-4.2, 6.4, -0.6], true);
   else card(6, 5, 5, [-4.4, 6.2, -1]);
   card(1.6, 5, 1.6, [5.5, 0.8, -1.5]);
   return {

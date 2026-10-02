@@ -35,34 +35,60 @@
   transform-origin: 14% 46%;
   animation: sign-in-pet-shadow 700ms var(--pet-ease) both;
 }
-.sign-in-pet__marks {
+/* Each expression's mark: pops in, holds briefly, then drifts up and fades. */
+.sign-in-pet__mark {
   position: absolute;
   left: 74%;
-  top: 6%;
+  top: 4%;
   width: 16%;
   overflow: visible;
+  transform-origin: 0% 100%;
+  animation: sign-in-pet-mark 1400ms var(--pet-ease) both;
 }
-.sign-in-pet__marks path {
+.sign-in-pet__mark path,
+.sign-in-pet__mark circle {
   fill: none;
   stroke: #ef8762;
   stroke-width: 7;
   stroke-linecap: round;
-  transform-box: fill-box;
-  transform-origin: 0 100%;
-  animation: sign-in-pet-mark 520ms var(--pet-ease) both;
+  stroke-linejoin: round;
 }
-.sign-in-pet__marks path:nth-child(1) {
-  animation-delay: 900ms;
+.sign-in-pet__mark .fill {
+  fill: #ef8762;
+  stroke: none;
 }
-.sign-in-pet__marks path:nth-child(2) {
-  animation-delay: 980ms;
+.sign-in-pet__mark[data-mark="sparkle"] .fill {
+  fill: #f4a36b;
 }
-.sign-in-pet__marks path:nth-child(3) {
-  animation-delay: 1060ms;
+.sign-in-pet__mark[data-mark="dots"] {
+  top: 10%;
 }
-/* Later greetings (code sent) re-key the marks; they pop without the delay. */
-.sign-in-pet[data-pose="happy"] .sign-in-pet__marks path {
-  animation-delay: 0ms;
+.sign-in-pet__pause {
+  position: absolute;
+  left: 20px;
+  bottom: 20px;
+  display: grid;
+  place-items: center;
+  width: 40px;
+  height: 40px;
+  padding: 0;
+  border: 1px solid rgb(150 96 72 / 0.22);
+  border-radius: 50%;
+  background: rgb(255 252 248 / 0.75);
+  color: #85584a;
+  cursor: pointer;
+}
+.sign-in-pet__pause:hover {
+  background: #fffcf8;
+}
+.sign-in-pet__pause:focus-visible {
+  outline: 3px solid var(--th-focus, #2855d9);
+  outline-offset: 2px;
+}
+.sign-in-pet__pause svg {
+  width: 18px;
+  height: 18px;
+  fill: currentColor;
 }
 @keyframes sign-in-pet-enter {
   from {
@@ -77,15 +103,30 @@
   }
 }
 @keyframes sign-in-pet-mark {
-  from {
+  0% {
     opacity: 0;
-    transform: scale(0.4);
+    transform: scale(0.45);
+  }
+  18% {
+    opacity: 1;
+    transform: scale(1.06);
+  }
+  30% {
+    transform: scale(1);
+  }
+  72% {
+    opacity: 1;
+    transform: translateY(0);
+  }
+  100% {
+    opacity: 0;
+    transform: translateY(-8px);
   }
 }
 @media (prefers-reduced-motion: reduce) {
   .sign-in-pet__body,
   .sign-in-pet__shadow,
-  .sign-in-pet__marks path {
+  .sign-in-pet__mark {
     animation: none;
   }
 }

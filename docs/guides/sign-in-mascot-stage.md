@@ -17,7 +17,7 @@ softbox, so its highlight and eye catchlights sit at the upper left too.
 
 The stage pet uses a glossier finish than the matte map marker (`stageShape`
 in `sign-in-pet.tsx`: full clear coat, crisp highlight, warm inner glow) and a
-small, calm idle flow. The face plate and eyes move as one rigid piece, so the
+small, calm idle flow, with a soft, hazy highlight. The face plate and eyes move as one rigid piece, so the
 flow never changes the face's shape.
 
 ## Pieces
@@ -32,14 +32,26 @@ flow never changes the face's shape.
 
 ## Behavior
 
-| Moment                         | Pet                                                         |
-| ------------------------------ | ----------------------------------------------------------- |
-| Page load                      | Drops in (700 ms), strokes pop, one happy greeting at 0.9 s |
-| Idle                           | `hero` pose with liquid motion, which stops after 10 s      |
-| A form field has focus         | `curious`: squishes and turns toward the form               |
-| Code sent (`.success-message`) | `happy` for 1.2 s, strokes pop again                        |
-| Error shown (`.error-message`) | `front`, still                                              |
-| Reduced motion                 | Poses switch instantly; no CSS or liquid motion             |
+While nobody is using the form the pet plays an endless loop (`LOOP` in
+`sign-in-pet.tsx`): `hero` 4.2 s, `happy` 1.9 s, `hero` 3.4 s, `curious` 2.8 s,
+`front` 2.6 s, repeat. Form reactions take priority over the loop.
+
+| Moment                         | Pet                                                    |
+| ------------------------------ | ------------------------------------------------------ |
+| Page load                      | Drops in (700 ms), then starts the loop                |
+| A form field has focus         | `curious`: squishes and turns toward the form          |
+| Code sent (`.success-message`) | `happy` for 1.4 s                                      |
+| Error shown (`.error-message`) | `front`, still                                         |
+| Pause button pressed           | Loop and liquid motion stop; reactions stay            |
+| Reduced motion                 | No loop, marks or pause button; poses switch instantly |
+
+Every expression change shows that expression's own mark beside the head for
+1.4 s (pop, hold, fade, then removed): `hero` V2's "!" strokes, `happy`
+sparkles, `curious` a question mark, `front` three dots.
+
+Because the loop never ends, the stage has an icon-only pause button
+(`aria-pressed`, labelled "Pause animation" / 「暫停動畫」) to meet WCAG 2.2.2.
+The form comes first in the DOM, so the pause button follows it in tab order.
 
 The stage only observes the form panel (focus events and a `MutationObserver`
 for feedback messages). Auth never calls or waits for it, so a failed chunk,

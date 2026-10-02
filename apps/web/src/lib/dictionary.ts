@@ -586,6 +586,7 @@ export const en = {
     "We couldn't send a code right now. Wait a minute and try again.",
   joinRateLimited: "Too many code requests. Wait a minute and try again.",
   signInCodeIntro: "Enter your member email and we'll send you a 6-digit code.",
+  signInPetPause: "Pause animation",
   signInSendCode: "Email me a code",
   signInSending: "Sending…",
   signInCodeRequested:
@@ -1337,6 +1338,7 @@ export const zh: Copy = {
   joinSendFailed: "目前無法寄送驗證碼，請稍候一分鐘再試。",
   joinRateLimited: "驗證碼請求次數過多，請稍候一分鐘再試。",
   signInCodeIntro: "輸入你的會員 Email，我們會寄給你 6 位數驗證碼。",
+  signInPetPause: "暫停動畫",
   signInSendCode: "寄送驗證碼給我",
   signInSending: "寄送中…",
   signInCodeRequested:
