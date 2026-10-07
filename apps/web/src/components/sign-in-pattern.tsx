@@ -1,44 +1,124 @@
 "use client";
 
-import { useState, type CSSProperties } from "react";
+import { useEffect, useId, useRef, useState } from "react";
 import "./sign-in-pattern.css";
 
-// A permutation gives each tile its own non-overlapping 800ms turn.
-const ORDER = [0, 11, 6, 13, 3, 8, 15, 4, 10, 1, 12, 7, 5, 14, 9, 2];
+type CubeScene = ReturnType<
+  typeof import("./sign-in-cube-scene").createSignInCube
+>;
+
+function CubeFallback() {
+  const patternId = useId();
+  return (
+    <svg
+      className="sign-in-pattern__fallback"
+      viewBox="0 0 400 440"
+      focusable="false"
+    >
+      <defs>
+        <pattern
+          id={patternId}
+          width="50"
+          height="50"
+          patternUnits="userSpaceOnUse"
+        >
+          <path fill="#fff" d="M0 0h50v50H0z" />
+          <path
+            fill="#090b09"
+            d="M25 0h25v25H25zM0 25h25v25H0zM12.5 0 25 12.5 12.5 25 0 12.5zM37.5 25 50 37.5 37.5 50 25 37.5z"
+          />
+          <path
+            fill="#fff"
+            d="M37.5 0 50 12.5 37.5 25 25 12.5zM12.5 25 25 37.5 12.5 50 0 37.5z"
+          />
+        </pattern>
+      </defs>
+      {[
+        "matrix(1.6 .924 -1.6 .924 200 35)",
+        "matrix(1.6 .924 0 1.848 40 127.4)",
+        "matrix(1.6 -.924 0 1.848 200 219.8)",
+      ].map((transform) => (
+        <rect
+          key={transform}
+          width="100"
+          height="100"
+          transform={transform}
+          fill={`url(#${patternId})`}
+        />
+      ))}
+    </svg>
+  );
+}
 
 export function SignInPattern({ pauseLabel }: { pauseLabel: string }) {
   const [paused, setPaused] = useState(false);
+  const [ready, setReady] = useState(false);
+  const host = useRef<HTMLDivElement>(null);
+  const scene = useRef<CubeScene | null>(null);
+  useEffect(() => {
+    const desktop = matchMedia("(min-width: 801px)");
+    let generation = 0;
+    const change = () => {
+      const current = ++generation;
+      scene.current?.dispose();
+      scene.current = null;
+      setReady(false);
+      if (!desktop.matches) return;
+      import("./sign-in-cube-scene")
+        .then(({ createSignInCube }) => {
+          if (current !== generation || !host.current) return;
+          scene.current = createSignInCube(host.current, () => {
+            scene.current = null;
+            setReady(false);
+          });
+          setReady(true);
+        })
+        .catch(() => {
+          if (current === generation) setReady(false);
+        });
+    };
+    change();
+    desktop.addEventListener("change", change);
+    return () => {
+      generation++;
+      desktop.removeEventListener("change", change);
+      scene.current?.dispose();
+      scene.current = null;
+    };
+  }, []);
+  useEffect(() => {
+    scene.current?.setPaused(paused);
+  }, [paused, ready]);
   return (
     <>
-      <div className="sign-in-pattern" data-paused={paused} aria-hidden="true">
-        {ORDER.map((slot, index) => (
-          <span
-            key={index}
-            className="sign-in-pattern__tile"
-            data-inverted={(Math.floor(index / 4) + (index % 4)) % 2 === 1}
-            style={{ "--delay": `${slot * 800}ms` } as CSSProperties}
-          >
-            <span className="sign-in-pattern__diamond" />
-          </span>
-        ))}
-      </div>
-      <button
-        type="button"
-        className="sign-in-pattern__pause"
-        aria-label={pauseLabel}
-        aria-pressed={paused}
-        onClick={() => setPaused((value) => !value)}
+      <div
+        className="sign-in-pattern"
+        data-paused={paused}
+        data-renderer={ready ? "three" : "fallback"}
+        aria-hidden="true"
       >
-        <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">
-          <path
-            d={
-              paused
-                ? "M8 5.5v13l10.5-6.5z"
-                : "M7 5h3.5v14H7zM13.5 5H17v14h-3.5z"
-            }
-          />
-        </svg>
-      </button>
+        {!ready && <CubeFallback />}
+        <div ref={host} className="sign-in-pattern__render" />
+      </div>
+      {ready && (
+        <button
+          type="button"
+          className="sign-in-pattern__pause"
+          aria-label={pauseLabel}
+          aria-pressed={paused}
+          onClick={() => setPaused((value) => !value)}
+        >
+          <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+            <path
+              d={
+                paused
+                  ? "M8 5.5v13l10.5-6.5z"
+                  : "M7 5h3.5v14H7zM13.5 5H17v14h-3.5z"
+              }
+            />
+          </svg>
+        </button>
+      )}
     </>
   );
 }
