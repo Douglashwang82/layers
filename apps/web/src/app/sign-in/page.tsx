@@ -10,7 +10,7 @@ export default async function SignInPage({
   return (
     <div className="auth-page auth-page-stage">
       <div className="auth-stage">
-        {/* Right third: a clean sign-in section, first in reading and tab order. */}
+        {/* The form occupies 40% on desktop and stays first in reading order. */}
         <div className="form-panel">
           <AuthForm
             t={t}

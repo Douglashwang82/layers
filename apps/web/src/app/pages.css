@@ -481,58 +481,168 @@
 .auth-links {
   font-size: 15px;
 }
-/* Sign-in: monochrome tile stage beside the form. */
+/* Sign-in is a standalone monochrome entry, scoped away from the main app. */
+body:has(.auth-page-stage) {
+  --th-text: #171717;
+  --th-muted: #666;
+  --th-brand-text: #262626;
+  --th-focus: #333;
+  --th-control-border: #aaa;
+  --th-divider: #e5e5e5;
+  --th-radius-input: 6px;
+  background: #fafafa;
+  padding-bottom: 0;
+}
+.auth-entry-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  max-width: 1680px;
+  height: 88px;
+  margin: 0 auto;
+  padding: 0 clamp(24px, 4vw, 64px);
+}
+.auth-entry-brand {
+  display: inline-flex;
+  align-items: center;
+  color: #171717;
+  font-size: 24px;
+  font-weight: 650;
+  letter-spacing: -0.055em;
+}
+.auth-entry-brand > span:last-child {
+  font-weight: 400;
+}
+.auth-entry-mark {
+  width: 18px;
+  height: 18px;
+  margin-right: 16px;
+  transform: rotate(45deg);
+  background: #171717;
+}
+.auth-entry-header .language-button {
+  min-width: 44px;
+  min-height: 44px;
+  color: #333;
+  background: transparent;
+  font-size: 13px;
+}
 .auth-page-stage {
   display: block;
   max-width: 1680px;
-  margin-top: var(--th-space-4);
-  padding: 0 24px;
+  margin: 0 auto;
+  padding: 0 clamp(24px, 4vw, 64px);
 }
 .auth-stage {
   display: grid;
-  grid-template-columns: minmax(0, 2fr) minmax(340px, 1fr);
-  min-height: max(640px, calc(100vh - 160px));
+  grid-template-columns: minmax(0, 3fr) minmax(0, 2fr);
+  min-height: calc(100svh - 88px);
+  padding: 32px 0 64px;
+  align-items: center;
 }
 .auth-scene {
-  /* The form comes first in the DOM; the stage is placed on the left. */
+  /* Form comes first in the DOM; the artwork sits to its left. */
   grid-column: 1;
   grid-row: 1;
   position: relative;
   display: grid;
   place-items: center;
-  border-radius: 28px;
-  overflow: hidden;
+  align-self: stretch;
+  min-width: 0;
+  padding-right: clamp(24px, 4vw, 64px);
+  border-right: 1px solid var(--th-divider);
   isolation: isolate;
-  background: #fff;
   pointer-events: none;
 }
-.auth-scene .sign-in-pattern__pause {
-  pointer-events: auto;
+.auth-scene .sign-in-pattern {
+  width: min(100%, max(380px, calc(100svh - 220px)));
 }
-/* Desktop: the sign-in section is plain page, not a card (mobile keeps it). */
-@media (min-width: 801px) {
-  .auth-stage .form-panel {
-    grid-column: 2;
-    align-self: center;
-    justify-self: center;
-    width: 100%;
-    max-width: 380px;
-    margin: 0;
-    padding: 40px 32px;
-    border: 0;
-    border-radius: 0;
-    background: none;
-    box-shadow: none;
-  }
+.auth-scene .sign-in-pattern__pause {
+  right: 24px;
+  bottom: 0;
+  pointer-events: auto;
+  border-color: #ddd;
+  background: transparent;
+}
+.auth-stage .form-panel {
+  grid-column: 2;
+  grid-row: 1;
+  justify-self: center;
+  width: calc(100% - 80px);
+  max-width: 400px;
+  margin: 0;
+  padding: 24px 0;
+  border: 0;
+  border-radius: 0;
+  background: none;
+  box-shadow: none;
 }
 .auth-stage .form-panel h1 {
-  font-size: 34px;
-  letter-spacing: -0.045em;
+  font-size: clamp(40px, 3.6vw, 56px);
+  line-height: 1.1;
+  letter-spacing: -0.055em;
   font-weight: 500;
+  margin-bottom: 12px;
+}
+.auth-stage .form-panel > .form-stack {
+  gap: 24px;
+}
+.auth-stage .form-panel form {
+  gap: 20px;
+}
+.auth-stage .form-panel .muted {
+  font-size: 15px;
+  line-height: 1.7;
+}
+.auth-stage .form-panel input {
+  min-height: 52px;
+  background: #fff;
+}
+.auth-stage .form-panel .button {
+  min-height: 52px;
+  border-radius: 6px;
+  background: #171717;
+  color: #fff;
+}
+.auth-stage .form-panel .button:hover:not(:disabled) {
+  background: #333;
+}
+.auth-stage .form-panel .button:active:not(:disabled) {
+  background: #080808;
+}
+.auth-stage .form-panel .button.secondary {
+  background: transparent;
+  color: #171717;
+}
+.auth-stage .form-panel .button.secondary:hover:not(:disabled) {
+  background: #eee;
+}
+.auth-stage .form-panel > .form-stack > .text-button {
+  justify-self: start;
+  font-size: 14px;
+}
+.auth-stage .form-panel .auth-links {
+  font-size: 13px;
+  line-height: 1.8;
+  color: var(--th-muted);
+}
+.auth-stage .form-panel p.auth-links {
+  border-top: 1px solid var(--th-divider);
+  padding-top: 24px;
+}
+.auth-stage .form-panel .fine-print {
+  font-size: 12px;
+  line-height: 1.7;
 }
 @media (min-width: 801px) and (max-width: 1099px) {
   .auth-stage {
-    grid-template-columns: minmax(0, 1.4fr) minmax(320px, 1fr);
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  }
+  .auth-stage .form-panel {
+    width: calc(100% - 48px);
+  }
+  .auth-scene {
+    padding-right: 24px;
   }
 }
 /* Profile */

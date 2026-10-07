@@ -107,11 +107,18 @@
   .auth-page .form-panel {
     border-radius: 0 0 var(--th-radius-sheet) var(--th-radius-sheet);
   }
-  /* Small screens keep only the sign-in card; the scene is desktop-only. */
+  /* Small screens keep the standalone form; the scene is desktop-only. */
+  .auth-entry-header {
+    height: 76px;
+    padding: 0 24px;
+  }
+  .auth-page-stage {
+    padding: 0 24px;
+  }
   .auth-stage {
     display: block;
-    min-height: 0;
-    padding: 0;
+    min-height: calc(100svh - 76px);
+    padding: 48px 0 max(40px, env(safe-area-inset-bottom));
     border: 0;
     background: none;
     overflow: visible;
@@ -120,9 +127,12 @@
     display: none;
   }
   .auth-stage .form-panel {
-    max-width: none;
-    border-radius: var(--th-radius-sheet);
-    box-shadow: 0 16px 40px -24px rgb(20 38 31 / 0.18);
+    width: 100%;
+    max-width: 400px;
+    margin: 0 auto;
+    padding: 0;
+    border-radius: 0;
+    box-shadow: none;
   }
 }
 @media (max-width: 599px) {
@@ -235,11 +245,11 @@
   .form-row {
     grid-template-columns: 1fr;
   }
-  .auth-page {
+  .auth-page:not(.auth-page-stage) {
     margin: var(--th-space-4) auto;
   }
   .auth-aside,
-  .auth-page .form-panel {
+  .auth-page:not(.auth-page-stage) .form-panel {
     padding: var(--th-space-6) var(--th-space-4);
   }
   .map-container {

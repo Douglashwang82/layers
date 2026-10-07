@@ -99,3 +99,59 @@ test("context loss releases the canvas and restores the fallback", async ({
   await expect(page.locator(`${pattern}__fallback`)).toBeVisible();
   await expect(page.locator(canvas)).toHaveCount(0);
 });
+
+test("standalone sign-in removes global chrome and gives the form forty percent", async ({
+  page,
+}) => {
+  await page.setViewportSize({ width: 1440, height: 900 });
+  await page.goto("/sign-in?next=%2Fsaved");
+  await expect(page.locator(".auth-entry-brand")).toBeVisible();
+  await expect(
+    page.locator(".header, .bottom-nav, footer, .demo-banner"),
+  ).toHaveCount(0);
+  const stage = await page.locator(".auth-stage").boundingBox();
+  const scene = await page.locator(".auth-scene").boundingBox();
+  expect(scene!.width / stage!.width).toBeCloseTo(0.6, 2);
+  expect(
+    await page.evaluate(
+      () => document.documentElement.scrollHeight <= innerHeight,
+    ),
+  ).toBe(true);
+  await page.getByRole("button", { name: "Use password instead" }).click();
+  await expect(page.getByLabel("Password", { exact: true })).toBeVisible();
+  await page.getByRole("link", { name: "Forgot password?" }).click();
+  await expect(page).toHaveURL(/\/forgot-password/);
+  await expect(page.locator(".header")).toBeVisible();
+  await expect(page.locator(".auth-entry-header")).toHaveCount(0);
+});
+
+test("compact entry keeps language switching and has no mobile nav gap", async ({
+  page,
+}) => {
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.goto("/sign-in");
+  await expect(
+    page.locator(".header, .bottom-nav, footer, .demo-banner"),
+  ).toHaveCount(0);
+  expect(
+    await page
+      .locator("body")
+      .evaluate((body) => getComputedStyle(body).paddingBottom),
+  ).toBe("0px");
+  await page.locator(".auth-entry-header .language-button").click();
+  await expect(page.locator("html")).toHaveAttribute("lang", "zh-TW");
+  await expect(page.locator(".form-panel h1")).toHaveText("登入");
+  await expect(page.locator(".auth-entry-header .language-button")).toHaveText(
+    "EN",
+  );
+  expect(
+    await page.evaluate(
+      () => document.documentElement.scrollHeight <= innerHeight,
+    ),
+  ).toBe(true);
+  expect(
+    await page.evaluate(
+      () => document.documentElement.scrollWidth <= innerWidth,
+    ),
+  ).toBe(true);
+});

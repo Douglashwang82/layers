@@ -6,6 +6,20 @@ visible top, left and right faces, with vertical edges remaining vertical.
 All six faces carry the same alternating 4×4 black-and-white diamond pattern.
 The form remains first in reading and tab order.
 
+## Entry layout
+
+Sign-in has a dedicated minimal header: a monochrome brand link back home and
+the existing English/Traditional Chinese switch. Global desktop/mobile navigation,
+city selection, footer and demo banner are omitted on this route. Normal site
+chrome returns when navigating away.
+
+Desktop allocates 60% to the artwork and 40% to the form, with a thin vertical
+divider and a shared neutral background instead of a rounded artwork card. The
+form is capped at 400 px and uses black primary buttons. At 801–1099 px the
+columns become equal; up to 800 px only the form is shown. Artwork size also
+responds to viewport height. Short screens can scroll rather than clip form
+content. These styles and color tokens are scoped to sign-in.
+
 ## Rendering and motion
 
 The pattern is reconstructed analytically from the supplied geometric reference,
