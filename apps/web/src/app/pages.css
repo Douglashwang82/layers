@@ -490,7 +490,14 @@ body:has(.auth-page-stage) {
   --th-control-border: #aaa;
   --th-divider: #e5e5e5;
   --th-radius-input: 6px;
-  background: #fafafa;
+  /* Match the padded, max-width grid's 60/40 boundary across the viewport. */
+  --auth-split: calc(50% + min(10vw, 168px) - clamp(4.8px, 0.8vw, 12.8px));
+  background: linear-gradient(
+    to right,
+    #fafafa var(--auth-split),
+    #111 var(--auth-split)
+  );
+  min-height: 100svh;
   padding-bottom: 0;
 }
 .auth-entry-header {
@@ -521,9 +528,10 @@ body:has(.auth-page-stage) {
   background: #171717;
 }
 .auth-entry-header .language-button {
+  --th-focus: #fff;
   min-width: 44px;
   min-height: 44px;
-  color: #333;
+  color: #f5f5f5;
   background: transparent;
   font-size: 13px;
 }
@@ -539,7 +547,6 @@ body:has(.auth-page-stage) {
   min-height: calc(100svh - 88px);
   padding: 32px 0 64px;
   align-items: center;
-  background: linear-gradient(to right, transparent 60%, #111 60%);
 }
 .auth-scene {
   /* Form comes first in the DOM; the artwork sits to its left. */
@@ -644,9 +651,11 @@ body:has(.auth-page-stage) {
   line-height: 1.7;
 }
 @media (min-width: 801px) and (max-width: 1099px) {
+  body:has(.auth-page-stage) {
+    --auth-split: 50%;
+  }
   .auth-stage {
     grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
-    background: linear-gradient(to right, transparent 50%, #111 50%);
   }
   .auth-stage .form-panel {
     width: calc(100% - 48px);
