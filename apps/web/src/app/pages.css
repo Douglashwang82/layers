@@ -539,6 +539,7 @@ body:has(.auth-page-stage) {
   min-height: calc(100svh - 88px);
   padding: 32px 0 64px;
   align-items: center;
+  background: linear-gradient(to right, transparent 60%, #111 60%);
 }
 .auth-scene {
   /* Form comes first in the DOM; the artwork sits to its left. */
@@ -550,7 +551,6 @@ body:has(.auth-page-stage) {
   align-self: stretch;
   min-width: 0;
   padding-right: clamp(24px, 4vw, 64px);
-  border-right: 1px solid var(--th-divider);
   isolation: isolate;
   pointer-events: none;
 }
@@ -565,6 +565,14 @@ body:has(.auth-page-stage) {
   background: transparent;
 }
 .auth-stage .form-panel {
+  color-scheme: dark;
+  --th-text: #f5f5f5;
+  --th-muted: #b5b5b5;
+  --th-brand-text: #f5f5f5;
+  --th-focus: #fff;
+  --th-control-border: #777;
+  --th-divider: #393939;
+  color: var(--th-text);
   grid-column: 2;
   grid-row: 1;
   justify-self: center;
@@ -596,26 +604,27 @@ body:has(.auth-page-stage) {
 }
 .auth-stage .form-panel input {
   min-height: 52px;
-  background: #fff;
+  background: #202020;
+  color: #f5f5f5;
 }
 .auth-stage .form-panel .button {
   min-height: 52px;
   border-radius: 6px;
-  background: #171717;
-  color: #fff;
+  background: #f5f5f5;
+  color: #111;
 }
 .auth-stage .form-panel .button:hover:not(:disabled) {
-  background: #333;
+  background: #ddd;
 }
 .auth-stage .form-panel .button:active:not(:disabled) {
-  background: #080808;
+  background: #ccc;
 }
 .auth-stage .form-panel .button.secondary {
   background: transparent;
-  color: #171717;
+  color: #f5f5f5;
 }
 .auth-stage .form-panel .button.secondary:hover:not(:disabled) {
-  background: #eee;
+  background: #292929;
 }
 .auth-stage .form-panel > .form-stack > .text-button {
   justify-self: start;
@@ -637,6 +646,7 @@ body:has(.auth-page-stage) {
 @media (min-width: 801px) and (max-width: 1099px) {
   .auth-stage {
     grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+    background: linear-gradient(to right, transparent 50%, #111 50%);
   }
   .auth-stage .form-panel {
     width: calc(100% - 48px);

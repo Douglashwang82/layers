@@ -114,6 +114,7 @@
   }
   .auth-page-stage {
     padding: 0 24px;
+    background: #111;
   }
   .auth-stage {
     display: block;
