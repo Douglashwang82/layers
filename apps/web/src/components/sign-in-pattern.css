@@ -1,0 +1,81 @@
+.sign-in-pattern {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  width: min(100%, 760px);
+  aspect-ratio: 1;
+  overflow: hidden;
+  border-radius: 12px;
+  background: #fff;
+}
+.sign-in-pattern__tile {
+  display: grid;
+  place-items: center;
+  overflow: hidden;
+  aspect-ratio: 1;
+  background: #fff;
+  color: #090b09;
+}
+.sign-in-pattern__tile[data-inverted="true"] {
+  background: #090b09;
+  color: #fff;
+}
+.sign-in-pattern__diamond {
+  width: 70.710678%;
+  aspect-ratio: 1;
+  background: currentColor;
+  transform: rotate(45deg);
+  animation: sign-in-tile-shift 12800ms linear infinite;
+  animation-delay: var(--delay);
+}
+.sign-in-pattern[data-paused="true"] .sign-in-pattern__diamond {
+  animation-play-state: paused;
+}
+/* Eight discrete frames over 800ms; the other fifteen tiles hold still. */
+@keyframes sign-in-tile-shift {
+  0% {
+    transform: rotate(45deg) scale(1);
+    animation-timing-function: steps(4, end);
+  }
+  3.125% {
+    transform: rotate(90deg) scale(0.72);
+    animation-timing-function: steps(4, end);
+  }
+  6.25%,
+  100% {
+    transform: rotate(135deg) scale(1);
+  }
+}
+.sign-in-pattern__pause {
+  position: absolute;
+  right: 16px;
+  bottom: 16px;
+  display: grid;
+  place-items: center;
+  width: 44px;
+  height: 44px;
+  border: 1px solid #999;
+  border-radius: 50%;
+  background: #fff;
+  color: #090b09;
+  cursor: pointer;
+}
+.sign-in-pattern__pause:hover {
+  background: #eee;
+}
+.sign-in-pattern__pause:focus-visible {
+  outline: 2px solid #090b09;
+  outline-offset: 4px;
+}
+.sign-in-pattern__pause svg {
+  width: 18px;
+  height: 18px;
+  fill: currentColor;
+}
+@media (prefers-reduced-motion: reduce), (max-width: 800px) {
+  .sign-in-pattern__diamond {
+    animation: none;
+  }
+  .sign-in-pattern__pause {
+    display: none;
+  }
+}

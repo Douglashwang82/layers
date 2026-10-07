@@ -1,6 +1,6 @@
 import { getCopy } from "@/lib/i18n";
 import { AuthForm } from "@/components/auth-form";
-import { SignInPet } from "@/components/mascot/sign-in-pet";
+import { SignInPattern } from "@/components/sign-in-pattern";
 export default async function SignInPage({
   searchParams,
 }: {
@@ -21,9 +21,9 @@ export default async function SignInPage({
             }
           />
         </div>
-        {/* Left two thirds (placed by CSS): the lit pet stage and its pause. */}
+        {/* Decorative monochrome pattern; form stays first in tab order. */}
         <div className="auth-scene">
-          <SignInPet pauseLabel={t.signInPetPause} />
+          <SignInPattern pauseLabel={t.signInPetPause} />
         </div>
       </div>
     </div>
