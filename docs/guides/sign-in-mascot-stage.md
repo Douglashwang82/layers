@@ -38,7 +38,7 @@ The animation loop targets 30 rendered frames per second using elapsed time.
 The cube is 85% of its previous size and floats directly on the page, without
 a surrounding card. Four actual horizontal slices share continuous face UVs:
 their outside surfaces reconstruct the original pattern exactly when assembled.
-The newly exposed cut surfaces are neutral gray so the layers remain legible.
+The newly exposed cut surfaces retain the black-and-white diamond pattern.
 A separate top tile descends into a real pocket with interior walls and a floor.
 
 Each eight-second loop uses quintic easing with zero endpoint velocity:

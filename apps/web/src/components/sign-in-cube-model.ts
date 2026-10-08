@@ -104,12 +104,6 @@ function patternMaterial(face: number, layer: number, tile = false) {
         ),
       },
       hole: { value: !tile && face === 2 && layer === 3 ? 1 : 0 },
-      interior: {
-        value:
-          !tile && ((face === 2 && layer < 3) || (face === 3 && layer > 0))
-            ? 1
-            : 0,
-      },
       paper: { value: face === 2 ? 1 : face === 4 ? 0.92 : 0.8 },
     },
     vertexShader: `
@@ -125,15 +119,7 @@ function patternMaterial(face: number, layer: number, tile = false) {
       uniform vec2 uvOffset;
       uniform float hole;
       uniform float paper;
-      uniform float interior;
       void main() {
-        if (interior > 0.5) {
-          vec2 edge = min(faceUv, 1.0 - faceUv);
-          float rim = smoothstep(0.0, 0.008, min(edge.x, edge.y));
-          gl_FragColor = vec4(vec3(mix(0.25, paper * 0.77, rim)), 1.0);
-          #include <colorspace_fragment>
-          return;
-        }
         vec2 mapped = faceUv * uvScale + uvOffset;
         vec2 grid = vec2(mapped.x, 1.0 - mapped.y) * 4.0;
         vec2 cell = min(floor(grid), vec2(3.0));
