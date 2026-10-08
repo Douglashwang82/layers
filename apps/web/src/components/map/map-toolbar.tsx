@@ -1,5 +1,6 @@
 "use client";
-import { useState, type FormEvent } from "react";
+import { useEffect, useState, type FormEvent } from "react";
+import { createPortal } from "react-dom";
 import { Search, X, CalendarDays } from "lucide-react";
 import {
   itemTypes,
@@ -49,22 +50,51 @@ export function MapToolbar({
       ? ([["content", t.typeContent]] as [ItemType, string][])
       : []),
   ];
+  const [searchTarget, setSearchTarget] = useState<HTMLElement | null>(null);
+  useEffect(() => {
+    setSearchTarget(document.getElementById("map-header-search"));
+  }, []);
+  useEffect(() => {
+    setDraft(state.q);
+    setScope(state.scope);
+  }, [state.q, state.scope]);
+  const searchForm = (
+    <form className="map-search" role="search" onSubmit={submit}>
+      <label className="sr-only" htmlFor="map-search">
+        {t.searchLabel}
+      </label>
+      <input
+        id="map-search"
+        type="search"
+        enterKeyHint="search"
+        autoComplete="off"
+        value={draft}
+        onChange={(e) => setDraft(e.target.value)}
+        placeholder={format(t.searchCity, { city: cityName })}
+      />
+      <button type="submit" className="icon-button" aria-label={t.search}>
+        <Search size={18} aria-hidden="true" />
+      </button>
+      {state.q && (
+        <button
+          type="button"
+          className="button secondary small"
+          onClick={() => {
+            setDraft("");
+            setScope("layers");
+            onCommit({ q: "", scope: "layers" });
+          }}
+        >
+          <X size={14} aria-hidden="true" />
+          <span className="sr-only">{t.exitSearch}</span>
+        </button>
+      )}
+    </form>
+  );
   return (
     <div className="map-toolbar">
-      <form className="map-search" role="search" onSubmit={submit}>
-        <label className="sr-only" htmlFor="map-search">
-          {t.searchLabel}
-        </label>
-        <Search size={18} aria-hidden="true" />
-        <input
-          id="map-search"
-          type="search"
-          enterKeyHint="search"
-          autoComplete="off"
-          value={draft}
-          onChange={(e) => setDraft(e.target.value)}
-          placeholder={format(t.searchCity, { city: cityName })}
-        />
+      {searchTarget ? createPortal(searchForm, searchTarget) : searchForm}
+      <div className="map-filters">
         <div className="scope-toggle" role="group" aria-label={t.search}>
           <button
             type="button"
@@ -83,25 +113,7 @@ export function MapToolbar({
             {format(t.searchAllCity, { city: cityName })}
           </button>
         </div>
-        <button type="submit" className="button small">
-          {t.search}
-        </button>
-        {state.q && (
-          <button
-            type="button"
-            className="button secondary small"
-            onClick={() => {
-              setDraft("");
-              setScope("layers");
-              onCommit({ q: "", scope: "layers" });
-            }}
-          >
-            <X size={14} aria-hidden="true" />
-            {t.exitSearch}
-          </button>
-        )}
-      </form>
-      <div className="map-filters">
+
         <div className="segmented" role="group" aria-label={t.date}>
           {(
             [

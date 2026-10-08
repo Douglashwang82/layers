@@ -275,3 +275,42 @@ test("a failed map provider keeps results, selection and directions usable", asy
   await expect(page).toHaveURL(/view=list/);
   await expect(page.locator(".result-row").first()).toBeVisible();
 });
+
+test("map header and sidebar preserve search across collapse and mobile", async ({
+  page,
+}) => {
+  await blockMapProvider(page);
+  await page.goto("/");
+  const header = page.locator(".map-header");
+  await expect(header.getByRole("searchbox")).toBeVisible();
+  await expect(header.locator(".desktop-nav")).toHaveCount(0);
+  const sidebar = page.locator(".map-sidebar-nav");
+  const stage = page.locator(".map-stage");
+  const before = await stage.boundingBox();
+  await sidebar.getByRole("button", { name: "Collapse", exact: true }).click();
+  await expect(page.locator("#map-sidebar-content")).toBeHidden();
+  await expect(
+    sidebar.getByRole("link", { name: "Saved", exact: true }),
+  ).toBeVisible();
+  expect((await stage.boundingBox())!.width).toBeGreaterThan(before!.width);
+  await header.getByRole("searchbox").fill("noodle");
+  await header.getByRole("searchbox").press("Enter");
+  await expect(page).toHaveURL(/q=noodle/);
+  await page.reload();
+  await expect(page.locator("#map-sidebar-content")).toBeHidden();
+  await sidebar.getByRole("button", { name: "Expand", exact: true }).click();
+  await expect(page.getByRole("tab", { name: /Results/ })).toBeVisible();
+  await expect(header.getByRole("searchbox")).toHaveValue("noodle");
+  await page.locator(".map-profile-menu summary").click();
+  await expect(page.locator(".map-profile-options")).toBeVisible();
+  await page.locator(".map-profile-menu summary").press("Escape");
+  await expect(page.locator(".map-profile-options")).toBeHidden();
+  await sidebar.getByRole("button", { name: "Collapse", exact: true }).click();
+  await page.setViewportSize({ width: 390, height: 844 });
+  await expect(header.getByRole("searchbox")).toBeVisible();
+  await expect(page.getByRole("tab", { name: /Results/ })).toBeVisible();
+  await expect(sidebar).toBeHidden();
+  expect(
+    await page.evaluate(() => document.documentElement.scrollWidth),
+  ).toBeLessThanOrEqual(390);
+});

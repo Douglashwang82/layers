@@ -1,4 +1,5 @@
 "use client";
+import { brand } from "@taiwanhub/shared";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { useState } from "react";
@@ -34,14 +35,17 @@ export function Navigation({
   locale,
   cities,
   city,
+  mapHome = false,
 }: {
   t: Copy;
   locale: Locale;
   cities: { id: string; slug: string; name: string }[];
   city: string;
+  mapHome?: boolean;
 }) {
   const pathname = usePathname();
   const router = useRouter();
+  const mapPage = mapHome && pathname === "/";
   const [switching, setSwitching] = useState(false);
   const nav = [
     ["/", t.mapNav, MapIcon],
@@ -78,20 +82,30 @@ export function Navigation({
   }
   return (
     <>
-      <header className="header">
+      <header className={`header ${mapPage ? "map-header" : ""}`}>
         <Link href="/" className="brand" aria-label={t.brandHome}>
           <span className="brand-mark" aria-hidden="true">
             L
           </span>
-          Local<span>Link</span>
+          {mapPage ? (
+            brand.name
+          ) : (
+            <>
+              Local<span>Link</span>
+            </>
+          )}
         </Link>
-        <nav className="desktop-nav" aria-label={t.mainNav}>
-          {nav.slice(0, 3).map(([href, label]) => (
-            <Link key={href} href={href} aria-current={current(href)}>
-              {label}
-            </Link>
-          ))}
-        </nav>
+        {mapPage ? (
+          <div id="map-header-search" />
+        ) : (
+          <nav className="desktop-nav" aria-label={t.mainNav}>
+            {nav.slice(0, 3).map(([href, label]) => (
+              <Link key={href} href={href} aria-current={current(href)}>
+                {label}
+              </Link>
+            ))}
+          </nav>
+        )}
         <div className="header-tools">
           <label className="city-select">
             <MapPin size={16} aria-hidden="true" />
@@ -124,15 +138,41 @@ export function Navigation({
               ))}
             </select>
           </label>
-          {languageButton}
-          <Link
-            href="/profile"
-            className="sign-in"
-            aria-current={current("/profile")}
-          >
-            <UserRound size={16} aria-hidden="true" />
-            {t.profile}
-          </Link>
+          {mapPage ? (
+            <details
+              className="map-profile-menu"
+              onKeyDown={(event) => {
+                if (event.key === "Escape") {
+                  event.currentTarget.open = false;
+                  event.currentTarget.querySelector("summary")?.focus();
+                }
+              }}
+            >
+              <summary
+                className="icon-button"
+                aria-label={t.profile}
+                title={t.profile}
+              >
+                <UserRound size={22} aria-hidden="true" />
+              </summary>
+              <div className="map-profile-options">
+                <Link href="/profile">{t.profile}</Link>
+                {languageButton}
+              </div>
+            </details>
+          ) : (
+            <>
+              {languageButton}
+              <Link
+                href="/profile"
+                className="sign-in"
+                aria-current={current("/profile")}
+              >
+                <UserRound size={16} aria-hidden="true" />
+                {t.profile}
+              </Link>
+            </>
+          )}
         </div>
       </header>
       <nav className="bottom-nav" aria-label={t.mobileNav}>

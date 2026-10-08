@@ -10,6 +10,9 @@ import {
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 import {
+  Bookmark,
+  PanelLeftClose,
+  PanelLeftOpen,
   ChevronDown,
   ChevronUp,
   List,
@@ -325,6 +328,7 @@ export function MapWorkspace({
     }
   }, [selectedKey, selected, refreshing, queryKey, commit, t.selectionCleared]);
   const select = (key: string) => {
+    if (sidebarCollapsed && !wide && !mobile) toggleSidebar();
     commit({ item: key }, "push");
     pushedSelection.current = true;
     setSheet("half");
@@ -358,6 +362,7 @@ export function MapWorkspace({
     return points;
   }, [externalPoints, searchPoints, business]);
   const selectBusiness = (next: BusinessSelection) => {
+    if (sidebarCollapsed && !wide && !mobile) toggleSidebar();
     setBusiness(next);
     setSheet("half");
     if (next.location) canvas.current?.focusPoint(next.location);
@@ -416,6 +421,25 @@ export function MapWorkspace({
   /* Layout: sheet on mobile, panel/rail on wider screens */
   const mobile = useMedia("(max-width: 800px)");
   const wide = useMedia("(min-width: 1440px)");
+  const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
+  useEffect(() => {
+    try {
+      setSidebarCollapsed(
+        localStorage.getItem("taiwanhub.map.sidebar-collapsed") === "true",
+      );
+    } catch {
+      /* Storage may be unavailable. */
+    }
+  }, []);
+  const toggleSidebar = () => {
+    const next = !sidebarCollapsed;
+    setSidebarCollapsed(next);
+    try {
+      localStorage.setItem("taiwanhub.map.sidebar-collapsed", String(next));
+    } catch {
+      /* Keep the in-memory preference. */
+    }
+  };
   const [sheet, setSheet] = useState<Sheet>("half");
   const [tab, setTab] = useState<"layers" | "results">("results");
   const [limit, setLimit] = useState(20);
@@ -441,7 +465,7 @@ export function MapWorkspace({
   );
   useEffect(() => {
     canvas.current?.resize();
-  }, [state.view, sheet]);
+  }, [state.view, sheet, sidebarCollapsed, mobile]);
   const listView = state.view === "list";
   const setView = (view: MapState["view"]) => {
     commit({ view }, "replace");
@@ -754,7 +778,7 @@ export function MapWorkspace({
   );
   return (
     <div
-      className={`map-workspace ${listView ? "view-list" : "view-map"} sheet-${sheet} ${showDetailRail ? "has-rail" : ""} ${detailInPanel ? "has-detail" : ""}`}
+      className={`map-workspace ${sidebarCollapsed ? "sidebar-collapsed" : ""} ${listView ? "view-list" : "view-map"} sheet-${sheet} ${showDetailRail ? "has-rail" : ""} ${detailInPanel ? "has-detail" : ""}`}
       data-canvas={canvasStatus}
       style={
         {
@@ -939,80 +963,129 @@ export function MapWorkspace({
         aria-label={t.mapNav}
         tabIndex={-1}
       >
-        <div className="sheet-handle">
+        <nav className="map-sidebar-nav" aria-label={t.mainNav}>
+          {!listView && (
+            <button
+              type="button"
+              onClick={toggleSidebar}
+              aria-expanded={!sidebarCollapsed}
+              aria-controls="map-sidebar-content"
+              aria-label={sidebarCollapsed ? t.expand : t.collapse}
+              title={sidebarCollapsed ? t.expand : t.collapse}
+            >
+              {sidebarCollapsed ? (
+                <PanelLeftOpen size={22} aria-hidden="true" />
+              ) : (
+                <PanelLeftClose size={22} aria-hidden="true" />
+              )}
+              <span>{t.collapse}</span>
+            </button>
+          )}
           <button
             type="button"
-            className="text-button"
+            aria-label={t.mapNav}
+            title={t.mapNav}
+            aria-current="page"
             onClick={() => {
-              setTab("layers");
-              setSheet("half");
+              if (sidebarCollapsed) toggleSidebar();
+              setTab("results");
+              setMode("layers");
             }}
           >
-            <LayersIcon size={14} aria-hidden="true" />{" "}
-            {format(t.layerCount, { count: layerCount })}
+            <MapIcon size={22} aria-hidden="true" />
+            <span>{t.mapNav}</span>
           </button>
-          <span className="sheet-buttons">
+          <Link href="/layers" aria-label={t.layers} title={t.layers}>
+            <LayersIcon size={22} aria-hidden="true" />
+            <span>{t.layers}</span>
+          </Link>
+          <Link href="/saved" aria-label={t.saved} title={t.saved}>
+            <Bookmark size={22} aria-hidden="true" />
+            <span>{t.saved}</span>
+          </Link>
+        </nav>
+        <div
+          id="map-sidebar-content"
+          className="map-sidebar-content"
+          hidden={!mobile && !listView && sidebarCollapsed}
+        >
+          <div className="sheet-handle">
             <button
               type="button"
-              className="icon-button"
-              aria-label={t.collapse}
-              disabled={sheet === "peek"}
-              onClick={() => setSheet(sheet === "expanded" ? "half" : "peek")}
+              className="text-button"
+              onClick={() => {
+                setTab("layers");
+                setSheet("half");
+              }}
             >
-              <ChevronDown size={18} aria-hidden="true" />
+              <LayersIcon size={14} aria-hidden="true" />{" "}
+              {format(t.layerCount, { count: layerCount })}
             </button>
-            <button
-              type="button"
-              className="icon-button"
-              aria-label={t.expand}
-              disabled={sheet === "expanded"}
-              onClick={() => setSheet(sheet === "peek" ? "half" : "expanded")}
-            >
-              <ChevronUp size={18} aria-hidden="true" />
-            </button>
-          </span>
-        </div>
-        {restored && <p className="fine-print restored">{t.restoredLayers}</p>}
-        {otherCity.map((l) => (
-          <p key={l.slug} className="fine-print">
-            {format(t.layerOtherCity, { city: l.cityName ?? "" })}
-          </p>
-        ))}
-        {detailInPanel ? (
-          businessInPanel ? (
-            businessPanel
+            <span className="sheet-buttons">
+              <button
+                type="button"
+                className="icon-button"
+                aria-label={t.collapse}
+                disabled={sheet === "peek"}
+                onClick={() => setSheet(sheet === "expanded" ? "half" : "peek")}
+              >
+                <ChevronDown size={18} aria-hidden="true" />
+              </button>
+              <button
+                type="button"
+                className="icon-button"
+                aria-label={t.expand}
+                disabled={sheet === "expanded"}
+                onClick={() => setSheet(sheet === "peek" ? "half" : "expanded")}
+              >
+                <ChevronUp size={18} aria-hidden="true" />
+              </button>
+            </span>
+          </div>
+          {restored && (
+            <p className="fine-print restored">{t.restoredLayers}</p>
+          )}
+          {otherCity.map((l) => (
+            <p key={l.slug} className="fine-print">
+              {format(t.layerOtherCity, { city: l.cityName ?? "" })}
+            </p>
+          ))}
+          {detailInPanel ? (
+            businessInPanel ? (
+              businessPanel
+            ) : (
+              preview
+            )
+          ) : mode === "business" && discoveryPanel ? (
+            <div className="panel-body">{discoveryPanel}</div>
           ) : (
-            preview
-          )
-        ) : mode === "business" && discoveryPanel ? (
-          <div className="panel-body">{discoveryPanel}</div>
-        ) : (
-          <>
-            <div className="panel-tabs" role="tablist" aria-label={t.mapNav}>
-              <button
-                type="button"
-                role="tab"
-                aria-selected={tab === "layers"}
-                onClick={() => setTab("layers")}
-              >
-                {t.layersTab} <span className="count-pill">{layerCount}</span>
-              </button>
-              <button
-                type="button"
-                role="tab"
-                aria-selected={tab === "results"}
-                onClick={() => setTab("results")}
-              >
-                {t.resultsTab}{" "}
-                <span className="count-pill">{result.total}</span>
-              </button>
-            </div>
-            <div className="panel-body" role="tabpanel">
-              {tab === "layers" ? layersPanel : resultsPanel}
-            </div>
-          </>
-        )}
-        {footer}
+            <>
+              <div className="panel-tabs" role="tablist" aria-label={t.mapNav}>
+                <button
+                  type="button"
+                  role="tab"
+                  aria-selected={tab === "layers"}
+                  onClick={() => setTab("layers")}
+                >
+                  {t.layersTab} <span className="count-pill">{layerCount}</span>
+                </button>
+                <button
+                  type="button"
+                  role="tab"
+                  aria-selected={tab === "results"}
+                  onClick={() => setTab("results")}
+                >
+                  {t.resultsTab}{" "}
+                  <span className="count-pill">{result.total}</span>
+                </button>
+              </div>
+              <div className="panel-body" role="tabpanel">
+                {tab === "layers" ? layersPanel : resultsPanel}
+              </div>
+            </>
+          )}
+          {footer}
+        </div>
       </div>
       {showDetailRail && (
         <aside className="map-rail">{businessPanel ?? preview}</aside>

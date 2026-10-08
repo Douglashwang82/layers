@@ -263,6 +263,7 @@
   border-left: 1px solid var(--th-divider);
 }
 .sheet-handle {
+  flex-shrink: 0;
   display: none;
 }
 .sheet-buttons {
@@ -1297,4 +1298,121 @@
 .daily-pick-history li {
   border-bottom: 1px solid var(--th-divider);
   padding-bottom: 12px;
+}
+/* Compact map-only navigation; other routes retain their existing header. */
+.header.map-header {
+  max-width: none;
+  gap: 24px;
+  height: var(--th-header-height);
+}
+#map-header-search {
+  flex: 1;
+  min-width: 0;
+  max-width: 760px;
+}
+.map-header .map-search {
+  flex-wrap: nowrap;
+}
+.map-header .map-search input {
+  width: 0;
+}
+.map-profile-menu {
+  position: relative;
+}
+.map-profile-menu summary {
+  list-style: none;
+  cursor: pointer;
+}
+.map-profile-menu summary::-webkit-details-marker {
+  display: none;
+}
+.map-profile-options {
+  position: absolute;
+  right: 0;
+  top: 48px;
+  z-index: 40;
+  min-width: 160px;
+  display: grid;
+  gap: 8px;
+  padding: 12px;
+  background: var(--th-surface);
+  border: 1px solid var(--th-divider);
+  border-radius: 12px;
+  box-shadow: 0 6px 24px #0002;
+}
+.map-profile-options a {
+  padding: 10px;
+}
+.map-sidebar-content {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+}
+.map-sidebar-content[hidden] {
+  display: none;
+}
+.map-sidebar-nav {
+  display: grid;
+  gap: 4px;
+  padding: 8px;
+  border-bottom: 1px solid var(--th-divider);
+  flex-shrink: 0;
+}
+.map-sidebar-nav a,
+.map-sidebar-nav button {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-height: 44px;
+  padding: 10px;
+  background: none;
+  color: var(--th-text);
+  border-radius: 8px;
+  font-size: 14px;
+}
+.map-sidebar-nav :is(a, button):hover,
+.map-sidebar-nav [aria-current] {
+  background: var(--th-surface-soft);
+  color: var(--th-brand-text);
+}
+.map-sidebar-nav svg {
+  flex-shrink: 0;
+}
+@media (min-width: 801px) {
+  .map-workspace.sidebar-collapsed.view-map {
+    --th-map-panel-width: 64px;
+  }
+  .sidebar-collapsed.view-map .map-sidebar-nav span {
+    display: none;
+  }
+  .sidebar-collapsed.view-map .map-sidebar-nav :is(a, button) {
+    justify-content: center;
+  }
+}
+@media (max-width: 800px) {
+  body:has(.map-header) {
+    --th-header-height: 124px;
+  }
+  .header.map-header {
+    flex-wrap: wrap;
+    gap: 4px 12px;
+    padding: 8px 12px;
+    align-content: center;
+  }
+  .map-header .brand {
+    font-size: 18px;
+  }
+  #map-header-search {
+    order: 3;
+    flex-basis: 100%;
+    max-width: none;
+  }
+  .map-sidebar-nav {
+    display: none;
+  }
+  .map-header .city-select select {
+    max-width: 110px;
+  }
 }

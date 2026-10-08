@@ -8,6 +8,16 @@ Keep TaiwanHub's existing bright visual language: pale mint canvas, white surfac
 
 This is a proposed migration, based on the current repository's source. It does not implement the new application or claim a browser usability audit. New routes, components, data entities, limits, and performance budgets below are proposed requirements. Examples of layers and their contents are illustrative, not claims about real businesses or groups.
 
+## Implemented map navigation (October 2026)
+
+The map home header contains the app mark and name, map search, city selector,
+and an icon-only profile disclosure with profile and language actions. Search
+scope, date, and category controls remain below the header. On desktop, the
+left sidebar provides Map, Layers, and Saved navigation and collapses to an icon
+rail. Its browser-local preference survives reloads; collapsing preserves map
+filters and panel contents. List fallback remains available, and mobile retains
+the bottom sheet and bottom navigation with search on a second header row.
+
 ## 1. Scope and relationship to the style guide
 
 Use this document as the product and interaction specification for the next experience. It supersedes the home-feed hierarchy, five-destination navigation, and optional-map direction in the [earlier modernization guide](ui-ux-modernization-guide.md). Continue using that guide's palette, typography, spacing, shape, accessibility, photography, and bilingual principles.

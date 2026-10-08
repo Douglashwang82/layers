@@ -36,7 +36,11 @@ export default async function RootLayout({
         <a className="skip-link" href="#main">
           {t.skipLink}
         </a>
-        <Navigation {...{ t, locale, cities }} city={city.slug} />
+        <Navigation
+          {...{ t, locale, cities }}
+          city={city.slug}
+          mapHome={flags.mapHome}
+        />
         <main id="main">{children}</main>
         <SiteChrome t={t} cityName={city.name} mapHome={flags.mapHome} />
       </body>
