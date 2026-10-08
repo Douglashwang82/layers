@@ -3,7 +3,7 @@
 The `/sign-in` page places a monochrome Three.js cube beside the sign-in form.
 An orthographic camera at (6, 6, 6) keeps the reference's equal-angle view:
 visible top, left and right faces, with vertical edges remaining vertical.
-All six faces carry the same alternating 4×4 black-and-white diamond pattern.
+All six faces carry the same alternating 4×4 black-and-white geometric pattern.
 The form remains first in reading and tab order.
 
 ## Entry layout
@@ -38,7 +38,10 @@ The animation loop targets 30 rendered frames per second using elapsed time.
 The cube is 85% of its previous size and floats directly on the page, without
 a surrounding card. Four actual horizontal slices share continuous face UVs:
 their outside surfaces reconstruct the original pattern exactly when assembled.
-The newly exposed cut surfaces retain the black-and-white diamond pattern.
+The newly exposed cut surfaces retain the same black-and-white pattern: diamonds,
+circles, triangles, nested squares and three-stripe motifs. Motifs and quarter-turn
+orientations use full-face cell coordinates, keeping slice seams and the recessed
+tile aligned. The static SVG fallback uses the same arrangement.
 A separate top tile descends into a real pocket with interior walls and a floor.
 
 Each eight-second loop uses quintic easing with zero endpoint velocity:

@@ -125,11 +125,28 @@ function patternMaterial(face: number, layer: number, tile = false) {
         vec2 cell = min(floor(grid), vec2(3.0));
         if (hole > 0.5 && cell.x == 2.0 && cell.y == 1.0) discard;
         vec2 point = grid - cell - 0.5;
+        float turn = mod(cell.x + 2.0 * cell.y, 4.0);
+        if (turn > 2.5) point = vec2(-point.y, point.x);
+        else if (turn > 1.5) point = -point;
+        else if (turn > 0.5) point = vec2(point.y, -point.x);
+        float motif = mod(cell.x + 3.0 * cell.y, 5.0);
         float distanceToEdge = abs(point.x) + abs(point.y) - 0.5;
+        if (motif > 3.5) {
+          // Three bold parallel lines, contained within their own cell.
+          float stripe = abs(mod(point.x + 0.12, 0.24) - 0.12) - 0.05;
+          distanceToEdge = max(stripe, max(abs(point.x) - 0.34, abs(point.y) - 0.38));
+        } else if (motif > 2.5) {
+          float square = max(abs(point.x), abs(point.y));
+          distanceToEdge = min(abs(square - 0.29) - 0.055, square - 0.085);
+        } else if (motif > 1.5) {
+          distanceToEdge = max(abs(point.x) - (point.y + 0.4) * 0.525, point.y - 0.4);
+        } else if (motif > 0.5) {
+          distanceToEdge = length(point) - 0.36;
+        }
         float aa = max(fwidth(distanceToEdge), 0.00001);
-        float diamond = 1.0 - smoothstep(-aa * 0.5, aa * 0.5, distanceToEdge);
+        float shape = 1.0 - smoothstep(-aa * 0.5, aa * 0.5, distanceToEdge);
         float inverted = mod(cell.x + cell.y, 2.0);
-        float ink = mix(diamond, 1.0 - diamond, inverted);
+        float ink = mix(shape, 1.0 - shape, inverted);
         gl_FragColor = vec4(vec3(mix(paper, 0.0027, ink)), 1.0);
         #include <colorspace_fragment>
       }
