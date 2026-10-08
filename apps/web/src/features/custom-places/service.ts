@@ -324,7 +324,7 @@ export async function updateCustomPlace(
   });
 }
 /**
- * Opt-in "Suggest to TaiwanHub": files an ordinary pending catalog proposal
+ * Opt-in "Suggest to LocalLink": files an ordinary pending catalog proposal
  * from the private place plus the catalog facts it lacks, and links the two.
  * The private place is unchanged; once a moderator approves the proposal the
  * map shows the catalog place instead. A pending or approved suggestion

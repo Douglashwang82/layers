@@ -16,7 +16,7 @@ export function MascotStudio({ t }: { t: Copy }) {
   return (
     <div className="mascot-studio">
       <div className="mascot-studio__intro">
-        <p className="mascot-studio__eyebrow">TaiwanHub · Warm Pin V2</p>
+        <p className="mascot-studio__eyebrow">LocalLink · Warm Pin V2</p>
         <h1>{t.mascotTitle}</h1>
         <p>{t.mascotIntro}</p>
       </div>

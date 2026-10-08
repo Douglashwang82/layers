@@ -6,7 +6,7 @@ import {
   listContent,
   listNames,
 } from "@/features/catalog/repository";
-import { listInput } from "@taiwanhub/shared";
+import { listInput, retailCategories } from "@taiwanhub/shared";
 import { SubmissionForm } from "@/components/submission-form";
 import { ContentForm } from "@/components/content/content-form";
 import { getActiveCity } from "@/lib/city";
@@ -57,13 +57,20 @@ export default async function SubmitPage({
       </div>
     );
   }
-  const [t, cities, orgs, products, stores] = await Promise.all([
+  const [t, cities, orgs, products, ...storeLists] = await Promise.all([
     getCopy(),
     getCities(),
     listContent("organizations", listInput.parse({})),
     listContent("products", listInput.parse({})),
-    listContent("places", listInput.parse({ category: "Asian Grocery" })),
+    ...retailCategories.map((category) =>
+      listContent("places", listInput.parse({ category })),
+    ),
   ]);
+  const stores = {
+    items: storeLists
+      .flatMap((list) => list.items)
+      .sort((a, b) => a.name.localeCompare(b.name)),
+  };
   return (
     <div className="container">
       <div className="form-panel">

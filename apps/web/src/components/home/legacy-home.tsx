@@ -25,9 +25,7 @@ export async function LegacyHome() {
   ]);
   const feed = await getHomeFeed(city.slug, actor?.id);
   type Shortcut = [icon: typeof Coffee, label: string, href: string];
-  const shortcuts: Shortcut[] = [
-    [Coffee, "Bubble Tea", "/places?category=Bubble+Tea"],
-  ];
+  const shortcuts: Shortcut[] = [[Coffee, t.places, "/places"]];
   if (flags.products) shortcuts.push([ShoppingBag, t.products, "/products"]);
   if (flags.organizations)
     shortcuts.push([Users, t.community, "/organizations"]);

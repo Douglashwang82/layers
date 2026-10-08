@@ -1,3 +1,4 @@
+import { brand } from "@taiwanhub/shared";
 import { type Copy, type Locale, format } from "./dictionary";
 /** Bilingual layer title with the original as fallback. */
 export function layerTitle(
@@ -33,7 +34,7 @@ export function ownerLabel(
   t: Copy,
   own: boolean,
 ) {
-  if (layer.ownerKind === "system") return "TaiwanHub";
+  if (layer.ownerKind === "system") return brand.name;
   if (own) return t.ownerYou;
   return format(t.byOwner, { name: layer.ownerName });
 }

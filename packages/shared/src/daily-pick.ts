@@ -1,5 +1,7 @@
 import { z } from "zod";
 import { plainText } from "./text";
+import { placeCategoryChinese } from "./categories";
+import { brand } from "./brand";
 /* ---------------------------------------------------------------------------
    Daily Pick: one shared place per city and city-local date. Selection is a
    pure, deterministic function of the eligible catalog and the city's pick
@@ -336,20 +338,7 @@ export function summarizeDescription(text: string, maxLength = 280) {
   const space = cut.lastIndexOf(" ");
   return (space > maxLength / 2 ? cut.slice(0, space) : cut).trimEnd() + "…";
 }
-const categoryChinese: Record<string, string> = {
-  Taiwanese: "台灣料理",
-  "Bubble Tea": "手搖飲",
-  Bakery: "麵包店",
-  "Hot Pot": "火鍋",
-  Breakfast: "早餐",
-  Dessert: "甜點",
-  "Asian Grocery": "亞洲超市",
-  Japanese: "日式料理",
-  Korean: "韓式料理",
-  Chinese: "中式料理",
-  Cafe: "咖啡廳",
-  Other: "其他",
-};
+const categoryChinese = placeCategoryChinese;
 const fieldLabels: Record<DocumentationField, { en: string; zh: string }> = {
   detailed_description: { en: "a detailed description", zh: "詳細介紹" },
   chinese_description: { en: "a Chinese description", zh: "中文介紹" },
@@ -370,8 +359,8 @@ function sentence(reason: DailyPickReason, zh: boolean) {
   switch (reason.code) {
     case "editorial":
       return zh
-        ? reason.noteChinese || reason.note || "由 TaiwanHub 編輯挑選。"
-        : reason.note || "Chosen by the TaiwanHub editors.";
+        ? reason.noteChinese || reason.note || `由 ${brand.name} 編輯挑選。`
+        : reason.note || `Chosen by the ${brand.name} editors.`;
     case "category_rotation":
       return zh
         ? `今天介紹「${categoryChinese[reason.category] ?? reason.category}」；前 ${reason.recentPicks} 次精選都不是這個類別。`

@@ -71,7 +71,7 @@ export function RatingLine({
 }
 /**
  * The selected business: Google's attributed details in their own component,
- * then a clearly separate TaiwanHub region (save, add to layer, scoped
+ * then a clearly separate LocalLink region (save, add to layer, scoped
  * reviews). Browsing creates nothing; the first save/add/review resolves a
  * local subject. Drafts stay in memory through failures and sign-in prompts.
  */
@@ -399,7 +399,7 @@ export function BusinessPanel({
         )}
       </section>
       <section className="community-region" aria-labelledby="community-heading">
-        <h2 id="community-heading">{t.taiwanhubCommunity}</h2>
+        <h2 id="community-heading">{t.brandCommunity}</h2>
         <p className="fine-print">{t.providerNote}</p>
         {!authenticated ? (
           <p>

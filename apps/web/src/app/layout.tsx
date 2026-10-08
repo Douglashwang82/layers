@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import { brand } from "@taiwanhub/shared";
 import { Navigation, SiteChrome } from "@/components/navigation";
 import { getActiveCity } from "@/lib/city";
 import { getCopy, getLocale } from "@/lib/i18n";
@@ -11,12 +12,12 @@ export const dynamic = "force-dynamic";
 export const metadata: Metadata = {
   metadataBase: new URL(appUrl),
   title: {
-    default: "TaiwanHub — Houston through Taiwanese eyes",
-    template: "%s | TaiwanHub",
+    default: `${brand.name} — Local places, events and communities in Houston`,
+    template: `%s | ${brand.name}`,
   },
   description:
-    "Discover restaurants, weekend events, and Taiwanese finds with your Houston community.",
-  openGraph: { siteName: "TaiwanHub", type: "website" },
+    "Discover places, weekend events, local products and communities with your neighbors in Houston.",
+  openGraph: { siteName: brand.name, type: "website" },
   robots: { index: true, follow: true },
 };
 export default async function RootLayout({

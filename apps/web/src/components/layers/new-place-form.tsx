@@ -42,7 +42,7 @@ export function NewPlaceForm({
   onSaved: (item: MapItem, message: string) => void;
   onDeleted?: (key: string, message: string) => void;
   onCancel: () => void;
-  /** Place submissions are enabled: offer "Suggest to TaiwanHub" when editing. */
+  /** Place submissions are enabled: offer "Suggest to LocalLink" when editing. */
   canSuggest?: boolean;
   /** Mapbox public token for the drop-a-pin map; omitted hides it. */
   mapToken?: string;

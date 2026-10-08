@@ -23,17 +23,17 @@ test("find a business, save it, review it in a group, and reopen it", async ({
   await page.getByRole("button", { name: "Select (test provider)" }).click();
   await expect(page.getByText("Search result — not saved")).toBeVisible();
   await expect(page.getByText(/Test business fake-/).first()).toBeVisible();
-  await expect(page.getByText("TaiwanHub community")).toBeVisible();
+  await expect(page.getByText("LocalLink community")).toBeVisible();
   // Browsing created nothing: the lookup says unknown until an explicit save.
   await page.getByRole("button", { name: "Save", exact: true }).click();
   await expect(page.getByRole("button", { name: "Saved" })).toBeVisible();
-  // First review: stars and a comment, published only on TaiwanHub.
+  // First review: stars and a comment, published only on LocalLink.
   await page.getByLabel("4 of 5 stars").check();
   await page.getByLabel("Comment").fill("湯頭很濃 — great broth");
-  await page.getByRole("button", { name: "Publish on TaiwanHub" }).click();
+  await page.getByRole("button", { name: "Publish on LocalLink" }).click();
   await expect(page.getByText("Review saved.")).toBeVisible();
   await expect(
-    page.getByText("TaiwanHub rating: 4.0 · 1 ratings"),
+    page.getByText("LocalLink rating: 4.0 · 1 ratings"),
   ).toBeVisible();
   // Reopen from My saves on the subject page; the review is still there.
   await page.goto("/saved");
@@ -41,7 +41,7 @@ test("find a business, save it, review it in a group, and reopen it", async ({
   await page.getByRole("link", { name: "Open place page" }).click();
   await expect(page).toHaveURL(/\/place-subjects\/[0-9a-f-]{36}$/);
   await expect(
-    page.getByText("TaiwanHub rating: 4.0 · 1 ratings"),
+    page.getByText("LocalLink rating: 4.0 · 1 ratings"),
   ).toBeVisible();
   await page.getByRole("button", { name: "View all" }).click();
   await expect(page.getByText("湯頭很濃 — great broth")).toBeVisible();

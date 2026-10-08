@@ -1,4 +1,4 @@
-# TaiwanHub: map-first, layer-led UI/UX guide
+# LocalLink (formerly TaiwanHub): map-first, layer-led UI/UX guide
 
 Design and implementation specification · September 21, 2026
 

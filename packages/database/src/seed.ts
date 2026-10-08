@@ -1,5 +1,5 @@
 import { db, pool, schema as s } from "./index";
-import { placeCategories } from "../../shared/src";
+import { brand, placeCategorySeedOrder } from "../../shared/src";
 import { ensureSystemLayers } from "./system-layers";
 const uid = (group: number, n: number) =>
   `00000000-0000-4000-8000-${String(group * 1000 + n).padStart(12, "0")}`;
@@ -47,7 +47,7 @@ async function main() {
           homeCityId: uid(1, 1),
         })
         .onConflictDoNothing();
-    for (const [i, name] of placeCategories.entries())
+    for (const [i, name] of placeCategorySeedOrder.entries())
       await tx
         .insert(s.placeCategory)
         .values({ id: uid(3, i), name })
@@ -73,15 +73,14 @@ async function main() {
             "翡翠文化社",
             "戶外好朋友",
           ][i],
-          description:
-            "A fictional Houston community group for exploring TaiwanHub. Demo profile; not an actual organization.",
-          descriptionChinese: "這是 TaiwanHub 的示範社群，並非真實組織。",
+          description: `A fictional Houston community group for exploring ${brand.name}. Demo profile; not an actual organization.`,
+          descriptionChinese: `這是 ${brand.name} 的示範社群，並非真實組織。`,
           category: "Community",
           cityId: uid(1, 1),
           image: photo(i + 3),
           status: "approved",
           isDemo: true,
-          source: "TaiwanHub demo seed",
+          source: `${brand.name} demo seed`,
         })
         .onConflictDoNothing();
     const names = [
@@ -134,7 +133,7 @@ async function main() {
           descriptionChinese:
             "在示範休士頓指南中，與朋友圍桌而坐，品嚐熟悉的台灣味，分享你的推薦。",
           image: photo(i),
-          category: placeCategories[c],
+          category: placeCategorySeedOrder[c],
           categoryId: uid(3, c),
           aliases:
             i % 3 === 0
@@ -150,7 +149,7 @@ async function main() {
           priceLevel: (i % 3) + 1,
           status: "approved",
           isDemo: true,
-          source: "TaiwanHub demo seed",
+          source: `${brand.name} demo seed`,
         })
         .onConflictDoNothing();
     }
@@ -222,7 +221,7 @@ async function main() {
           featured: i < 2,
           status: "approved",
           isDemo: true,
-          source: "TaiwanHub demo seed",
+          source: `${brand.name} demo seed`,
         })
         .onConflictDoNothing();
     }
@@ -256,7 +255,7 @@ async function main() {
           onlineUrl: "https://www.sayweee.com/",
           status: "approved",
           isDemo: true,
-          source: "TaiwanHub demo seed",
+          source: `${brand.name} demo seed`,
         })
         .onConflictDoNothing();
     for (let i = 0; i < 20; i++)
@@ -271,7 +270,7 @@ async function main() {
           observedAt: new Date(Date.now() - ((i % 9) + 1) * 86400000),
           status: "approved",
           isDemo: true,
-          source: "TaiwanHub demo seed",
+          source: `${brand.name} demo seed`,
         })
         .onConflictDoNothing();
     for (let i = 0; i < 50; i++)

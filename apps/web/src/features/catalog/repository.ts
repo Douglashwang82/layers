@@ -3,6 +3,7 @@ import {
   AppError,
   type Kind,
   type ListInput,
+  isFoodCategory,
   placeRank,
   recommendationScore,
 } from "@taiwanhub/shared";
@@ -290,7 +291,7 @@ export async function getHomeFeed(city: string, userId?: string) {
     getSightings(undefined, city),
   ]);
   const ranked = places.items
-    .filter((p) => p.category !== "Asian Grocery")
+    .filter((p) => isFoodCategory(p.category))
     .sort(
       (a, b) =>
         placeRank(b.positive, b.responses) - placeRank(a.positive, a.responses),

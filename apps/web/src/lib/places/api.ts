@@ -1,5 +1,5 @@
 "use client";
-/** Local TaiwanHub API calls for place subjects, keeping the error code for flow decisions. */
+/** Local LocalLink API calls for place subjects, keeping the error code for flow decisions. */
 export class ApiError extends Error {
   constructor(
     public status: number,

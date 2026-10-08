@@ -1,4 +1,4 @@
-# TaiwanHub agent guide
+# LocalLink agent guide
 
 ## Scope and working agreements
 
@@ -13,7 +13,7 @@ This file guides coding agents and LLM-assisted contributors across the reposito
 
 ## Project map and references
 
-TaiwanHub is a Houston-first, English/Traditional Chinese discovery platform for Taiwanese life in North America. The home experience combines a map, layers, and a usable list fallback.
+LocalLink (formerly TaiwanHub) is a Houston-first, English/Traditional Chinese discovery platform for local places, events, products and communities for everyone. The home experience combines a map, layers, and a usable list fallback. Legacy `taiwanhub` identifiers (workspace packages, storage keys, crypto purposes, database/infrastructure names) are intentionally unchanged; see [docs/plans/locallink-rebrand-implementation-plan.md](docs/plans/locallink-rebrand-implementation-plan.md). Use `brand` and the category predicates in `packages/shared/src` instead of hardcoding names or category lists.
 
 | Location                                       | Responsibility                                                                      |
 | ---------------------------------------------- | ----------------------------------------------------------------------------------- |

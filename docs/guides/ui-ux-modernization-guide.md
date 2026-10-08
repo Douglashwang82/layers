@@ -1,4 +1,6 @@
-# TaiwanHub: a brighter, Robinhood-inspired UI/UX migration
+# LocalLink (formerly TaiwanHub): a brighter, Robinhood-inspired UI/UX migration
+
+> Naming note: the product is now LocalLink. This guide is retained as a design-direction record; where it mentions “TaiwanHub”, “TaiwaneseScore” (now `CommunityScore`), the 台 brand mark (now “L”), or Taiwanese-eyes copy, the current implementation uses the LocalLink equivalents. See [the rebrand plan](../plans/locallink-rebrand-implementation-plan.md).
 
 Implementation guide · September 21, 2026 · Baseline commit `7a7b0bd`
 

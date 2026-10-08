@@ -7,7 +7,7 @@ import { type Copy, type Locale, localized, dateLabel } from "@/lib/i18n";
 import type { Kind } from "@taiwanhub/shared";
 export type CardVariant = "feature" | "compact";
 /** Raw community response ratio with its count always adjacent; never a smoothed rank. */
-export function TaiwaneseScore({
+export function CommunityScore({
   item,
   t,
   presentation = "compact",
@@ -64,7 +64,7 @@ export function ContentCard({
   const name = localized(item, locale);
   const meta =
     kind === "places" ? (
-      <TaiwaneseScore item={item} t={t} />
+      <CommunityScore item={item} t={t} />
     ) : kind === "events" ? (
       <>
         {item.organizerName && <p className="muted">{item.organizerName}</p>}

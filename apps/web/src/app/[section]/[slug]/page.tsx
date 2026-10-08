@@ -14,7 +14,7 @@ import {
 } from "@/features/catalog/repository";
 import { getCopy, getLocale, localized, dateLabel } from "@/lib/i18n";
 import { currentActor } from "@/lib/session";
-import { TaiwaneseScore, CardGrid, EmptyState } from "@/components/cards";
+import { CommunityScore, CardGrid, EmptyState } from "@/components/cards";
 import {
   DetailActions,
   ReportButton,
@@ -148,7 +148,7 @@ export default async function DetailPage({ params }: Props) {
         <h1>{name}</h1>
         {kind === "places" && (
           <>
-            <TaiwaneseScore item={item} t={t} presentation="detail" />
+            <CommunityScore item={item} t={t} presentation="detail" />
             {(item.address || item.hours) && (
               <dl className="key-facts">
                 {item.address && (

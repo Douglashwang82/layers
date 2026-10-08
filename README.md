@@ -1,6 +1,10 @@
-# TaiwanHub
+# LocalLink
 
-Life in North America, through Taiwanese eyes. A Houston-first discovery platform for places, weekend events, community groups, and Taiwanese product sightings.
+Local places, events, products and communities for everyone. A Houston-first, English/Traditional Chinese discovery platform built around a map, shareable layers and a list fallback. Houston is the launch city; this is not a claim of worldwide coverage, and the feed-extraction geocoder is the US Census geocoder, which resolves US street addresses only. Taiwanese restaurants, groceries, organizations and product sightings remain supported as one set of local content among many.
+
+## Naming and legacy identifiers
+
+The product was previously named TaiwanHub. Technical identifiers were deliberately left unchanged for compatibility: the `@taiwanhub/*` workspace packages, the repository directory, browser storage keys (`taiwanhub:map`, `taiwanhub:map-view`), cryptographic purpose strings, database/CI/Docker names, the `.invalid` demo and test mail domains, and existing environment variables. See [docs/plans/locallink-rebrand-implementation-plan.md](docs/plans/locallink-rebrand-implementation-plan.md).
 
 ## Start with the guides
 

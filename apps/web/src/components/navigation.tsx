@@ -70,7 +70,7 @@ export function Navigation({
       <header className="auth-entry-header">
         <Link href="/" className="auth-entry-brand" aria-label={t.brandHome}>
           <span className="auth-entry-mark" aria-hidden="true" />
-          Taiwan<span>Hub</span>
+          Local<span>Link</span>
         </Link>
         {languageButton}
       </header>
@@ -81,9 +81,9 @@ export function Navigation({
       <header className="header">
         <Link href="/" className="brand" aria-label={t.brandHome}>
           <span className="brand-mark" aria-hidden="true">
-            台
+            L
           </span>
-          Taiwan<span>Hub</span>
+          Local<span>Link</span>
         </Link>
         <nav className="desktop-nav" aria-label={t.mainNav}>
           {nav.slice(0, 3).map(([href, label]) => (
@@ -162,7 +162,7 @@ export function SiteChrome({
     <>
       <footer>
         <Link className="brand" href="/">
-          Taiwan<span>Hub</span>
+          Local<span>Link</span>
         </Link>
         <div>
           <p>{t.footer}</p>

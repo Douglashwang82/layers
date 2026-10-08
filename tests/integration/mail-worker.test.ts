@@ -68,7 +68,7 @@ async function outboxRow(mailId: string) {
 }
 function failingMailer(error: Error): Mailer {
   return {
-    sender: "TaiwanHub Test <test@taiwanhub.invalid>",
+    sender: "LocalLink Test <test@taiwanhub.invalid>",
     send: vi.fn(async () => {
       throw error;
     }),

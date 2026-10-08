@@ -180,7 +180,7 @@ export function ReviewEditor({
           className="button small"
           disabled={busy || own?.removedByModerator}
         >
-          {busy ? t.saving : t.publishOnTaiwanHub}
+          {busy ? t.saving : t.publishOnBrand}
         </button>
         {own && own.status !== "deleted" && (
           <button

@@ -12,6 +12,7 @@ import {
   editInput,
   type Actor,
   type Kind,
+  isRetailCategory,
 } from "@taiwanhub/shared";
 import { tables } from "../catalog/repository";
 import { decideReview } from "../reviews/service";
@@ -186,8 +187,12 @@ export async function createSighting(actor: Actor | null, body: unknown) {
   return transaction(async (tx) => {
     await approved(tx, "products", input.productId);
     const place = await approved(tx, "places", input.placeId);
-    if (place.category !== "Asian Grocery")
-      throw new AppError(400, "INVALID_STORE", "Choose a grocery store.");
+    if (!isRetailCategory(String(place.category)))
+      throw new AppError(
+        400,
+        "INVALID_STORE",
+        "Choose a grocery store or shop.",
+      );
     const result = await tx.query<{ id: string }>(
       `INSERT INTO product_sighting(product_id,place_id,user_id,price,image,observed_at) VALUES($1,$2,$3,$4,$5,$6) RETURNING id`,
       [

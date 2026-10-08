@@ -62,7 +62,7 @@ export function SuggestPlace({
   }
   return (
     <section className="suggest-place" aria-labelledby="suggest-heading">
-      <h4 id="suggest-heading">{t.suggestToTaiwanHub}</h4>
+      <h4 id="suggest-heading">{t.suggestToBrand}</h4>
       {status && <p className="fine-print">{status}</p>}
       <StatusMessage feedback={feedback} />
       {canSuggest && !open && (
@@ -77,7 +77,7 @@ export function SuggestPlace({
             onClick={() => setOpen(true)}
           >
             <Send size={14} aria-hidden="true" />
-            {t.suggestToTaiwanHub}
+            {t.suggestToBrand}
           </button>
         </>
       )}

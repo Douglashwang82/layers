@@ -21,6 +21,7 @@ import {
   mailJobListInput,
   type Actor,
   type NominationStatus,
+  brand,
 } from "@taiwanhub/shared";
 import {
   encryptOutboxPayload,
@@ -890,7 +891,7 @@ export async function joinEmailComplete(
     otpResult = (await auth.api.signInEmailOTP({
       // Only used if this call creates a brand-new user; ignored for an
       // existing one. Never derived from the email prefix (plan section 1).
-      body: { email, otp: input.otp, name: "TaiwanHub Member" },
+      body: { email, otp: input.otp, name: `${brand.name} Member` },
       returnHeaders: true,
     })) as typeof otpResult;
   } catch {

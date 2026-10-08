@@ -15,20 +15,9 @@ export * from "./place-subjects";
 export * from "./daily-pick";
 export * from "./time";
 export * from "./daily-pick-restaurant";
-export const placeCategories = [
-  "Taiwanese",
-  "Bubble Tea",
-  "Bakery",
-  "Hot Pot",
-  "Breakfast",
-  "Dessert",
-  "Asian Grocery",
-  "Japanese",
-  "Korean",
-  "Chinese",
-  "Cafe",
-  "Other",
-] as const;
+export * from "./brand";
+export * from "./categories";
+import { placeCategories } from "./categories";
 export const eventCategories = [
   "Food",
   "Sports",

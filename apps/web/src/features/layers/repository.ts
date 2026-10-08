@@ -8,6 +8,8 @@ import {
   type LayerReviewStatus,
   type LayerSchedule,
   type SystemRule,
+  brand,
+  normalizeSystemLayerTitles,
   systemRule,
 } from "@taiwanhub/shared";
 export type GroupRole = "owner" | "editor" | "viewer";
@@ -53,7 +55,7 @@ export type Memberships = Map<string, GroupRole>;
 /** Virtual projection over the user's saved tables; never a second migrated collection. */
 export const mySavesSlug = "my-saves";
 const columns = `l.id,l.slug,l.title,l.title_chinese,l.description,l.description_chinese,l.city_id,c.slug AS city_slug,c.name AS city_name,c.timezone,l.owner_kind,l.owner_user_id,l.owner_group_id,
-  CASE l.owner_kind WHEN 'system' THEN 'TaiwanHub' WHEN 'user' THEN COALESCE(u.name,'') ELSE COALESCE(g.name,'') END AS owner_name,
+  CASE l.owner_kind WHEN 'system' THEN '${brand.name}' WHEN 'user' THEN COALESCE(u.name,'') ELSE COALESCE(g.name,'') END AS owner_name,
   CASE l.owner_kind WHEN 'group' THEN g.slug ELSE NULL END AS owner_slug,
   l.audience,l.schedule,l.starts_on::text AS starts_on,l.ends_on::text AS ends_on,l.rule,l.lifecycle,l.review_status,l.revision,l.cover_image,l.updated_at,
   (SELECT count(*)::int FROM layer_item i WHERE i.layer_id=l.id) AS item_count,
@@ -62,7 +64,9 @@ const columns = `l.id,l.slug,l.title,l.title_chinese,l.description,l.description
 const from = `FROM layer l JOIN city c ON c.id=l.city_id LEFT JOIN "user" u ON u.id=l.owner_user_id LEFT JOIN "group" g ON g.id=l.owner_group_id`;
 function record(row: Record<string, unknown>): LayerRecord {
   const rule = row.rule ? systemRule.safeParse(row.rule) : null;
-  return {
+  // Every layer read goes through here, so system food layers persisted under
+  // the legacy default title display consistently without a data migration.
+  return normalizeSystemLayerTitles({
     id: String(row.id),
     slug: String(row.slug),
     title: String(row.title),
@@ -94,7 +98,7 @@ function record(row: Record<string, unknown>): LayerRecord {
         ? row.updated_at.toISOString()
         : String(row.updated_at),
     updatedByName: (row.updated_by_name as string | null) ?? null,
-  };
+  });
 }
 export function mySavesLayer(
   actor: Actor,

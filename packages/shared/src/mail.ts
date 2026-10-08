@@ -8,15 +8,14 @@ import { mkdirSync, readdirSync, readFileSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { z } from "zod";
+import { brand } from "./brand";
 /*
  * Server-only mail module. Imported through the `@taiwanhub/shared/mail`
  * subpath (never the package root) so Node crypto/fs and provider
  * configuration stay out of browser bundles.
  */
 export type MailKind =
-  | "membership_invitation"
-  | "membership_otp"
-  | "membership_password_reset";
+  "membership_invitation" | "membership_otp" | "membership_password_reset";
 export type MailMessage = {
   to: string;
   kind: MailKind;
@@ -115,7 +114,7 @@ export type CapturedMail = MailMessage & MailSendOptions;
  * process. Never usable in production, and never exposed over HTTP.
  */
 class LocalTestMailer implements Mailer {
-  readonly sender = "TaiwanHub Test <test@taiwanhub.invalid>";
+  readonly sender = `${brand.name} Test <test@taiwanhub.invalid>`;
   sent: CapturedMail[] = [];
   async send(
     message: MailMessage,
@@ -135,7 +134,7 @@ export const localTestMailer = new LocalTestMailer();
  * never readable over the application's HTTP API and refuses production.
  */
 class CaptureMailer implements Mailer {
-  readonly sender = "TaiwanHub Capture <capture@taiwanhub.invalid>";
+  readonly sender = `${brand.name} Capture <capture@taiwanhub.invalid>`;
   constructor(private readonly dir: string) {}
   async send(
     message: MailMessage,
@@ -404,9 +403,9 @@ export function mailErrorCode(error: unknown): MailErrorCode {
 export function invitationEmail(link: string, expiresAt: Date) {
   const expiry = `${expiresAt.toISOString().slice(0, 16).replace("T", " ")} UTC`;
   return {
-    subject: "You're invited to TaiwanHub · 你受邀加入 TaiwanHub",
+    subject: `You're invited to ${brand.name} · 你受邀加入 ${brand.name}`,
     text: [
-      "A TaiwanHub member invited you to join.",
+      `A ${brand.name} member invited you to join.`,
       "",
       `Open this link to accept. It works once and expires ${expiry}:`,
       link,
@@ -415,7 +414,7 @@ export function invitationEmail(link: string, expiresAt: Date) {
       "",
       "——",
       "",
-      "一位 TaiwanHub 會員邀請你加入。",
+      `一位 ${brand.name} 會員邀請你加入。`,
       "",
       `請開啟以下連結接受邀請。此連結只能使用一次，將於 ${expiry} 到期：`,
       link,
@@ -426,9 +425,9 @@ export function invitationEmail(link: string, expiresAt: Date) {
 }
 export function resetPasswordEmail(link: string) {
   return {
-    subject: "Reset your TaiwanHub password · 重設 TaiwanHub 密碼",
+    subject: `Reset your ${brand.name} password · 重設 ${brand.name} 密碼`,
     text: [
-      "We received a request to reset your TaiwanHub password.",
+      `We received a request to reset your ${brand.name} password.`,
       "",
       "Open this link to choose a new password. It works once and expires in 1 hour:",
       link,
@@ -437,7 +436,7 @@ export function resetPasswordEmail(link: string) {
       "",
       "——",
       "",
-      "我們收到重設你的 TaiwanHub 密碼的請求。",
+      `我們收到重設你的 ${brand.name} 密碼的請求。`,
       "",
       "請開啟以下連結設定新密碼。此連結只能使用一次，將於 1 小時後失效：",
       link,
@@ -448,14 +447,14 @@ export function resetPasswordEmail(link: string) {
 }
 export function signInCodeEmail(otp: string) {
   return {
-    subject: "Your TaiwanHub code · TaiwanHub 驗證碼",
+    subject: `Your ${brand.name} code · ${brand.name} 驗證碼`,
     text: [
-      `Your TaiwanHub code is ${otp}. It expires in 5 minutes.`,
+      `Your ${brand.name} code is ${otp}. It expires in 5 minutes.`,
       "If you didn't ask for it, you can ignore this email.",
       "",
       "——",
       "",
-      `你的 TaiwanHub 驗證碼是 ${otp}，5 分鐘內有效。`,
+      `你的 ${brand.name} 驗證碼是 ${otp}，5 分鐘內有效。`,
       "如果這不是你本人的操作，可以直接忽略這封信。",
     ].join("\n"),
   };

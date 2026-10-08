@@ -12,7 +12,7 @@ export const flags = {
      Off unless explicitly enabled; existing authorized reads and removals stay available. */
   /** Provider-backed discovery and resolving provider references. */
   googlePlacesDiscovery: process.env.FEATURE_GOOGLE_PLACES_DISCOVERY === "true",
-  /** New TaiwanHub review writes. */
+  /** New LocalLink review writes. */
   placeReviewWrites: process.env.FEATURE_PLACE_REVIEW_WRITES === "true",
   /** New external-place saves and layer writes. */
   externalPlaceCollections:

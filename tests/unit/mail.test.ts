@@ -16,7 +16,7 @@ import {
 } from "../../packages/shared/src/mail";
 // Fake credentials only; no real provider or recipient is ever contacted.
 const API_KEY = "re_test_not_a_real_key_123456";
-const FROM = "TaiwanHub <hello@example.test>";
+const FROM = "LocalLink <hello@example.test>";
 const message: MailMessage = {
   to: "member@example.test",
   kind: "membership_otp",

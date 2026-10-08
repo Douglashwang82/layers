@@ -35,7 +35,7 @@ The card's description is the first two sentences of the approved catalog descri
 - A partial unique index allows one `published` row per city and `pick_date`. Every write first takes a transaction-scoped advisory lock on the slot, so concurrent job runs and moderators serialize; the insert also uses `ON CONFLICT DO NOTHING` as a backstop.
 - Public reads (map, card, history, API) join the canonical place and require `approved`, non-demo and same city. A stored snapshot never keeps a hidden place visible; history drops it too.
 - Re-running the job keeps a visible pick, including an editorial one. If the place became ineligible, the job withdraws the row (reason recorded, `withdrawn_by` null) and publishes a replacement that links to it via `replaces_id`. If nothing qualifies, the card says “Today's pick isn't ready yet.” and may show the previous pick with its own date.
-- Moderators can schedule a pick for today or up to 90 days ahead, replace the published pick (the request must name the current pick ID, otherwise `409`), or withdraw a pick. Each action is recorded in `moderation_action` with `entity_type='daily_picks'`. Editorial picks are labeled “Editorial selection” and use the moderator's optional public note, or “Chosen by the TaiwanHub editors.” Past dates cannot be rescheduled.
+- Moderators can schedule a pick for today or up to 90 days ahead, replace the published pick (the request must name the current pick ID, otherwise `409`), or withdraw a pick. Each action is recorded in `moderation_action` with `entity_type='daily_picks'`. Editorial picks are labeled “Editorial selection” and use the moderator's optional public note, or “Chosen by the LocalLink editors.” Past dates cannot be rescheduled.
 
 ## Running and scheduling generation
 

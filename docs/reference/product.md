@@ -1,3 +1,5 @@
+> **Historical document.** This is the original founding brief, written when the product was named TaiwanHub and aimed at Taiwanese people in North America. The product is now **LocalLink**: local places, events, products and communities for everyone, still Houston-first. Taiwanese content remains supported but is no longer an audience restriction. The text below is preserved as written; see [the rebrand plan](../plans/locallink-rebrand-implementation-plan.md) for current positioning and legacy identifiers.
+
 You are the lead product engineer and technical architect for a new startup product called **TaiwanHub**.
 
 Your job is not merely to generate mockups or isolated components. Your job is to create a production-oriented MVP codebase that can actually be run locally, tested, seeded with data, deployed, and iterated on.

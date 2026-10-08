@@ -73,7 +73,7 @@ const base = {
   expectedRevision: z.number().int().min(1),
   reason: z.string().trim().min(1).max(500),
 };
-/** Exactly one operation per request. City is TaiwanHub curation metadata, not a Google verification claim. */
+/** Exactly one operation per request. City is LocalLink curation metadata, not a Google verification claim. */
 export const subjectPatchInput = z.union([
   z.strictObject({ ...base, cityId: z.uuid() }),
   z.strictObject({ ...base, status: z.enum(placeSubjectStatuses) }),

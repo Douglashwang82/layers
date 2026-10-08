@@ -9,6 +9,7 @@ import {
   type MapState,
   itemHref,
   itemKey,
+  isFoodCategory,
   itemTypes,
   maxMapPoints,
   overlapsWindow,
@@ -217,7 +218,7 @@ function contentItem(r: Row): MapItem {
     rank: new Date(String(r.created_at)).getTime() / 1e12,
   };
 }
-const foodExclusions = ["Asian Grocery", "Other"];
+const isFood = (category: string) => isFoodCategory(category);
 const communityCategories = [
   "Social",
   "Networking",
@@ -280,7 +281,7 @@ function ruleMembers(
     case "today": {
       const today = resolveDateWindow("today", timezone, now);
       const picks = places
-        .filter((p) => !foodExclusions.includes(p.category))
+        .filter((p) => isFood(p.category))
         .sort((a, b) => b.rank - a.rank)
         .slice(0, 12);
       const timely = content.filter(
@@ -311,7 +312,7 @@ function ruleMembers(
     }
     case "food":
       return tagged(
-        places.filter((p) => !foodExclusions.includes(p.category)),
+        places.filter((p) => isFood(p.category)),
         layer.slug,
       );
     case "community":

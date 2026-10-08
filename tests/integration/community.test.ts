@@ -233,6 +233,40 @@ describe("real Postgres community flows", () => {
       ).rows[0].status,
     ).toBe("hidden");
   });
+  it.each(["Grocery", "Shop", "Park", "Service"])(
+    "enforces sighting eligibility for %s through the service",
+    async (category) => {
+      const storeId = "00000000-0000-4000-8000-000000005006";
+      const original = await pool.query(
+        "SELECT category FROM place WHERE id=$1",
+        [storeId],
+      );
+      await pool.query("UPDATE place SET category=$1 WHERE id=$2", [
+        category,
+        storeId,
+      ]);
+      try {
+        const sighting = createSighting(member, {
+          productId: "00000000-0000-4000-8000-000000007000",
+          placeId: storeId,
+          observedAt: new Date().toISOString(),
+        });
+        if (category === "Grocery" || category === "Shop") {
+          await expect(sighting).resolves.toMatchObject({ status: "pending" });
+        } else {
+          await expect(sighting).rejects.toMatchObject({
+            status: 400,
+            code: "INVALID_STORE",
+          });
+        }
+      } finally {
+        await pool.query("UPDATE place SET category=$1 WHERE id=$2", [
+          original.rows[0].category,
+          storeId,
+        ]);
+      }
+    },
+  );
   it("creates moderated sightings and records an audit trail", async () => {
     const result = await createSighting(member, {
       productId: "00000000-0000-4000-8000-000000007000",

@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import { brand } from "@taiwanhub/shared";
 import { notFound, redirect } from "next/navigation";
 import { z } from "zod";
 import { currentActor } from "@/lib/session";
@@ -9,7 +10,7 @@ import { SubjectPage } from "@/components/places/subject-page";
 type Props = { params: Promise<{ id: string }> };
 /** No provider data in metadata or indexes: the business name is shown only by the live component. */
 export const metadata: Metadata = {
-  title: "Place · TaiwanHub",
+  title: `Place · ${brand.name}`,
   robots: { index: false, follow: false },
 };
 /**

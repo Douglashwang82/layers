@@ -246,10 +246,10 @@ describe("Daily Pick copy", () => {
       { code: "editorial", note: "", noteChinese: "" },
     ];
     expect(renderDailyPickReasons(editorial, "en")).toBe(
-      "Chosen by the TaiwanHub editors.",
+      "Chosen by the LocalLink editors.",
     );
     expect(renderDailyPickReasons(editorial, "zh-TW")).toBe(
-      "由 TaiwanHub 編輯挑選。",
+      "由 LocalLink 編輯挑選。",
     );
     const noted: DailyPickReason[] = [
       { code: "editorial", note: "Moon Festival week.", noteChinese: "" },

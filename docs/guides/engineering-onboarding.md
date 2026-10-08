@@ -1,8 +1,8 @@
-# TaiwanHub engineering onboarding: implemented stack and architecture
+# LocalLink engineering onboarding: implemented stack and architecture
 
 Reviewed against repository commit `4d8ee68` on September 26, 2026. This is a source-based map of the implementation, not an assertion that optional services or deployments are enabled. Dependency versions below are repository declarations, not recommendations to upgrade. Use the lockfile for exact resolved versions.
 
-TaiwanHub is a Houston-first, English/Traditional Chinese discovery application. Its primary experience combines a map, applied collections called layers, and a usable list fallback. Supporting domains include catalog content, community participation, collaborative groups, invitation-only membership, scoped place reviews, and moderated ingestion. Read the [user guide](user-guide.md) alongside this document to understand the workflows behind the code.
+LocalLink (formerly TaiwanHub) is a Houston-first, English/Traditional Chinese discovery application for local places, events, products and communities. The `@taiwanhub/*` package names, storage keys, crypto purposes and infrastructure names are legacy identifiers kept for compatibility. Place categories, the food/retail predicates (`isFoodCategory`, `isRetailCategory`) and brand constants live in `packages/shared/src`; a persisted system food layer with the legacy default title is displayed as “Local food favorites” by read-time normalization in `features/layers/repository.ts`, with no data migration. Details: [rebrand plan](../plans/locallink-rebrand-implementation-plan.md). Its primary experience combines a map, applied collections called layers, and a usable list fallback. Supporting domains include catalog content, community participation, collaborative groups, invitation-only membership, scoped place reviews, and moderated ingestion. Read the [user guide](user-guide.md) alongside this document to understand the workflows behind the code.
 
 ## Contents
 
@@ -202,7 +202,7 @@ Public query predicates exclude inaccessible or unapproved records. UI hiding al
 
 ### 4. Provider-backed places and scoped reviews
 
-[places/provider.ts](../apps/web/src/lib/places/provider.ts) mounts Google Places UI Kit elements and relays selection/load events. It does not implement ordinary server Places searches. Google names, addresses, photos, ratings, and coordinates remain transient browser data; PostgreSQL persists provider IDs plus TaiwanHub-owned state. Mapbox remains the renderer.
+[places/provider.ts](../apps/web/src/lib/places/provider.ts) mounts Google Places UI Kit elements and relays selection/load events. It does not implement ordinary server Places searches. Google names, addresses, photos, ratings, and coordinates remain transient browser data; PostgreSQL persists provider IDs plus LocalLink-owned state. Mapbox remains the renderer.
 
 Browsing does not create a subject. Resolve/save/add/review flows establish a local `place_subject` and provider reference as needed. Short-lived signed selection grants support actions on selected external references; they do not prove a business's city. City approval/catalog linking/provider-ID replacement are revision-checked moderator APIs in `features/place-subjects/admin.ts`, with no dedicated operator UI yet.
 
@@ -291,17 +291,17 @@ The [mail workflow](../.github/workflows/mail-outbox.yml) targets every five min
 
 ### Choose the appropriate checks
 
-| Command                                                                        | Scope / prerequisites                                                           |
-| ------------------------------------------------------------------------------ | ------------------------------------------------------------------------------- |
-| `pnpm lint`                                                                    | Repository ESLint.                                                              |
-| `pnpm typecheck`                                                               | Strict TypeScript checks.                                                       |
-| `pnpm test`                                                                    | Unit tests only.                                                                |
-| `pnpm exec vitest run tests/unit/layers.test.ts`                               | Example targeted domain test.                                                   |
-| `pnpm test:integration`                                                        | Real configured PostgreSQL/PostGIS; migrated/seeded disposable DB required.     |
-| `pnpm exec playwright install chromium` then `pnpm test:e2e`                   | Browser flows; configured test DB, test mail capture, and a managed dev server. |
-| `pnpm build`                                                                   | Production Next.js build; use for framework/bundling changes.                   |
-| `pnpm start`                                                                   | Serve an already built application; do not share its port with a dev server.    |
-| `pnpm exec prettier --check docs/guides/user-guide.md docs/guides/engineering-onboarding.md` | Example documentation-scoped formatting check.                    |
+| Command                                                                                      | Scope / prerequisites                                                           |
+| -------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------- |
+| `pnpm lint`                                                                                  | Repository ESLint.                                                              |
+| `pnpm typecheck`                                                                             | Strict TypeScript checks.                                                       |
+| `pnpm test`                                                                                  | Unit tests only.                                                                |
+| `pnpm exec vitest run tests/unit/layers.test.ts`                                             | Example targeted domain test.                                                   |
+| `pnpm test:integration`                                                                      | Real configured PostgreSQL/PostGIS; migrated/seeded disposable DB required.     |
+| `pnpm exec playwright install chromium` then `pnpm test:e2e`                                 | Browser flows; configured test DB, test mail capture, and a managed dev server. |
+| `pnpm build`                                                                                 | Production Next.js build; use for framework/bundling changes.                   |
+| `pnpm start`                                                                                 | Serve an already built application; do not share its port with a dev server.    |
+| `pnpm exec prettier --check docs/guides/user-guide.md docs/guides/engineering-onboarding.md` | Example documentation-scoped formatting check.                                  |
 
 CI provisions `postgis/postgis:17-3.5`, installs with the frozen lockfile, migrates/seeds, then runs lint, typecheck, unit, integration, Chromium E2E, and build. It uploads browser failure artifacts. Existing tests cover domain validation, membership/auth boundaries, capacity/concurrency, layer/group visibility, ingestion/extraction, scoped reviews, and user flows; their presence is not proof a particular checkout passed them.
 

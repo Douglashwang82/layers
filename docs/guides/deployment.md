@@ -36,7 +36,7 @@ The schedule is `.github/workflows/mail-outbox.yml` (every five minutes, best ef
 
 To pause, clear `MAIL_WORKER_ENABLED` (or remove the environment from `MAIL_WORKER_ENVIRONMENTS`) and set `MEMBERSHIP_ISSUANCE_PAUSED=true`. Keep admitted-member sign-in available while the provider is healthy; never switch production to a test transport.
 
-### Google Places and TaiwanHub reviews rollout
+### Google Places and LocalLink reviews rollout
 
 See [the implementation plan](google-places-implementation-plan.md) section 13. Everything ships with flags off. Apply migrations 0010–0011 (additive) first, then deploy.
 
@@ -52,7 +52,7 @@ The pool is limited to ten connections per runtime. Size your provider pool/conn
 
 There is no public registration path to open - membership is invitation-only by design, not a temporary MVP restriction. The local dev/test mail transport requires no email delivery; production requires `MAIL_PROVIDER=resend` with its credentials (see the membership rollout section above) before email codes or invitations can be sent. Email code is the default sign-in method for admitted members; password sign-in remains for existing accounts, and Google is optional.
 
-Demo restaurant/event photos are generic examples and must be replaced with verified, licensed local material. Product illustrations are explicitly demo artwork. Collect community/business permission as appropriate when importing real launch data; verify business addresses, hours and organization ownership. The app does not verify Taiwanese identity, and its score means recommendations by TaiwanHub users, not a demographic identity guarantee.
+Demo restaurant/event photos are generic examples and must be replaced with verified, licensed local material. Product illustrations are explicitly demo artwork. Collect community/business permission as appropriate when importing real launch data; verify business addresses, hours and organization ownership. The app does not verify any demographic identity, and its score means recommendations by LocalLink users, not a demographic identity guarantee.
 
 Live Mapbox, Google OAuth and S3/R2 verification require real credentials. Local fallback behavior is testable without them. No production deployment or cloud resource creation is performed by this repository's scripts.
 

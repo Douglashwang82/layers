@@ -1,18 +1,18 @@
-# TaiwanHub user guide and use-case catalog
+# LocalLink user guide and use-case catalog
 
 Reviewed against repository commit `4d8ee68` on September 26, 2026. This guide describes implemented application workflows, including optional features and operator tools. Availability on a particular deployment depends on its configuration and data; this is a source review, not confirmation of a live deployment.
 
-TaiwanHub helps people discover Taiwanese places, events, organizations, product sightings, and community tips. Houston is the supplied starting city. You can browse without an account; participating requires an admitted member account.
+LocalLink (formerly TaiwanHub) helps everyone discover local places, events, organizations, product sightings, and community tips, including Taiwanese restaurants, groceries and groups. Houston is the supplied starting city; coverage elsewhere depends on added cities and data. You can browse without an account; participating requires an admitted member account.
 
 ## Start here
 
 1. Open the site's home page, `/`, and select your city in the header.
 2. Use **繁中 / EN** to switch between Traditional Chinese and English.
-3. Open **Layers**, choose a collection such as **Taiwanese food favorites** or **This weekend**, and select **Apply to map**.
+3. Open **Layers**, choose a collection such as **Local food favorites** (earlier deployments showed it as “Taiwanese food favorites”) or **This weekend**, and select **Apply to map**.
 4. Select a result or map pin to read its preview, then open its full detail page.
 5. Use **List** if a map is unavailable. Sign in when you want to save, RSVP, contribute, or build a layer.
 
-Paths in backticks are addresses relative to your TaiwanHub site. For example, append `/events` to the site's address. Replace placeholders such as `<slug>` with the address obtained by opening a real item.
+Paths in backticks are addresses relative to your LocalLink site. For example, append `/events` to the site's address. Replace placeholders such as `<slug>` with the address obtained by opening a real item.
 
 **Demo content is practice data.** Demo dates, addresses, recommendations, sightings, and photos do not establish that a business, event, or stock report is real. A product sighting is a past observation, not a promise of current inventory. Check the organizer or business before making plans.
 
@@ -50,7 +50,7 @@ Paths in backticks are addresses relative to your TaiwanHub site. For example, a
 | Add to layer            | Include an item in a collection you can edit. It does not replace your personal save.                                                                                           |
 | My saves                | A private map view derived from your saves. It cannot be published or edited like an ordinary layer. Products remain available on the Saved page rather than becoming map pins. |
 | Organization            | A catalog listing for a community organization, with follows and associated events. It is separate from a collaborative group.                                                  |
-| Group                   | A membership-controlled space for sharing and editing layers. A group invitation does not create a TaiwanHub account.                                                           |
+| Group                   | A membership-controlled space for sharing and editing layers. A group invitation does not create a LocalLink account.                                                           |
 | Recommendation / review | A catalog place's Yes/No recommendation and short note are separate from the optional star/comment reviews scoped to a layer or group.                                          |
 
 Map home, layer writes, products, organizations, submissions, and local posts can be disabled by the site operator. Google business discovery, external-place collection actions, and scoped review writes are implemented but disabled by default. Missing controls may reflect configuration or permissions.
@@ -148,13 +148,13 @@ Map home, layer writes, products, organizations, submissions, and local posts ca
 2. Review approved sightings, their store, observation date, and any supplied price/photo.
 3. Follow the online link when one is supplied, or use **I found this** to report your own observation after signing in.
 
-**Result:** You learn where someone previously reported seeing a product. Sightings are city-scoped historical reports; TaiwanHub does not track live inventory or complete purchases.
+**Result:** You learn where someone previously reported seeing a product. Sightings are city-scoped historical reports; LocalLink does not track live inventory or complete purchases.
 
 ## Membership and account
 
 ### U10 — Join with a membership invitation
 
-**Who:** A person invited to TaiwanHub. **Where:** The supplied invitation link, or `/join` with its invitation code.
+**Who:** A person invited to LocalLink. **Where:** The supplied invitation link, or `/join` with its invitation code.
 
 1. Open the invitation link; if entering manually, paste the invitation code into the join form.
 2. Check the invitation context and expiry, then accept the displayed community/terms notice and request an email code.
@@ -249,11 +249,11 @@ Map home, layer writes, products, organizations, submissions, and local posts ca
 
 **Who:** Members, with submissions and the relevant feature enabled.
 
-| Submission       | Entry                                                         | Information to prepare                                                                                                      |
-| ---------------- | ------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------- |
-| Place            | `/submit/place` or the catalog contribution link              | Name, optional Chinese name, description, category, city, neighborhood, street address, latitude, longitude.                |
-| Event            | `/submit/event`                                               | Place-style details plus an existing organizer, venue, future start/end time, and optional capacity. End must follow start. |
-| Product sighting | Product's **I found this** link or `/submit/product-sighting` | Existing product, approved grocery store, date observed, optional price and image. The date cannot be in the future.        |
+| Submission       | Entry                                                         | Information to prepare                                                                                                                                                   |
+| ---------------- | ------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| Place            | `/submit/place` or the catalog contribution link              | Name, optional Chinese name, description, category, city, neighborhood, street address, latitude, longitude.                                                             |
+| Event            | `/submit/event`                                               | Place-style details plus an existing organizer, venue, future start/end time, and optional capacity. End must follow start.                                              |
+| Product sighting | Product's **I found this** link or `/submit/product-sighting` | Existing product, approved grocery store or shop (categories Grocery, Asian Grocery or Shop), date observed, optional price and image. The date cannot be in the future. |
 
 1. Enter the facts you know and confirm the selected city/store/organizer.
 2. For place/event coordinates, replace the form's default Houston coordinates with the actual location. The form does not geocode the address for you.
@@ -359,7 +359,7 @@ Map home, layer writes, products, organizations, submissions, and local posts ca
 1. As owner, enter the person's account email and choose viewer or editor.
 2. Create the invitation and copy the generated link to share yourself. The group UI does not automatically email it.
 3. The recipient signs in using the invited email, opens the link, and selects **Accept invitation**.
-4. If the person has no TaiwanHub membership, nominate them through `/membership` first; complete membership admission separately.
+4. If the person has no LocalLink membership, nominate them through `/membership` first; complete membership admission separately.
 
 **Result:** The accepted account receives the invited group role. Wrong-email, expired, and revoked links cannot grant access. A shared layer URL alone cannot substitute for this invitation.
 
@@ -371,11 +371,11 @@ Map home, layer writes, products, organizations, submissions, and local posts ca
 2. Revoke a pending invitation or remove a member when access is no longer appropriate.
 3. Use **Leave group** for your own membership. If you are the last owner, promote another member to owner first.
 
-**Result:** Group-layer access follows current membership. Removing a member does not revoke their TaiwanHub membership, and revoking a pending link does not replace removal of an already joined member.
+**Result:** Group-layer access follows current membership. Removing a member does not revoke their LocalLink membership, and revoking a pending link does not replace removal of an already joined member.
 
 ## Optional business discovery and reviews
 
-These workflows require operator-enabled features. Google-supplied information and TaiwanHub community contributions are displayed separately.
+These workflows require operator-enabled features. Google-supplied information and LocalLink community contributions are displayed separately.
 
 ### U30 — Find a business through Google discovery
 
@@ -383,20 +383,20 @@ These workflows require operator-enabled features. Google-supplied information a
 
 1. Open business search and use the provider's autocomplete, or enter and explicitly submit a category/text search.
 2. Select a result to inspect provider details and any transient map pin.
-3. If provider loading fails, retry or continue with TaiwanHub's own catalog/list.
+3. If provider loading fails, retry or continue with LocalLink's own catalog/list.
 
-**Result:** You can inspect provider information with its attribution. Panning does not automatically submit another business search. Browsing alone does not create a permanent TaiwanHub business listing or establish city approval.
+**Result:** You can inspect provider information with its attribution. Panning does not automatically submit another business search. Browsing alone does not create a permanent LocalLink business listing or establish city approval.
 
 ### U31 — Save an external business and add it to a collection
 
 **Who:** Members, with external-place collection writes enabled. **Where:** Selected business panel.
 
-1. Select **Save** in the TaiwanHub community section.
+1. Select **Save** in the LocalLink community section.
 2. Choose **Add to layer** and an editable collection when available.
 3. If the site says city review is needed, keep the save and wait for operator curation before trying to add it again.
 4. Reopen the entry from **Saved**, a layer, or its `/place-subjects/<id>` page. Existing saves can be removed even when new collection writes are disabled.
 
-**Result:** TaiwanHub retains a provider reference and your contribution. Provider details are resolved when available; unresolved external entries are not assigned guessed pins.
+**Result:** LocalLink retains a provider reference and your contribution. Provider details are resolved when available; unresolved external entries are not assigned guessed pins.
 
 ### U32 — Write, edit, delete, or read scoped place reviews
 
@@ -404,10 +404,10 @@ These workflows require operator-enabled features. Google-supplied information a
 
 1. Choose a group or layer in the review scope selector. A layer review requires the place to be in that layer; group reviews require membership.
 2. Select optional 1–5 stars and/or write a comment. At least stars or non-empty text is required.
-3. Publish on TaiwanHub and inspect the review status.
+3. Publish on LocalLink and inspect the review status.
 4. Reopen the same scope to edit your review or delete it. Expand a scope's review list to read its approved reviews and aggregate.
 
-**Result:** You have one review per place per scope. Public-layer reviews wait for moderation; private/group reviews normally appear immediately within their permitted audience. Moderation restrictions persist through edits. Each scope has its own aggregate; these are not Google ratings or a single global TaiwanHub rating. Reload on a revision conflict. A moderator-deleted review cannot be restored by its author.
+**Result:** You have one review per place per scope. Public-layer reviews wait for moderation; private/group reviews normally appear immediately within their permitted audience. Moderation restrictions persist through edits. Each scope has its own aggregate; these are not Google ratings or a single global LocalLink rating. Reload on a revision conflict. A moderator-deleted review cannot be restored by its author.
 
 ## Review and administration
 

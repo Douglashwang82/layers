@@ -21,7 +21,7 @@ export type ExternalReference = {
  * Authorized external (provider-referenced) places for the same layer/type/
  * date context as the map query, or the actor's own saves. The server stores
  * no provider names or coordinates, so it cannot search, sort or spatially
- * filter these by business fields: text search covers TaiwanHub-authored notes
+ * filter these by business fields: text search covers LocalLink-authored notes
  * only, and location is resolved client-side through the provider component.
  */
 export async function listExternalReferences(

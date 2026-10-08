@@ -71,7 +71,7 @@ test("a layer owner creates, edits and deletes a custom place", async ({
   await page.getByRole("button", { name: "Search", exact: true }).click();
   await expect(page.getByText("No results for “Uncle Chen”.")).toBeVisible();
 });
-test("a private place can be suggested to TaiwanHub for review", async ({
+test("a private place can be suggested to LocalLink for review", async ({
   page,
 }) => {
   await page.goto("/layers/new");
@@ -96,7 +96,7 @@ test("a private place can be suggested to TaiwanHub for review", async ({
     .getByRole("button", { name: "Edit place: Grandpa Wu Beef Noodles" })
     .click();
   await page
-    .getByRole("button", { name: "Suggest to TaiwanHub", exact: true })
+    .getByRole("button", { name: "Suggest to LocalLink", exact: true })
     .click();
   await page.getByLabel("Category").selectOption("Taiwanese");
   await page.getByLabel("Neighborhood").fill("Chinatown");
@@ -108,10 +108,10 @@ test("a private place can be suggested to TaiwanHub for review", async ({
     page.getByText("Suggestion sent. A moderator will review it."),
   ).toBeVisible();
   await expect(
-    page.getByText("Suggested to TaiwanHub. Waiting for a moderator."),
+    page.getByText("Suggested to LocalLink. Waiting for a moderator."),
   ).toBeVisible();
   await expect(
-    page.getByRole("button", { name: "Suggest to TaiwanHub", exact: true }),
+    page.getByRole("button", { name: "Suggest to LocalLink", exact: true }),
   ).toHaveCount(0);
 });
 test("a place can be pinned on the map picker", async ({ page }) => {

@@ -726,7 +726,7 @@ export function LayerEditor({
           {results.length > 0 && (
             <>
               {canCreatePlaces && yourResults.length > 0 && (
-                <h4>{t.inTaiwanHub}</h4>
+                <h4>{t.inBrand}</h4>
               )}
               {resultList(results)}
             </>

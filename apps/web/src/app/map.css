@@ -1077,7 +1077,7 @@
   height: 20px;
   accent-color: var(--th-brand-text);
 }
-/* Business discovery and TaiwanHub reviews (Google Places UI Kit). */
+/* Business discovery and LocalLink reviews (Google Places UI Kit). */
 .discovery-modes {
   margin: 0 0 var(--th-space-2);
 }
@@ -1117,7 +1117,7 @@
   align-items: center;
   gap: var(--th-space-2);
 }
-/* The TaiwanHub region is visually distinct from the provider's attributed details. */
+/* The LocalLink region is visually distinct from the provider's attributed details. */
 .community-region {
   display: grid;
   gap: var(--th-space-2);

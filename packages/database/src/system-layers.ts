@@ -1,6 +1,7 @@
 import type { Pool, PoolClient } from "pg";
+import { brand } from "../../shared/src/brand";
 /**
- * System layers are public rule-backed collections owned by TaiwanHub. One set
+ * System layers are public rule-backed collections owned by LocalLink. One set
  * exists per city; the rule kind is allowlisted and versioned. The migration
  * creates them for existing cities, seeds create them for new cities.
  */
@@ -46,8 +47,8 @@ export const systemLayerDefinitions = [
   {
     kind: "food",
     slug: (city: string) => `food-${city}`,
-    title: () => "Taiwanese food favorites",
-    titleChinese: () => "台灣人的美食愛店",
+    title: () => brand.foodLayerTitle,
+    titleChinese: () => brand.foodLayerTitleChinese,
     description:
       "Restaurants, bakeries and tea shops recommended by neighbors.",
     descriptionChinese: "鄰居推薦的餐廳、麵包店與茶飲店。",

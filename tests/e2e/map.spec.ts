@@ -85,14 +85,14 @@ test("library Apply adds to the current set; duplicates render once with members
   await page.getByRole("link", { name: "Layers", exact: true }).first().click();
   await expect(page).toHaveURL(/\/layers/);
   const food = page.locator(".layer-card", {
-    hasText: "Taiwanese food favorites",
+    hasText: "Local food favorites",
   });
   await food.getByRole("button", { name: "Apply to map" }).click();
   await expect(page).toHaveURL(/layers=discover-houston(,|%2C)food-houston/);
   await expect(page).toHaveURL(/types=place/);
   await page.getByRole("tab", { name: /Layers/ }).click();
   await expect(
-    page.getByRole("checkbox", { name: /Taiwanese food favorites/ }),
+    page.getByRole("checkbox", { name: /Local food favorites/ }),
   ).toBeChecked();
   await expect(
     page.getByRole("checkbox", { name: /Discover Houston/ }),
@@ -109,12 +109,12 @@ test("library Apply adds to the current set; duplicates render once with members
     .click();
   await expect(page).toHaveURL(/layers=discover-houston(&|$)/);
   await expect(
-    page.getByRole("checkbox", { name: /Taiwanese food favorites/ }),
+    page.getByRole("checkbox", { name: /Local food favorites/ }),
   ).not.toBeChecked();
   // A shared layer link previews contents and reports a missing one neutrally.
   await page.goto("/layers/food-houston");
   await expect(
-    page.getByRole("heading", { name: "Taiwanese food favorites" }),
+    page.getByRole("heading", { name: "Local food favorites" }),
   ).toBeVisible();
   await expect(page.getByRole("button", { name: "Copy link" })).toBeVisible();
   await page.goto("/layers/private-secret-layer");
