@@ -155,3 +155,42 @@ test("compact entry keeps language switching and has no mobile nav gap", async (
     ),
   ).toBe(true);
 });
+
+test("input focus smoothly reassembles an expanded cube and keeps it still", async ({
+  page,
+}) => {
+  await page.goto("/sign-in");
+  await expect(page.locator(canvas)).toHaveAttribute("data-phase", "open", {
+    timeout: 12000,
+  });
+  await page.getByLabel("Email", { exact: true }).fill("member@example.com");
+  await expect(page.locator(canvas)).toHaveAttribute("data-phase", "quiet");
+  const held = await page.locator(canvas).getAttribute("data-frame");
+  await page.waitForTimeout(1200);
+  await expect(page.locator(canvas)).toHaveAttribute("data-frame", held!);
+  await expect(page.locator(canvas)).toHaveAttribute("data-phase", "quiet");
+  await page.locator(".auth-entry-header .language-button").focus();
+  await expect(page.locator(canvas)).not.toHaveAttribute("data-frame", held!);
+  await expect(page.locator(canvas)).toHaveAttribute("data-phase", "whole");
+});
+
+test("cycle reaches reassembly and rest; reducing motion assembles immediately", async ({
+  page,
+}) => {
+  await page.goto("/sign-in");
+  await expect(page.locator(canvas)).toHaveAttribute("data-phase", "sink", {
+    timeout: 12000,
+  });
+  await expect(page.locator(canvas)).toHaveAttribute("data-phase", "open");
+  await expect(page.locator(canvas)).toHaveAttribute(
+    "data-phase",
+    "reassemble",
+  );
+  await expect(page.locator(canvas)).toHaveAttribute("data-phase", "rest");
+  await expect(page.locator(canvas)).toHaveAttribute("data-phase", "open", {
+    timeout: 12000,
+  });
+  await page.emulateMedia({ reducedMotion: "reduce" });
+  await expect(page.locator(canvas)).toHaveAttribute("data-phase", "whole");
+  await expect(page.locator(canvas)).toHaveAttribute("data-frame", "0");
+});

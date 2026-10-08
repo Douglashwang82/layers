@@ -35,12 +35,34 @@ and renderbuffer limits. The square stage therefore renders at 3840×3840, rathe
 than exporting a 3840×2160 video. This is a live canvas, not a video asset.
 
 The animation loop targets 30 rendered frames per second using elapsed time.
-One tile on one visible face rotates 90 degrees and contracts by up to 22%,
-then returns to the same diamond silhouette. A 900 ms quintic transition and
-300 ms hold make a 1.2 second slot. A scattered deterministic order visits all
-48 visible tiles before repeating. The cube and camera remain stationary.
+The cube is 85% of its previous size and floats directly on the page, without
+a surrounding card. Four actual horizontal slices share continuous face UVs:
+their outside surfaces reconstruct the original pattern exactly when assembled.
+The newly exposed cut surfaces are neutral gray so the layers remain legible.
+A separate top tile descends into a real pocket with interior walls and a floor.
 
-Pause freezes the current state. Reduced motion renders a still cube, and the
+Each eight-second loop uses quintic easing with zero endpoint velocity:
+
+| Time      | Action                                                                              |
+| --------- | ----------------------------------------------------------------------------------- |
+| 0–1.1 s   | Complete cube, still                                                                |
+| 1.1–2.5 s | One top tile sinks 0.2 units, then holds                                            |
+| 2.5–3.6 s | Tile returns; slices separate vertically and one slides sideways with a slight turn |
+| 3.6–4.4 s | Expanded pose holds                                                                 |
+| 4.4–5.9 s | Layers return to their exact original transforms                                    |
+| 5.9–8 s   | Complete cube rests before repeating                                                |
+
+Two soft analytic contact shadows sit beneath the object. Their offset, size and
+opacity follow the moving layer, establishing its height without an opaque floor
+or background rectangle. The orthographic camera remains stationary.
+
+Focusing any control inside the form interrupts the loop: the current pose
+smoothly returns to the assembled state in 600 ms and then stops rendering.
+Moving between form controls keeps it quiet. Leaving the form restarts at the
+beginning after completing any return already in progress.
+
+Pause freezes the current state; focusing the form still returns it to rest.
+Reduced motion immediately assembles and renders a still cube, and the
 loop stops when the tab or stage is hidden. On screens up to 800 px the existing
 layout hides the stage and the WebGL scene is not created. Returning to desktop
 recreates it. Context loss or renderer failure displays a static SVG patterned
@@ -51,7 +73,7 @@ materials, renderer, observers, listeners, and the animation frame.
 
 - `apps/web/src/components/sign-in-pattern.tsx`: lazy-loaded scene, SVG fallback, pause toggle.
 - `apps/web/src/components/sign-in-pattern.css`: stage size and pause control.
-- `apps/web/src/components/sign-in-cube-model.ts`: six face shaders, tile sequencing, buffer sizing.
+- `apps/web/src/components/sign-in-cube-model.ts`: slice geometry, pocket, face shaders, shadows, timeline and focus-return state.
 - `apps/web/src/components/sign-in-cube-scene.ts`: orthographic camera, 30 fps scheduling, lifecycle.
 - `apps/web/src/app/sign-in/page.tsx`: server page and authentication form.
 
@@ -61,13 +83,14 @@ Implementation uses the installed Three.js 0.183.2 APIs; references:
 
 ## Verification
 
-`tests/unit/sign-in-cube.test.ts` checks tile coverage, isolated face animation,
-settling and GPU-limited resolution. `tests/e2e/sign-in-pet.spec.ts` checks live
+`tests/unit/sign-in-cube.test.ts` checks the eight-second timeline, exact reassembly,
+UV continuity, recess depth, shadow motion, interrupted focus return and GPU-limited
+resolution. `tests/e2e/sign-in-pet.spec.ts` checks live
 rendering, pause/resume, reduced motion, responsive teardown/recreation, WebGL
-failure, context loss and form interaction without submitting authentication.
+failure, context loss, the full cycle and quiet form interaction without submitting
+authentication.
 
 A local Chromium D3D11 measurement on an NVIDIA RTX 5070 Ti rendered the
-3840×3840 stage at approximately 30.2 fps over four seconds. Chromium SwiftShader
-software rendering measured approximately 13 fps. These are local observations,
-not a guarantee across devices; the implementation does not silently reduce
+3840×3840 layered stage at approximately 30 fps over eight seconds. This is a local
+observation, not a guarantee across devices; the implementation does not silently reduce
 resolution to reach the frame-rate target.

@@ -33,19 +33,22 @@ function CubeFallback() {
           />
         </pattern>
       </defs>
-      {[
-        "matrix(1.6 .924 -1.6 .924 200 35)",
-        "matrix(1.6 .924 0 1.848 40 127.4)",
-        "matrix(1.6 -.924 0 1.848 200 219.8)",
-      ].map((transform) => (
-        <rect
-          key={transform}
-          width="100"
-          height="100"
-          transform={transform}
-          fill={`url(#${patternId})`}
-        />
-      ))}
+      <ellipse cx="200" cy="385" rx="82" ry="13" fill="#000" opacity="0.07" />
+      <g transform="translate(30 33) scale(.85)">
+        {[
+          "matrix(1.6 .924 -1.6 .924 200 35)",
+          "matrix(1.6 .924 0 1.848 40 127.4)",
+          "matrix(1.6 -.924 0 1.848 200 219.8)",
+        ].map((transform) => (
+          <rect
+            key={transform}
+            width="100"
+            height="100"
+            transform={transform}
+            fill={`url(#${patternId})`}
+          />
+        ))}
+      </g>
     </svg>
   );
 }
