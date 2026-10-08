@@ -1,8 +1,9 @@
-/* Map workspace and layer surfaces. Semantic aliases only; the palette lives in globals.css. */
+/* Map workspace and layer surfaces. Jade Atlas keeps its darker location accents
+   local to the map; global action and status colors remain unchanged. */
 :root {
-  --th-map-place: var(--th-mint);
-  --th-map-event: var(--th-coral);
-  --th-map-content: var(--th-sun);
+  --th-map-place: #087f65;
+  --th-map-event: #cf705b;
+  --th-map-content: #dab654;
   --th-map-panel-width: 340px;
   --th-map-rail-width: 380px;
   --th-map-shell-height: calc(100dvh - var(--th-header-height));
@@ -82,9 +83,10 @@
   flex-wrap: wrap;
   min-height: var(--th-control-height);
   padding: 4px 4px 4px 12px;
-  border: 1px solid var(--th-control-border);
+  border: 1px solid var(--th-divider);
   border-radius: var(--th-radius-input);
   background: var(--th-surface);
+  box-shadow: 0 2px 8px rgb(25 57 47 / 4%);
 }
 .map-search > svg {
   color: var(--th-muted);
@@ -169,6 +171,17 @@
 .map-canvas {
   position: absolute;
   inset: 0;
+  background: #f0f4ef;
+}
+.map-canvas .mapboxgl-ctrl-group {
+  border: 1px solid var(--th-divider);
+  border-radius: 10px;
+  box-shadow: 0 2px 8px rgb(25 57 47 / 8%);
+  overflow: hidden;
+}
+.map-canvas .mapboxgl-ctrl-group button {
+  width: 40px;
+  height: 40px;
 }
 .map-unavailable,
 .map-skeleton {

@@ -51,6 +51,31 @@ export function Navigation({
   ] as const;
   const current = (href: string) =>
     isActiveRoute(pathname, href) ? ("page" as const) : undefined;
+  const languageButton = (
+    <button
+      type="button"
+      className="language-button"
+      aria-label={t.language}
+      lang={locale === "en" ? "zh-TW" : "en"}
+      onClick={() => {
+        document.cookie = `locale=${locale === "en" ? "zh-TW" : "en"};path=/;SameSite=Lax;max-age=31536000`;
+        router.refresh();
+      }}
+    >
+      {locale === "en" ? "繁中" : "EN"}
+    </button>
+  );
+  if (pathname === "/sign-in") {
+    return (
+      <header className="auth-entry-header">
+        <Link href="/" className="auth-entry-brand" aria-label={t.brandHome}>
+          <span className="auth-entry-mark" aria-hidden="true" />
+          Taiwan<span>Hub</span>
+        </Link>
+        {languageButton}
+      </header>
+    );
+  }
   return (
     <>
       <header className="header">
@@ -99,18 +124,7 @@ export function Navigation({
               ))}
             </select>
           </label>
-          <button
-            type="button"
-            className="language-button"
-            aria-label={t.language}
-            lang={locale === "en" ? "zh-TW" : "en"}
-            onClick={() => {
-              document.cookie = `locale=${locale === "en" ? "zh-TW" : "en"};path=/;SameSite=Lax;max-age=31536000`;
-              router.refresh();
-            }}
-          >
-            {locale === "en" ? "繁中" : "EN"}
-          </button>
+          {languageButton}
           <Link
             href="/profile"
             className="sign-in"
@@ -143,7 +157,7 @@ export function SiteChrome({
   mapHome: boolean;
 }) {
   const pathname = usePathname();
-  if (mapHome && pathname === "/") return null;
+  if (pathname === "/sign-in" || (mapHome && pathname === "/")) return null;
   return (
     <>
       <footer>

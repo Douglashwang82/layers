@@ -1,0 +1,181 @@
+.mascot-studio {
+  max-width: 1280px;
+  margin: 0 auto;
+  padding: 48px 24px 100px;
+  color: #513b31;
+}
+.mascot-studio__intro {
+  margin-bottom: 32px;
+}
+.mascot-studio__intro h1 {
+  font-size: clamp(28px, 4vw, 44px);
+  margin: 12px 0;
+}
+.mascot-studio__eyebrow {
+  color: #9b513a;
+  letter-spacing: 0.08em;
+}
+.mascot-studio__grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(300px, 380px);
+  gap: 32px;
+}
+.mascot-studio__stage {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 32px 20px;
+  background: radial-gradient(ellipse at 50% 35%, #fffaf6, #f8e9dd);
+  border-radius: 32px;
+  text-align: center;
+}
+/* The tuning panel sets --pet-size; the stage never lets it overflow. */
+.mascot-studio__stage .marker-pet[data-context="display"] {
+  width: min(var(--pet-size, 280px), 100%);
+}
+.mascot-studio__stage > p {
+  font-size: 14px;
+  max-width: 30ch;
+}
+.mascot-studio__poses {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 8px;
+  margin-top: 20px;
+}
+.mascot-studio__poses button {
+  padding: 10px 16px;
+  min-height: 44px;
+  border: 1px solid #dfb49c;
+  border-radius: 24px;
+  background: #fffaf6;
+  color: #513b31;
+}
+.mascot-studio__poses button[aria-pressed="true"] {
+  background: #8c442d;
+  border-color: #8c442d;
+  color: white;
+}
+.mascot-studio__motion {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 44px;
+  margin-top: 16px;
+}
+.mascot-studio__reference {
+  grid-column: 1 / -1;
+  max-width: 960px;
+  justify-self: center;
+}
+.mascot-studio__reference img {
+  display: block;
+  width: 100%;
+  height: auto;
+  border-radius: 24px;
+}
+.mascot-studio__reference p {
+  margin: 24px 0;
+}
+.pet-tuner {
+  display: grid;
+  gap: 14px;
+  align-content: start;
+  padding: 24px 20px;
+  border: 1px solid #efd5c4;
+  border-radius: 24px;
+  background: #fffaf6;
+  font-size: 14px;
+}
+.pet-tuner h2 {
+  margin: 0;
+  font-size: 20px;
+}
+.pet-tuner__intro,
+.pet-tuner__note {
+  margin: 0;
+  font-size: 13px;
+  color: #80614f;
+}
+.pet-tuner__note:empty {
+  display: none;
+}
+.pet-tuner fieldset {
+  display: grid;
+  gap: 6px;
+  margin: 0;
+  padding: 12px 0 0;
+  border: 0;
+  border-top: 1px solid #efd5c4;
+}
+.pet-tuner legend {
+  padding: 0 0 4px;
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: #9b513a;
+}
+.pet-tuner__row {
+  display: grid;
+  grid-template-columns: minmax(0, 7.5em) minmax(0, 1fr) 4.5em;
+  align-items: center;
+  gap: 10px;
+  min-height: 32px;
+}
+.pet-tuner__row input[type="range"] {
+  width: 100%;
+  accent-color: #8c442d;
+}
+.pet-tuner__row input[type="color"] {
+  width: 44px;
+  height: 28px;
+  padding: 0;
+  border: 1px solid #dfb49c;
+  border-radius: 6px;
+  background: none;
+}
+.pet-tuner__row output {
+  font-variant-numeric: tabular-nums;
+  text-align: right;
+  font-size: 13px;
+}
+.pet-tuner__actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+.pet-tuner__actions button {
+  min-height: 40px;
+  padding: 8px 16px;
+  border: 1px solid #dfb49c;
+  border-radius: 20px;
+  background: white;
+  color: #513b31;
+}
+.pet-tuner__actions button:last-child {
+  background: #8c442d;
+  border-color: #8c442d;
+  color: white;
+}
+.pet-tuner__values pre {
+  max-height: 240px;
+  overflow: auto;
+  margin: 8px 0 0;
+  padding: 12px;
+  border-radius: 12px;
+  background: #f8ece3;
+  font-size: 12px;
+  user-select: all;
+}
+@media (max-width: 800px) {
+  .mascot-studio {
+    padding: 24px 16px 100px;
+  }
+  .mascot-studio__grid {
+    grid-template-columns: 1fr;
+    gap: 24px;
+  }
+}

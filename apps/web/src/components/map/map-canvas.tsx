@@ -12,6 +12,14 @@ import { maxMapPoints, type Bounds, type ItemType } from "@taiwanhub/shared";
 import type { MapItem } from "@/features/map/query";
 import type { Copy, Locale } from "@/lib/dictionary";
 import "mapbox-gl/dist/mapbox-gl.css";
+import { SelectedPet } from "./selected-pet";
+import { selectedPetTarget } from "@/lib/marker-pet";
+import {
+  applyJadeAtlas,
+  flatMapOptions,
+  jadePalette,
+} from "@/lib/map-appearance";
+import { loadMarkerArtwork } from "@/lib/map-marker-art";
 export type MapCanvasHandle = {
   fitTo: (items: MapItem[]) => void;
   /** Current camera center, used to bias provider search toward what the user sees. */
@@ -61,24 +69,6 @@ function themeColor(name: string, fallback: string) {
     .getPropertyValue(name)
     .trim();
   return value || fallback;
-}
-/** Marker glyphs (icon + color identify item type; layers never recolor an item). */
-const glyphs: Record<ItemType, string> = {
-  place:
-    '<path d="M3 2v7c0 1.1.9 2 2 2h4a2 2 0 0 0 2-2V2"/><path d="M7 2v20"/><path d="M21 15V2a5 5 0 0 0-5 5v6c0 1.1.9 2 2 2h3Zm0 0v7"/>',
-  event:
-    '<path d="M8 2v4"/><path d="M16 2v4"/><rect width="18" height="18" x="3" y="4" rx="2"/><path d="M3 10h18"/>',
-  content:
-    '<path d="M15 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7Z"/><path d="M14 2v4a2 2 0 0 0 2 2h4"/><path d="M10 9H8"/><path d="M16 13H8"/><path d="M16 17H8"/>',
-};
-function glyphImage(type: ItemType, color: string) {
-  const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="${color}" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">${glyphs[type]}</svg>`;
-  return new Promise<HTMLImageElement>((resolve, reject) => {
-    const image = new Image(32, 32);
-    image.onload = () => resolve(image);
-    image.onerror = reject;
-    image.src = "data:image/svg+xml;charset=utf-8," + encodeURIComponent(svg);
-  });
 }
 function toGeoJSON(items: MapItem[]) {
   return {
@@ -136,6 +126,7 @@ export function MapCanvas({
 }) {
   const container = useRef<HTMLDivElement>(null);
   const mapRef = useRef<MapboxMap | null>(null);
+  const [readyMap, setReadyMap] = useState<MapboxMap | null>(null);
   const loadedRef = useRef(false);
   const userMovedRef = useRef(false);
   // The canvas keeps its point budget: extra points reserve room within it.
@@ -188,6 +179,24 @@ export function MapCanvas({
       });
       map.setPaintProperty(layer, "circle-opacity", opacity);
     }
+    if (map.getLayer("points-icon")) {
+      map.setLayoutProperty("points-icon", "icon-size", [
+        "case",
+        ["==", ["get", "key"], a ?? ""],
+        0.8,
+        0.6,
+      ]);
+      map.setPaintProperty("points-icon", "icon-opacity-transition", {
+        duration,
+        delay: 0,
+      });
+      map.setPaintProperty("points-icon", "icon-opacity", [
+        "case",
+        ["==", ["get", "key"], a ?? ""],
+        1,
+        opacity,
+      ]);
+    }
   }
   useImperativeHandle(ref, () => ({
     fitTo(list) {
@@ -200,7 +209,7 @@ export function MapCanvas({
         map.easeTo({
           center: [points[0].longitude!, points[0].latitude!],
           zoom: Math.max(map.getZoom(), 14),
-          duration: 240,
+          duration: prefersReducedMotion() ? 0 : 240,
         });
         return;
       }
@@ -214,7 +223,11 @@ export function MapCanvas({
         s = Math.min(s, p.latitude!);
         n = Math.max(n, p.latitude!);
       }
-      map.fitBounds([w, s, e, n], { padding: 56, maxZoom: 15, duration: 240 });
+      map.fitBounds([w, s, e, n], {
+        padding: 56,
+        maxZoom: 15,
+        duration: prefersReducedMotion() ? 0 : 240,
+      });
     },
     getCenter() {
       const c = mapRef.current?.getCenter();
@@ -257,7 +270,7 @@ export function MapCanvas({
       mapRef.current?.easeTo({
         center: target,
         zoom: targetZoom ?? mapRef.current.getZoom(),
-        duration: 240,
+        duration: prefersReducedMotion() ? 0 : 240,
       });
     },
     resize() {
@@ -278,6 +291,7 @@ export function MapCanvas({
       .then(async ({ default: mapboxgl }) => {
         if (stopped || !container.current) return;
         const map = new mapboxgl.Map({
+          ...flatMapOptions,
           container: container.current,
           accessToken: token,
           style: "mapbox://styles/mapbox/light-v11",
@@ -286,8 +300,11 @@ export function MapCanvas({
           attributionControl: true,
           cooperativeGestures: false,
         });
+        map.touchZoomRotate.disableRotation();
+        map.keyboard.disableRotation();
         mapRef.current = map;
         dispose = () => {
+          setReadyMap(null);
           mapRef.current = null;
           map.remove();
         };
@@ -319,22 +336,27 @@ export function MapCanvas({
         map.on("load", async () => {
           window.clearTimeout(timeout);
           if (stopped) return;
-          const text = themeColor("--th-text", "#14261f");
+          applyJadeAtlas(map, locale);
+          const text = jadePalette.ink;
           const colors: Record<ItemType, string> = {
-            place: themeColor("--th-map-place", "#27d8a1"),
-            event: themeColor("--th-map-event", "#ff846b"),
-            content: themeColor("--th-map-content", "#ffd76a"),
+            place: jadePalette.place,
+            event: jadePalette.event,
+            content: jadePalette.content,
           };
           const lime = themeColor("--th-primary", "#c7f464");
-          try {
-            for (const type of ["place", "event", "content"] as const)
-              map.addImage(`th-${type}`, await glyphImage(type, text), {
+          // One atlas image per type, not one WebGL renderer per point.
+          const artwork = await Promise.allSettled(
+            (["place", "event", "content"] as const).map(async (type) => ({
+              type,
+              image: await loadMarkerArtwork(type),
+            })),
+          );
+          if (stopped) return;
+          for (const result of artwork)
+            if (result.status === "fulfilled")
+              map.addImage(`th-${result.value.type}`, result.value.image, {
                 pixelRatio: 2,
               });
-          } catch {
-            /* glyphs are decorative; circles and colors still identify type */
-          }
-          if (stopped) return;
           map.addSource("items", {
             type: "geojson",
             data: toGeoJSON(latest.current.items),
@@ -350,8 +372,8 @@ export function MapCanvas({
             filter: ["has", "point_count"],
             paint: {
               "circle-color": "#ffffff",
-              "circle-stroke-color": text,
-              "circle-stroke-width": 2,
+              "circle-stroke-color": jadePalette.roadEdge,
+              "circle-stroke-width": 1.5,
               "circle-radius": [
                 "step",
                 ["get", "point_count"],
@@ -381,11 +403,11 @@ export function MapCanvas({
             source: "items",
             filter: ["==", ["get", "key"], latest.current.selectedKey ?? ""],
             paint: {
-              "circle-radius": 22,
+              "circle-radius": 12,
               "circle-color": lime,
               "circle-opacity": 0.9,
               "circle-stroke-color": text,
-              "circle-stroke-width": 2,
+              "circle-stroke-width": 1.5,
             },
           });
           map.addLayer({
@@ -394,7 +416,7 @@ export function MapCanvas({
             source: "items",
             filter: ["!", ["has", "point_count"]],
             paint: {
-              "circle-radius": 13,
+              "circle-radius": 5,
               "circle-color": [
                 "match",
                 ["get", "type"],
@@ -405,30 +427,38 @@ export function MapCanvas({
                 colors.content,
               ],
               "circle-stroke-color": "#ffffff",
-              "circle-stroke-width": 3,
+              "circle-stroke-width": 2,
             },
           });
           map.addLayer({
-            id: "points-outline",
+            id: "points-hit",
             type: "circle",
             source: "items",
             filter: ["!", ["has", "point_count"]],
             paint: {
-              "circle-radius": 13,
-              "circle-color": "rgba(0,0,0,0)",
-              "circle-stroke-color": text,
-              "circle-stroke-width": 1,
+              "circle-radius": 22,
+              "circle-opacity": 0,
             },
           });
           map.addLayer({
             id: "points-icon",
             type: "symbol",
             source: "items",
+            minzoom: 12,
             filter: ["!", ["has", "point_count"]],
             layout: {
-              "icon-image": ["concat", "th-", ["get", "type"]],
-              "icon-size": 0.45,
-              "icon-allow-overlap": true,
+              "icon-image": [
+                "coalesce",
+                ["image", ["concat", "th-", ["get", "type"]]],
+                "",
+              ],
+              "icon-size": 0.6,
+              "icon-anchor": "bottom",
+              "icon-offset": [0, 8],
+              "icon-pitch-alignment": "viewport",
+              "icon-rotation-alignment": "viewport",
+              "icon-allow-overlap": false,
+              "icon-padding": 5,
             },
           });
           type Feature = {
@@ -480,7 +510,7 @@ export function MapCanvas({
             if (key) latest.current.onSelectExtra?.(String(key));
           });
           applyEffects(map);
-          map.on("click", "points", (e) => {
+          map.on("click", ["points-hit", "points-icon"], (e) => {
             const feature = e.features?.[0] as Feature | undefined;
             const key = feature?.properties?.key;
             if (key) latest.current.onSelect(String(key));
@@ -502,12 +532,17 @@ export function MapCanvas({
                 map.easeTo({
                   center: feature.geometry.coordinates as [number, number],
                   zoom: expansion,
-                  duration: 240,
+                  duration: prefersReducedMotion() ? 0 : 240,
                 });
               },
             );
           });
-          for (const layer of ["points", "clusters", "extra-points"]) {
+          for (const layer of [
+            "points-hit",
+            "points-icon",
+            "clusters",
+            "extra-points",
+          ]) {
             map.on(
               "mouseenter",
               layer,
@@ -540,6 +575,7 @@ export function MapCanvas({
           });
           map.setPadding(latest.current.padding);
           loadedRef.current = true;
+          setReadyMap(map);
           latest.current.onStatus("ready");
         });
       })
@@ -581,38 +617,46 @@ export function MapCanvas({
   }, [padding]);
   // Base map labels follow the interface language; item titles are localized in the panel.
   useEffect(() => {
-    const map = mapRef.current;
-    if (!map || !loadedRef.current) return;
-    const field = locale === "zh-TW" ? "name_zh-Hant" : "name_en";
-    for (const layer of map.getStyle()?.layers ?? []) {
-      if (
-        layer.type !== "symbol" ||
-        !layer.layout ||
-        !("text-field" in layer.layout)
-      )
-        continue;
-      if (layer.id.startsWith("cluster") || layer.id.startsWith("points"))
-        continue;
-      map.setLayoutProperty(layer.id, "text-field", [
-        "coalesce",
-        ["get", field],
-        ["get", "name"],
-      ]);
-    }
-  }, [locale]);
+    if (readyMap) applyJadeAtlas(readyMap, locale);
+  }, [locale, readyMap]);
   useEffect(() => {
     if (!container.current) return;
     const observer = new ResizeObserver(() => mapRef.current?.resize());
     observer.observe(container.current);
     return () => observer.disconnect();
   }, []);
+  const petTarget = selectedPetTarget(
+    catalogItems,
+    extraPoints,
+    selectedKey,
+    extraSelectedKey,
+  );
+  const petItem = catalogItems.find((item) => item.key === petTarget?.key);
+  const petName = petItem
+    ? locale === "zh-TW"
+      ? petItem.nameChinese || petItem.name
+      : petItem.name || petItem.nameChinese
+    : t.mascotSelectedPlace;
   return (
-    <div
-      ref={container}
-      className="map-canvas"
-      role="region"
-      aria-label={t.map}
-      data-attempt={attempt}
-    />
+    <>
+      <div
+        ref={container}
+        className="map-canvas"
+        role="region"
+        aria-label={t.map}
+        data-attempt={attempt}
+      />
+      <SelectedPet
+        map={readyMap}
+        target={petTarget}
+        label={`${t.mascotInspect}: ${petName}`}
+        animate={effects}
+        onActivate={() => {
+          if (!petTarget) return;
+          if (extraSelectedKey) onSelectExtra?.(petTarget.key);
+          else onSelect(petTarget.key);
+        }}
+      />
+    </>
   );
 }

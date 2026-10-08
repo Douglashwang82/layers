@@ -1,6 +1,6 @@
 import { getCopy } from "@/lib/i18n";
 import { AuthForm } from "@/components/auth-form";
-import { MapLayersAnimation } from "@/components/map-layers-animation";
+import { SignInPattern } from "@/components/sign-in-pattern";
 export default async function SignInPage({
   searchParams,
 }: {
@@ -10,9 +10,7 @@ export default async function SignInPage({
   return (
     <div className="auth-page auth-page-stage">
       <div className="auth-stage">
-        <div className="auth-scene" aria-hidden="true">
-          <MapLayersAnimation />
-        </div>
+        {/* The form occupies 40% on desktop and stays first in reading order. */}
         <div className="form-panel">
           <AuthForm
             t={t}
@@ -22,6 +20,10 @@ export default async function SignInPage({
               !!process.env.GOOGLE_CLIENT_SECRET
             }
           />
+        </div>
+        {/* Decorative monochrome pattern; form stays first in tab order. */}
+        <div className="auth-scene">
+          <SignInPattern pauseLabel={t.signInPetPause} />
         </div>
       </div>
     </div>

@@ -1,0 +1,132 @@
+.sign-in-pet {
+  --pet-ease: cubic-bezier(0.22, 1, 0.36, 1);
+  position: relative;
+  width: clamp(300px, 30vw, 520px);
+  aspect-ratio: 240 / 256;
+}
+.sign-in-pet__body {
+  position: absolute;
+  inset: 0;
+  /* The tip sits at 93.75% of the frame, as on the map. */
+  transform-origin: 50% 93.75%;
+  animation: sign-in-pet-enter 700ms var(--pet-ease) both;
+}
+/*
+ * Light from the upper left (as in V2's hero): a tight contact shadow under
+ * the tip, and a long soft shadow falling to the lower right.
+ */
+.sign-in-pet__shadow {
+  position: absolute;
+  left: 38%;
+  top: 88.5%;
+  width: 84%;
+  height: 11%;
+  background:
+    radial-gradient(
+      ellipse 13% 34% at 14% 46%,
+      rgb(122 72 52 / 0.34) 0%,
+      rgb(122 72 52 / 0) 100%
+    ),
+    radial-gradient(
+      ellipse 44% 45% at 48% 52%,
+      rgb(150 96 72 / 0.2) 0%,
+      rgb(150 96 72 / 0) 100%
+    );
+  transform-origin: 14% 46%;
+  animation: sign-in-pet-shadow 700ms var(--pet-ease) both;
+}
+/* Each expression's mark: pops in, holds briefly, then drifts up and fades. */
+.sign-in-pet__mark {
+  position: absolute;
+  left: 74%;
+  top: 4%;
+  width: 16%;
+  overflow: visible;
+  transform-origin: 0% 100%;
+  animation: sign-in-pet-mark 1400ms var(--pet-ease) both;
+}
+.sign-in-pet__mark path,
+.sign-in-pet__mark circle {
+  fill: none;
+  stroke: #ef8762;
+  stroke-width: 7;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+.sign-in-pet__mark .fill {
+  fill: #ef8762;
+  stroke: none;
+}
+.sign-in-pet__mark[data-mark="sparkle"] .fill {
+  fill: #f4a36b;
+}
+.sign-in-pet__mark[data-mark="dots"] {
+  top: 10%;
+}
+.sign-in-pet__pause {
+  position: absolute;
+  left: 20px;
+  bottom: 20px;
+  display: grid;
+  place-items: center;
+  width: 40px;
+  height: 40px;
+  padding: 0;
+  border: 1px solid rgb(150 96 72 / 0.22);
+  border-radius: 50%;
+  background: rgb(255 252 248 / 0.75);
+  color: #85584a;
+  cursor: pointer;
+}
+.sign-in-pet__pause:hover {
+  background: #fffcf8;
+}
+.sign-in-pet__pause:focus-visible {
+  outline: 3px solid var(--th-focus, #2855d9);
+  outline-offset: 2px;
+}
+.sign-in-pet__pause svg {
+  width: 18px;
+  height: 18px;
+  fill: currentColor;
+}
+@keyframes sign-in-pet-enter {
+  from {
+    opacity: 0;
+    transform: translateY(-28px);
+  }
+}
+@keyframes sign-in-pet-shadow {
+  from {
+    opacity: 0;
+    transform: scale(0.6);
+  }
+}
+@keyframes sign-in-pet-mark {
+  0% {
+    opacity: 0;
+    transform: scale(0.45);
+  }
+  18% {
+    opacity: 1;
+    transform: scale(1.06);
+  }
+  30% {
+    transform: scale(1);
+  }
+  72% {
+    opacity: 1;
+    transform: translateY(0);
+  }
+  100% {
+    opacity: 0;
+    transform: translateY(-8px);
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .sign-in-pet__body,
+  .sign-in-pet__shadow,
+  .sign-in-pet__mark {
+    animation: none;
+  }
+}

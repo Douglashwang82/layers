@@ -1,0 +1,45 @@
+.sign-in-pattern {
+  position: relative;
+  width: min(100%, 960px);
+  aspect-ratio: 1;
+}
+.sign-in-pattern__render,
+.sign-in-pattern__render canvas,
+.sign-in-pattern__fallback {
+  position: absolute;
+  inset: 0;
+  display: block;
+  width: 100%;
+  height: 100%;
+}
+.sign-in-pattern__pause {
+  position: absolute;
+  right: 16px;
+  bottom: 16px;
+  display: grid;
+  place-items: center;
+  width: 44px;
+  height: 44px;
+  border: 1px solid #999;
+  border-radius: 50%;
+  background: #fff;
+  color: #090b09;
+  cursor: pointer;
+}
+.sign-in-pattern__pause:hover {
+  background: #eee;
+}
+.sign-in-pattern__pause:focus-visible {
+  outline: 2px solid #090b09;
+  outline-offset: 4px;
+}
+.sign-in-pattern__pause svg {
+  width: 18px;
+  height: 18px;
+  fill: currentColor;
+}
+@media (prefers-reduced-motion: reduce), (max-width: 800px) {
+  .sign-in-pattern__pause {
+    display: none;
+  }
+}
