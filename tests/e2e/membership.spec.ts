@@ -44,7 +44,7 @@ async function requestSignInCode(page: Page, email: string) {
   await page.goto("/sign-in");
   await page.getByLabel("Email", { exact: true }).fill(email);
   const send = page.getByRole("button", {
-    name: "Email me a code",
+    name: "Send me a 6-digit code",
     exact: true,
   });
   const codeField = page.getByLabel("6-digit code", { exact: true });
@@ -237,7 +237,7 @@ test.describe("invited member journey", () => {
     await page.setViewportSize({ width: 320, height: 640 });
     await page.goto("/sign-in");
     await expect(
-      page.getByRole("button", { name: "Email me a code", exact: true }),
+      page.getByRole("button", { name: "Send me a 6-digit code", exact: true }),
     ).toBeVisible();
     expect(
       await page.evaluate(() => document.documentElement.scrollWidth),

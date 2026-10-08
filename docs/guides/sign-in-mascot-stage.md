@@ -13,13 +13,17 @@ the existing English/Traditional Chinese switch. Global desktop/mobile navigatio
 city selection, footer and demo banner are omitted on this route. Normal site
 chrome returns when navigating away.
 
-Desktop allocates 60% to the artwork and 40% to the form, with a thin vertical
-split between the light artwork and black sign-in section. The
-form is capped at 400 px and uses white primary buttons, light text and dark
-input fields. The black region extends through the header and to the viewport's
+Desktop allocates 52% to the brand side and 48% to the form, with a thin vertical
+split between the light artwork and black sign-in section. The brand side shows
+a localized story (tagline and "Local places · Events · Community") as real
+text above the decorative cube. The form is capped at 420 px, is lifted about
+48 px on screens at least 820 px tall, and uses white primary buttons, light
+text, `#181818` inputs with `#3a3a3a` borders and a single jade focus/hover
+accent. A secondary card points to `/join` and `/` for people without an
+account. The black region extends through the header and to the viewport's
 right edge, aligned with the grid even beyond its maximum width. On mobile the
-entire entry, including the minimal header, is black. At 801–1099 px the
-columns become equal; up to 800 px only the form is shown. Artwork size also
+entire entry, including the minimal header, is black and keeps only the compact
+story above the form. Up to 800 px the artwork is hidden. Artwork size also
 responds to viewport height. Short screens can scroll rather than clip form
 content. These styles and color tokens are scoped to sign-in.
 

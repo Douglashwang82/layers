@@ -47,7 +47,10 @@ test("mobile has no WebGL and resizing restores the cube", async ({ page }) => {
   await page.setViewportSize({ width: 390, height: 844 });
   await page.goto("/sign-in");
   await expect(
-    page.getByRole("heading", { name: "Sign in", exact: true }),
+    page.getByRole("heading", { name: "Welcome back", exact: true }),
+  ).toBeVisible();
+  await expect(
+    page.getByText("Find your people, wherever you are."),
   ).toBeVisible();
   await expect(page.locator(pattern)).toBeHidden();
   await expect(page.locator(canvas)).toHaveCount(0);
@@ -100,24 +103,36 @@ test("context loss releases the canvas and restores the fallback", async ({
   await expect(page.locator(canvas)).toHaveCount(0);
 });
 
-test("standalone sign-in removes global chrome and gives the form forty percent", async ({
+test("standalone sign-in removes global chrome and splits 52/48", async ({
   page,
 }) => {
-  await page.setViewportSize({ width: 1440, height: 900 });
+  await page.setViewportSize({ width: 1440, height: 1000 });
   await page.goto("/sign-in?next=%2Fsaved");
   await expect(page.locator(".auth-entry-brand")).toBeVisible();
   await expect(
     page.locator(".header, .bottom-nav, footer, .demo-banner"),
   ).toHaveCount(0);
   const stage = await page.locator(".auth-stage").boundingBox();
-  const scene = await page.locator(".auth-scene").boundingBox();
-  expect(scene!.width / stage!.width).toBeCloseTo(0.6, 2);
+  const side = await page.locator(".auth-brand-side").boundingBox();
+  expect(side!.width / stage!.width).toBeCloseTo(0.52, 2);
+  const form = await page.locator(".auth-stage .form-panel").boundingBox();
+  expect(form!.width).toBeLessThanOrEqual(420);
+  await expect(page.getByPlaceholder("you@example.com")).toBeVisible();
+  await expect(
+    page.getByRole("button", { name: "Send me a 6-digit code" }),
+  ).toBeVisible();
+  await expect(
+    page.getByRole("link", { name: "Request an invite" }),
+  ).toHaveAttribute("href", "/join");
+  await expect(
+    page.getByRole("link", { name: "Explore LocalLink" }),
+  ).toHaveAttribute("href", "/");
   expect(
     await page.evaluate(
       () => document.documentElement.scrollHeight <= innerHeight,
     ),
   ).toBe(true);
-  await page.getByRole("button", { name: "Use password instead" }).click();
+  await page.getByRole("button", { name: "Use password" }).click();
   await expect(page.getByLabel("Password", { exact: true })).toBeVisible();
   await page.getByRole("link", { name: "Forgot password?" }).click();
   await expect(page).toHaveURL(/\/forgot-password/);
@@ -138,17 +153,18 @@ test("compact entry keeps language switching and has no mobile nav gap", async (
       .locator("body")
       .evaluate((body) => getComputedStyle(body).paddingBottom),
   ).toBe("0px");
+  await expect(
+    page.locator(".auth-entry-header .language-button"),
+  ).toHaveAccessibleName("Language: 繁體中文");
   await page.locator(".auth-entry-header .language-button").click();
   await expect(page.locator("html")).toHaveAttribute("lang", "zh-TW");
-  await expect(page.locator(".form-panel h1")).toHaveText("登入");
+  await expect(page.locator(".form-panel h1")).toHaveText("歡迎回來");
   await expect(page.locator(".auth-entry-header .language-button")).toHaveText(
-    "EN",
+    "English",
   );
-  expect(
-    await page.evaluate(
-      () => document.documentElement.scrollHeight <= innerHeight,
-    ),
-  ).toBe(true);
+  await expect(
+    page.getByRole("button", { name: "寄給我 6 位數驗證碼" }),
+  ).toBeVisible();
   expect(
     await page.evaluate(
       () => document.documentElement.scrollWidth <= innerWidth,

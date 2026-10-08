@@ -10,7 +10,7 @@ export default async function SignInPage({
   return (
     <div className="auth-page auth-page-stage">
       <div className="auth-stage">
-        {/* The form occupies 40% on desktop and stays first in reading order. */}
+        {/* The form stays first in reading order; the brand side sits to its left on desktop. */}
         <div className="form-panel">
           <AuthForm
             t={t}
@@ -21,9 +21,16 @@ export default async function SignInPage({
             }
           />
         </div>
-        {/* Decorative monochrome pattern; form stays first in tab order. */}
-        <div className="auth-scene">
-          <SignInPattern pauseLabel={t.signInPetPause} />
+        <div className="auth-brand-side">
+          {/* Real text, outside the decorative artwork so it stays accessible. */}
+          <div className="auth-story">
+            <p className="auth-story__title">{t.authStoryTitle}</p>
+            <p className="auth-story__meta">{t.authStoryMeta}</p>
+          </div>
+          {/* Decorative monochrome pattern; form stays first in tab order. */}
+          <div className="auth-scene">
+            <SignInPattern pauseLabel={t.signInPetPause} />
+          </div>
         </div>
       </div>
     </div>

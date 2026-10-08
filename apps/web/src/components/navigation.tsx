@@ -9,8 +9,10 @@ import {
   Bookmark,
   UserRound,
   MapPin,
+  Globe,
 } from "lucide-react";
 import type { Copy, Locale } from "@/lib/i18n";
+import { format } from "@/lib/dictionary";
 /**
  * Route families owned by each destination. Whole path segments only.
  * Standalone catalog/detail pages (/places, /events, /explore, /products,
@@ -55,6 +57,22 @@ export function Navigation({
   ] as const;
   const current = (href: string) =>
     isActiveRoute(pathname, href) ? ("page" as const) : undefined;
+  const nextLanguage = locale === "en" ? "繁體中文" : "English";
+  const authLanguageButton = (
+    <button
+      type="button"
+      className="language-button language-button--labeled"
+      aria-label={format(t.languageSwitchTo, { language: nextLanguage })}
+      lang={locale === "en" ? "zh-TW" : "en"}
+      onClick={() => {
+        document.cookie = `locale=${locale === "en" ? "zh-TW" : "en"};path=/;SameSite=Lax;max-age=31536000`;
+        router.refresh();
+      }}
+    >
+      <Globe size={16} aria-hidden="true" />
+      {nextLanguage}
+    </button>
+  );
   const languageButton = (
     <button
       type="button"
@@ -76,7 +94,7 @@ export function Navigation({
           <span className="auth-entry-mark" aria-hidden="true" />
           Local<span>Link</span>
         </Link>
-        {languageButton}
+        {authLanguageButton}
       </header>
     );
   }

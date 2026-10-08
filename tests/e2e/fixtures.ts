@@ -53,9 +53,7 @@ export async function submitSignIn(page: Page, email: string) {
       ".",
     ),
   });
-  await page
-    .getByRole("button", { name: "Use password instead", exact: true })
-    .click();
+  await page.getByRole("button", { name: "Use password", exact: true }).click();
   await page.getByLabel("Email", { exact: true }).fill(email);
   await page.getByLabel("Password", { exact: true }).fill(E2E_PASSWORD);
   await page.getByRole("button", { name: "Sign in", exact: true }).click();

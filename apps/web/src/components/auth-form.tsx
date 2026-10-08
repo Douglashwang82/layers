@@ -7,6 +7,7 @@ import { emailOTPClient } from "better-auth/client/plugins";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
+import { brand } from "@taiwanhub/shared";
 import type { Copy } from "@/lib/i18n";
 import { format } from "@/lib/dictionary";
 import { StatusMessage } from "./actions";
@@ -57,19 +58,30 @@ export function AuthForm({
   const destination = safeDestination(next);
   return (
     <div className="form-stack">
-      <h1>{t.signIn}</h1>
+      <div className="auth-heading">
+        <h1>{t.signInWelcome}</h1>
+        <p className="auth-subtitle">
+          {format(t.signInSubtitle, { brand: brand.name })}
+        </p>
+      </div>
       {method === "code" ? (
         <EmailCodeForm t={t} destination={destination} />
       ) : (
         <PasswordForm t={t} destination={destination} />
       )}
-      <button
-        type="button"
-        className="text-button"
-        onClick={() => setMethod(method === "code" ? "password" : "code")}
-      >
-        {method === "code" ? t.signInUsePassword : t.signInUseCode}
-      </button>
+      <p className="auth-alt-method">
+        <span>
+          {method === "code" ? t.signInPreferPassword : t.signInPreferCode}
+        </span>
+        <button
+          type="button"
+          className="text-button"
+          onClick={() => setMethod(method === "code" ? "password" : "code")}
+        >
+          {method === "code" ? t.signInUsePassword : t.signInUseCode}
+          <span aria-hidden="true"> →</span>
+        </button>
+      </p>
       {google && (
         <button
           type="button"
@@ -84,12 +96,22 @@ export function AuthForm({
           {t.google}
         </button>
       )}
-      <p className="auth-links">
-        {t.membershipInviteOnly}{" "}
-        <Link className="text-button" href="/join">
-          {t.askToBeInvited}
-        </Link>
-      </p>
+      <section className="auth-invite" aria-labelledby="auth-invite-title">
+        <h2 id="auth-invite-title">
+          {format(t.authNewTitle, { brand: brand.name })}
+        </h2>
+        <p>{format(t.authNewBody, { brand: brand.name })}</p>
+        <div className="auth-invite-links">
+          <Link className="text-button" href="/join">
+            {t.authRequestInvite}
+            <span aria-hidden="true"> →</span>
+          </Link>
+          <Link className="text-button" href="/">
+            {format(t.authExplore, { brand: brand.name })}
+            <span aria-hidden="true"> →</span>
+          </Link>
+        </div>
+      </section>
       <small className="fine-print">{t.privacy}</small>
     </div>
   );
@@ -195,6 +217,7 @@ function EmailCodeForm({ t, destination }: { t: Copy; destination: string }) {
             ref={emailInput}
             type="email"
             autoComplete="email"
+            placeholder="you@example.com"
             required
             value={email}
             onChange={(e) => setEmail(e.target.value)}
@@ -311,6 +334,7 @@ function PasswordForm({ t, destination }: { t: Copy; destination: string }) {
         <input
           type="email"
           autoComplete="email"
+          placeholder="you@example.com"
           required
           {...register("email")}
           {...fieldProps("auth-email", { error: errors.email?.message })}
@@ -440,7 +464,9 @@ export function ResetPasswordForm({
   if (!token)
     return (
       <div className="form-stack">
-        <StatusMessage feedback={{ tone: "error", text: t.resetPasswordInvalid }} />
+        <StatusMessage
+          feedback={{ tone: "error", text: t.resetPasswordInvalid }}
+        />
         <p className="auth-links">
           <Link className="text-button" href="/forgot-password">
             {t.forgotPassword}
