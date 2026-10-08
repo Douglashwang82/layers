@@ -58,21 +58,13 @@ export function AuthForm({
   const destination = safeDestination(next);
   return (
     <div className="form-stack">
-      <div className="auth-heading">
-        <h1>{t.signInWelcome}</h1>
-        <p className="auth-subtitle">
-          {format(t.signInSubtitle, { brand: brand.name })}
-        </p>
-      </div>
+      <h1>{t.signIn}</h1>
       {method === "code" ? (
         <EmailCodeForm t={t} destination={destination} />
       ) : (
         <PasswordForm t={t} destination={destination} />
       )}
       <p className="auth-alt-method">
-        <span>
-          {method === "code" ? t.signInPreferPassword : t.signInPreferCode}
-        </span>
         <button
           type="button"
           className="text-button"
@@ -96,23 +88,16 @@ export function AuthForm({
           {t.google}
         </button>
       )}
-      <section className="auth-invite" aria-labelledby="auth-invite-title">
-        <h2 id="auth-invite-title">
-          {format(t.authNewTitle, { brand: brand.name })}
-        </h2>
-        <p>{format(t.authNewBody, { brand: brand.name })}</p>
-        <div className="auth-invite-links">
-          <Link className="text-button" href="/join">
-            {t.authRequestInvite}
-            <span aria-hidden="true"> →</span>
-          </Link>
-          <Link className="text-button" href="/">
-            {format(t.authExplore, { brand: brand.name })}
-            <span aria-hidden="true"> →</span>
-          </Link>
-        </div>
-      </section>
-      <small className="fine-print">{t.privacy}</small>
+      <div className="auth-invite-links">
+        <Link className="text-button" href="/join">
+          {t.authRequestInvite}
+          <span aria-hidden="true"> →</span>
+        </Link>
+        <Link className="text-button" href="/">
+          {format(t.authExplore, { brand: brand.name })}
+          <span aria-hidden="true"> →</span>
+        </Link>
+      </div>
     </div>
   );
 }
@@ -211,7 +196,6 @@ function EmailCodeForm({ t, destination }: { t: Copy; destination: string }) {
           void requestCode();
         }}
       >
-        <p className="muted">{t.signInCodeIntro}</p>
         <Field id="auth-code-email" label={t.email}>
           <input
             ref={emailInput}

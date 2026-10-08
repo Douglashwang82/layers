@@ -135,27 +135,8 @@
     background: none;
     overflow: visible;
   }
-  /* Compact brand message above the form; the artwork stays desktop-only. */
   .auth-brand-side {
-    display: block;
-    order: -1;
-    width: 100%;
-    max-width: 420px;
-    margin: 0 auto 32px;
-    padding: 0;
-  }
-  .auth-story {
-    max-width: none;
-    padding: 0;
-  }
-  .auth-story__title {
-    margin-bottom: 8px;
-    color: #f5f5f5;
-    font-size: 20px;
-  }
-  .auth-story__meta {
-    color: #b5b5b5;
-    font-size: 13px;
+    display: none;
   }
   .auth-scene {
     display: none;

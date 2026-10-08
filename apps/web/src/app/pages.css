@@ -583,39 +583,6 @@ body:has(.auth-page-stage) {
   padding-right: var(--auth-pad);
   pointer-events: none;
 }
-.auth-story,
-.auth-scene {
-  grid-area: 1 / 1;
-}
-.auth-story {
-  align-self: start;
-  max-width: 400px;
-  padding-top: 8px;
-  z-index: 1;
-}
-.auth-story__title {
-  margin: 0 0 12px;
-  color: #171717;
-  font-size: clamp(26px, 2.4vw, 36px);
-  line-height: 1.2;
-  letter-spacing: -0.045em;
-  font-weight: 500;
-}
-.auth-story__meta {
-  margin: 0;
-  color: #595959;
-  font-size: 14px;
-  letter-spacing: 0.01em;
-}
-.auth-story__meta::before {
-  content: "";
-  display: inline-block;
-  width: 24px;
-  height: 2px;
-  margin-right: 12px;
-  vertical-align: middle;
-  background: var(--auth-jade);
-}
 .auth-scene {
   position: relative;
   display: grid;
@@ -624,8 +591,8 @@ body:has(.auth-page-stage) {
   isolation: isolate;
 }
 .auth-scene .sign-in-pattern {
-  /* About 12% smaller than before, nudged right and down. */
-  width: min(92%, max(334px, calc((100svh - 220px) * 0.88)));
+  /* Keep the decorative cube secondary to the sign-in action. */
+  width: min(72%, 420px);
   transform: translate(4%, 5%);
 }
 .auth-scene .sign-in-pattern__pause {
@@ -669,12 +636,6 @@ body:has(.auth-page-stage) {
   letter-spacing: -0.055em;
   font-weight: 500;
   margin-bottom: 12px;
-}
-.auth-stage .form-panel .auth-subtitle {
-  margin: 0;
-  color: var(--th-muted);
-  font-size: 16px;
-  line-height: 1.5;
 }
 .auth-stage .form-panel > .form-stack {
   gap: 20px;
@@ -739,7 +700,7 @@ body:has(.auth-page-stage) {
   font-size: 14px;
 }
 .auth-stage .form-panel .auth-alt-method .text-button,
-.auth-stage .form-panel .auth-invite .text-button {
+.auth-stage .form-panel .auth-invite-links .text-button {
   color: #f5f5f5;
   font-size: 14px;
   text-decoration-color: #777;
@@ -753,31 +714,12 @@ body:has(.auth-page-stage) {
   line-height: 1.8;
   color: var(--th-muted);
 }
-.auth-stage .form-panel .auth-invite {
-  display: grid;
-  gap: 8px;
-  padding: 20px;
-  border: 1px solid #3a3a3a;
-  border-radius: 8px;
-  background: #151515;
-}
-.auth-stage .form-panel .auth-invite h2 {
-  margin: 0;
-  font-size: 16px;
-  line-height: 24px;
-  font-weight: 600;
-}
-.auth-stage .form-panel .auth-invite p {
-  margin: 0;
-  color: var(--th-muted);
-  font-size: 14px;
-  line-height: 1.6;
-}
 .auth-stage .form-panel .auth-invite-links {
   display: flex;
   flex-wrap: wrap;
   gap: 8px 20px;
-  margin-top: 4px;
+  padding-top: 20px;
+  border-top: 1px solid var(--th-divider);
 }
 .auth-stage .form-panel .fine-print {
   color: #a3a3a3;

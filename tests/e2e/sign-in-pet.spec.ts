@@ -47,11 +47,11 @@ test("mobile has no WebGL and resizing restores the cube", async ({ page }) => {
   await page.setViewportSize({ width: 390, height: 844 });
   await page.goto("/sign-in");
   await expect(
-    page.getByRole("heading", { name: "Welcome back", exact: true }),
+    page.getByRole("heading", { name: "Sign in", exact: true }),
   ).toBeVisible();
   await expect(
     page.getByText("Find your people, wherever you are."),
-  ).toBeVisible();
+  ).toHaveCount(0);
   await expect(page.locator(pattern)).toBeHidden();
   await expect(page.locator(canvas)).toHaveCount(0);
   expect(
@@ -119,6 +119,12 @@ test("standalone sign-in removes global chrome and splits 52/48", async ({
   expect(form!.width).toBeLessThanOrEqual(420);
   await expect(page.getByPlaceholder("you@example.com")).toBeVisible();
   await expect(
+    page.locator(".auth-story, .auth-subtitle, .auth-invite"),
+  ).toHaveCount(0);
+  await expect(
+    page.getByText("Enter your member email", { exact: false }),
+  ).toHaveCount(0);
+  await expect(
     page.getByRole("button", { name: "Send me a 6-digit code" }),
   ).toBeVisible();
   await expect(
@@ -158,7 +164,7 @@ test("compact entry keeps language switching and has no mobile nav gap", async (
   ).toHaveAccessibleName("Language: 繁體中文");
   await page.locator(".auth-entry-header .language-button").click();
   await expect(page.locator("html")).toHaveAttribute("lang", "zh-TW");
-  await expect(page.locator(".form-panel h1")).toHaveText("歡迎回來");
+  await expect(page.locator(".form-panel h1")).toHaveText("登入");
   await expect(page.locator(".auth-entry-header .language-button")).toHaveText(
     "English",
   );
