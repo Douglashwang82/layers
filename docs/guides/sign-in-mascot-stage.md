@@ -59,8 +59,18 @@ Two soft analytic contact shadows sit beneath the object. Their offset, size and
 opacity follow the moving layer, establishing its height without an opaque floor
 or background rectangle. The orthographic camera remains stationary.
 
+Three local surface accents accompany the structural cycle, one cell at a time:
+0.9–2.3 s morphs the recessed top diamond into a circle with a quarter-turn;
+2.5–4 s turns a side stripe motif in the opposite direction and sweeps its
+black/white polarity across the cell; 4.2–5.75 s morphs a nested square into
+stripes with a half-turn and another polarity sweep. Each accent eases back to
+the original design before the rest phase. Shape boundaries interpolate as
+distance fields; color inversion sweeps spatially instead of flashing an entire
+face. The recessed tile shares the top-face effect, preserving alignment.
+
 Focusing any control inside the form interrupts the loop: the current pose
-smoothly returns to the assembled state in 600 ms and then stops rendering.
+smoothly returns to the assembled state and original surface motifs in 600 ms
+and then stops rendering.
 Moving between form controls keeps it quiet. Leaving the form restarts at the
 beginning after completing any return already in progress.
 

@@ -4,11 +4,69 @@ export const CUBE_FPS = 30;
 export const CUBE_LOOP_MS = 8000;
 export const CUBE_SCALE = 0.85;
 export const QUIET_RETURN_MS = 600;
-export type CubePose = { sink: number; spread: number };
+export type SurfacePose = {
+  face: number;
+  layer: number;
+  tile: number;
+  spin: number;
+  morph: number;
+  wipe: number;
+};
+export type CubePose = { sink: number; spread: number; surface: SurfacePose };
 
 function ease(value: number) {
   const t = THREE.MathUtils.clamp(value, 0, 1);
   return t ** 3 * (t * (t * 6 - 15) + 10);
+}
+
+/** One local accent at a time, returning to the original artwork before resting. */
+export function surfaceFrame(elapsedMs: number): SurfacePose {
+  const t = Math.max(0, elapsedMs) % CUBE_LOOP_MS;
+  const windows = [
+    {
+      start: 900,
+      end: 2300,
+      face: 2,
+      layer: 3,
+      tile: 6,
+      spin: Math.PI / 2,
+      morph: 1,
+      wipe: 0,
+    },
+    {
+      start: 2500,
+      end: 4000,
+      face: 0,
+      layer: 2,
+      tile: 5,
+      spin: -Math.PI / 2,
+      morph: 0,
+      wipe: 1,
+    },
+    {
+      start: 4200,
+      end: 5750,
+      face: 4,
+      layer: 1,
+      tile: 10,
+      spin: Math.PI,
+      morph: 1,
+      wipe: 1,
+    },
+  ];
+  const accent = windows.find(({ start, end }) => t >= start && t < end);
+  if (!accent)
+    return { face: -1, layer: -1, tile: -1, spin: 0, morph: 0, wipe: 0 };
+  const p = (t - accent.start) / (accent.end - accent.start);
+  const amount = ease(p / 0.4) * (1 - ease((p - 0.6) / 0.4));
+  return {
+    face: accent.face,
+    layer: accent.layer,
+    tile: accent.tile,
+    spin: accent.spin * amount,
+    morph: accent.morph * amount,
+    wipe: accent.wipe * amount,
+  };
 }
 
 export function cubeFrame(elapsedMs: number) {
@@ -27,7 +85,7 @@ export function cubeFrame(elapsedMs: number) {
             : t < 5900
               ? "reassemble"
               : "rest";
-  return { sink, spread, phase };
+  return { sink, spread, phase, surface: surfaceFrame(elapsedMs) };
 }
 
 /** Focus may interrupt any phase. Finish a smooth return even if focus leaves early. */
@@ -71,8 +129,17 @@ export function createCubeMotion() {
         pose = {
           sink: returning.from.sink * amount,
           spread: returning.from.spread * amount,
+          surface: {
+            ...returning.from.surface,
+            spin: returning.from.surface.spin * amount,
+            morph: returning.from.surface.morph * amount,
+            wipe: returning.from.surface.wipe * amount,
+          },
         };
-        if (returning.elapsed >= QUIET_RETURN_MS) returning = null;
+        if (returning.elapsed >= QUIET_RETURN_MS) {
+          returning = null;
+          pose = cubeFrame(0);
+        }
       } else if (!quiet) {
         elapsed = (elapsed + delta) % CUBE_LOOP_MS;
         pose = cubeFrame(elapsed);
@@ -105,6 +172,10 @@ function patternMaterial(face: number, layer: number, tile = false) {
       },
       hole: { value: !tile && face === 2 && layer === 3 ? 1 : 0 },
       paper: { value: face === 2 ? 1 : face === 4 ? 0.92 : 0.8 },
+      activeTile: { value: -1 },
+      spin: { value: 0 },
+      morph: { value: 0 },
+      wipe: { value: 0 },
     },
     vertexShader: `
       varying vec2 faceUv;
@@ -119,17 +190,11 @@ function patternMaterial(face: number, layer: number, tile = false) {
       uniform vec2 uvOffset;
       uniform float hole;
       uniform float paper;
-      void main() {
-        vec2 mapped = faceUv * uvScale + uvOffset;
-        vec2 grid = vec2(mapped.x, 1.0 - mapped.y) * 4.0;
-        vec2 cell = min(floor(grid), vec2(3.0));
-        if (hole > 0.5 && cell.x == 2.0 && cell.y == 1.0) discard;
-        vec2 point = grid - cell - 0.5;
-        float turn = mod(cell.x + 2.0 * cell.y, 4.0);
-        if (turn > 2.5) point = vec2(-point.y, point.x);
-        else if (turn > 1.5) point = -point;
-        else if (turn > 0.5) point = vec2(point.y, -point.x);
-        float motif = mod(cell.x + 3.0 * cell.y, 5.0);
+      uniform float activeTile;
+      uniform float spin;
+      uniform float morph;
+      uniform float wipe;
+      float shapeDistance(vec2 point, float motif) {
         float distanceToEdge = abs(point.x) + abs(point.y) - 0.5;
         if (motif > 3.5) {
           // Three bold parallel lines, contained within their own cell.
@@ -143,10 +208,28 @@ function patternMaterial(face: number, layer: number, tile = false) {
         } else if (motif > 0.5) {
           distanceToEdge = length(point) - 0.36;
         }
+        return distanceToEdge;
+      }
+      void main() {
+        vec2 mapped = faceUv * uvScale + uvOffset;
+        vec2 grid = vec2(mapped.x, 1.0 - mapped.y) * 4.0;
+        vec2 cell = min(floor(grid), vec2(3.0));
+        if (hole > 0.5 && cell.x == 2.0 && cell.y == 1.0) discard;
+        vec2 point = grid - cell - 0.5;
+        float localX = point.x + 0.5;
+        float cellActive = 1.0 - step(0.5, abs(cell.y * 4.0 + cell.x - activeTile));
+        float angle = mod(cell.x + 2.0 * cell.y, 4.0) * 1.5707963268 + spin * cellActive;
+        point = mat2(cos(angle), -sin(angle), sin(angle), cos(angle)) * point;
+        point /= 1.0 - 0.12 * morph * cellActive;
+        float motif = mod(cell.x + 3.0 * cell.y, 5.0);
+        float distanceToEdge = mix(shapeDistance(point, motif), shapeDistance(point, mod(motif + 1.0, 5.0)), morph * cellActive);
         float aa = max(fwidth(distanceToEdge), 0.00001);
         float shape = 1.0 - smoothstep(-aa * 0.5, aa * 0.5, distanceToEdge);
         float inverted = mod(cell.x + cell.y, 2.0);
         float ink = mix(shape, 1.0 - shape, inverted);
+        // Sweep the polarity across the cell instead of flashing or fading to gray.
+        float inversion = wipe > 0.999 ? 1.0 : wipe > 0.001 ? 1.0 - smoothstep(wipe - 0.015, wipe + 0.015, localX) : 0.0;
+        ink = mix(ink, 1.0 - ink, inversion * cellActive);
         gl_FragColor = vec4(vec3(mix(paper, 0.0027, ink)), 1.0);
         #include <colorspace_fragment>
       }
@@ -175,13 +258,23 @@ function contactShadow(opacity: number) {
 }
 
 export function createCubeModel() {
+  const surfaces: {
+    face: number;
+    layer: number;
+    material: THREE.ShaderMaterial;
+  }[] = [];
+  const surfaceMaterial = (face: number, layer: number, tile = false) => {
+    const material = patternMaterial(face, layer, tile);
+    surfaces.push({ face, layer, material });
+    return material;
+  };
   const root = new THREE.Group();
   root.scale.setScalar(CUBE_SCALE);
   const geometry = new THREE.BoxGeometry(2, 0.5, 2);
   const layers = Array.from({ length: 4 }, (_, layer) => {
     const group = new THREE.Group();
     const materials = Array.from({ length: 6 }, (_, face) =>
-      patternMaterial(face, layer),
+      surfaceMaterial(face, layer),
     );
     group.add(new THREE.Mesh(geometry, materials));
     root.add(group);
@@ -198,7 +291,7 @@ export function createCubeModel() {
     new THREE.BoxGeometry(0.5, 0.04, 0.5),
     Array.from({ length: 6 }, (_, face) =>
       face === 2
-        ? patternMaterial(face, 3, true)
+        ? surfaceMaterial(face, 3, true)
         : new THREE.MeshBasicMaterial({ color: "#aaa" }),
     ),
   );
@@ -209,7 +302,14 @@ export function createCubeModel() {
   movingShadow.position.y -= 0.002;
   root.add(shadow, movingShadow);
 
-  const applyPose = ({ sink, spread }: CubePose) => {
+  const applyPose = ({ sink, spread, surface }: CubePose) => {
+    surfaces.forEach(({ face, layer, material }) => {
+      material.uniforms.activeTile.value =
+        face === surface.face && layer === surface.layer ? surface.tile : -1;
+      material.uniforms.spin.value = surface.spin;
+      material.uniforms.morph.value = surface.morph;
+      material.uniforms.wipe.value = surface.wipe;
+    });
     layers.forEach((layer, index) => {
       layer.position.set(0, -0.75 + index * 0.5 + index * 0.105 * spread, 0);
       layer.rotation.y = 0;
