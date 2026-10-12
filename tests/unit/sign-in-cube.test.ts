@@ -1,22 +1,75 @@
 import { describe, expect, it } from "vitest";
+import * as THREE from "three";
 import {
   CUBE_COUNT,
+  CUBE_SIDE,
+  CUBE_STEP_MS,
   createCubeModel,
   createCubeMotion,
   cubeBufferSize,
-  rollingPosition,
+  rollingPose,
 } from "../../apps/web/src/components/sign-in-cube-model";
 
 describe("rolling sign-in cubes", () => {
-  it("moves toward the bottom left on every lane", () => {
-    for (const lane of [-1, 0, 1]) {
-      const start = rollingPosition(0.2, lane);
-      const end = rollingPosition(0.8, lane);
-      expect(end.x).toBeLessThan(start.x);
-      expect(end.y).toBeLessThan(start.y);
+  it("keeps both pivot corners on the ground throughout a quarter turn", () => {
+    for (const fraction of [0, 0.1, 0.25, 0.5, 0.9, 1]) {
+      const pose = rollingPose(3, fraction, 2);
+      for (const x of [-CUBE_SIDE / 2, CUBE_SIDE / 2]) {
+        const corner = new THREE.Vector3(x, -CUBE_SIDE / 2, CUBE_SIDE / 2)
+          .applyAxisAngle(new THREE.Vector3(1, 0, 0), pose.angle)
+          .add(new THREE.Vector3(pose.x, pose.y, pose.z));
+        expect(corner.y).toBeCloseTo(0);
+        expect(corner.z).toBeCloseTo(pose.pivotZ);
+      }
+      // No corner may sink below the ground.
+      for (const y of [-1, 1])
+        for (const z of [-1, 1]) {
+          const corner = new THREE.Vector3(
+            0,
+            (y * CUBE_SIDE) / 2,
+            (z * CUBE_SIDE) / 2,
+          ).applyAxisAngle(new THREE.Vector3(1, 0, 0), pose.angle);
+          expect(corner.y + pose.y).toBeGreaterThanOrEqual(-1e-10);
+        }
     }
+    expect(rollingPose(3, 1, 2).z).toBeCloseTo(rollingPose(4, 0, 2).z);
   });
-  it("stops without jumping on input focus and resumes from the same pose", () => {
+  it("uses exactly three fixed lanes with identical motion and no overtaking", () => {
+    const model = createCubeModel(() => 0.5);
+    expect(model.cubes).toHaveLength(CUBE_COUNT);
+    expect(new Set(model.cubes.map((c) => c.x)).size).toBe(3);
+    model.applyPose(100);
+    const positions = model.cubes.map((c) => c.mesh.position.clone());
+    model.applyPose(800);
+    const movement = model.cubes.map((c, i) =>
+      c.mesh.position.clone().sub(positions[i]),
+    );
+    movement.forEach((v) =>
+      expect(v.distanceTo(movement[0])).toBeLessThan(1e-10),
+    );
+    for (const time of [5000, 50000, 100000]) {
+      model.applyPose(time);
+      expect(new Set(model.cubes.map((c) => c.mesh.position.x)).size).toBe(3);
+      model.cubes.forEach((c) => expect(c.mesh.position.x).toBe(c.x));
+    }
+    model.dispose();
+  });
+  it("leaves complete face-sized squares fixed on the ground until the next landing", () => {
+    const model = createCubeModel(() => 0.5);
+    model.applyPose(200);
+    const trail = model.cubes[0].trails[0];
+    const position = trail.group.position.clone();
+    expect(trail.group.children).toHaveLength(4);
+    expect(position.y).toBe(0);
+    const opacity = trail.material.opacity;
+    model.applyPose(800);
+    expect(trail.group.position.equals(position)).toBe(true);
+    expect(trail.material.opacity).toBeLessThan(opacity);
+    model.applyPose(CUBE_STEP_MS);
+    expect(trail.group.position.z - position.z).toBeCloseTo(CUBE_SIDE);
+    model.dispose();
+  });
+  it("freezes and resumes without jumping, and resets deterministically", () => {
     const motion = createCubeMotion();
     motion.advance(2400);
     motion.setQuiet(true);
@@ -26,44 +79,19 @@ describe("rolling sign-in cubes", () => {
     motion.setQuiet(false);
     motion.advance(100);
     expect(motion.pose).toBe(2500);
+    const model = createCubeModel(() => 0.5);
+    const initial = model.cubes.map((c) => c.mesh.position.clone());
+    model.applyPose(motion.pose);
     motion.reset();
-    expect(motion.pose).toBe(0);
-  });
-  it("staggers multiple cubes and leaves fading curved traces", () => {
-    const model = createCubeModel(() => 0.5);
-    expect(model.cubes).toHaveLength(CUBE_COUNT);
-    expect(new Set(model.cubes.map((cube) => cube.start)).size).toBe(
-      CUBE_COUNT,
+    model.applyPose(motion.pose);
+    model.cubes.forEach((c, i) =>
+      expect(c.mesh.position.equals(initial[i])).toBe(true),
     );
-    model.applyPose(3000);
-    const cube = model.cubes[2];
-    expect(cube.mesh.visible).toBe(true);
-    expect(cube.trails[0].position.x).toBeGreaterThan(cube.mesh.position.x);
-    expect(cube.trails[0].position.y).toBeGreaterThan(cube.mesh.position.y);
-    expect(cube.trails[0].material.opacity).toBeGreaterThan(
-      cube.trails[4].material.opacity,
-    );
-    const rotation = cube.mesh.quaternion.clone();
-    model.applyPose(3500);
-    expect(cube.mesh.quaternion.equals(rotation)).toBe(false);
     model.dispose();
   });
-  it("waits a random interval before recycling an offscreen cube", () => {
-    const model = createCubeModel(() => 0.5);
-    model.applyPose(20000);
-    const cube = model.cubes[0];
-    expect(cube.start).toBe(22400);
-    expect(cube.mesh.visible).toBe(false);
-    expect(cube.trails.every((line) => !line.visible)).toBe(true);
-    model.applyPose(23000);
-    expect(cube.mesh.visible).toBe(true);
-    model.applyPose(0);
-    expect(model.cubes[0].start).toBeCloseTo(0);
-    model.dispose();
-  });
-  it("caps the render buffer to hardware limits", () => {
-    expect(cubeBufferSize(760, 760, 8192)).toEqual({
-      width: 3840,
+  it("caps the full rectangular buffer to hardware limits", () => {
+    expect(cubeBufferSize(600, 900, 8192)).toEqual({
+      width: 2560,
       height: 3840,
     });
     expect(cubeBufferSize(760, 760, 2048)).toEqual({

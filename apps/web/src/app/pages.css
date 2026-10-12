@@ -581,8 +581,12 @@ body:has(.auth-page-stage) {
   isolation: isolate;
 }
 .auth-scene .sign-in-pattern {
-  /* Give the rolling cubes room while keeping them beside the form. */
+  /* Fill the entire decorative section, independent of its aspect ratio. */
+  position: absolute;
+  inset: 0;
   width: 100%;
+  height: 100%;
+  aspect-ratio: auto;
   overflow: hidden;
 }
 .auth-scene .sign-in-pattern__pause {

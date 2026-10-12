@@ -8,7 +8,11 @@ test("Three.js cube animates at 4K resolution and pause holds the frame", async 
 }) => {
   await page.goto("/sign-in");
   await expect(page.locator(pattern)).toHaveAttribute("data-renderer", "three");
-  await expect(page.locator(canvas)).toHaveAttribute("width", "3840");
+  const buffer = await page.locator(canvas).evaluate((element) => {
+    const c = element as HTMLCanvasElement;
+    return Math.max(c.width, c.height);
+  });
+  expect(buffer).toBe(3840);
   await expect(page.locator(canvas)).toHaveAttribute("data-target-fps", "30");
   const initial = await page.locator(canvas).getAttribute("data-frame");
   await expect(page.locator(canvas)).not.toHaveAttribute(
@@ -204,4 +208,27 @@ test("reducing motion freezes the rolling scene immediately", async ({
   await expect(page.locator(canvas)).toHaveAttribute("data-frame", "0");
   await page.waitForTimeout(500);
   await expect(page.locator(canvas)).toHaveAttribute("data-frame", "0");
+});
+
+test("animation fills the entire section at different desktop aspect ratios", async ({
+  page,
+}) => {
+  await page.goto("/sign-in");
+  for (const viewport of [
+    { width: 1440, height: 1000 },
+    { width: 1100, height: 740 },
+    { width: 1920, height: 1080 },
+  ]) {
+    await page.setViewportSize(viewport);
+    await expect(page.locator(pattern)).toHaveAttribute(
+      "data-renderer",
+      "three",
+    );
+    const section = await page.locator(".auth-scene").boundingBox();
+    const artwork = await page.locator(pattern).boundingBox();
+    expect(artwork!.width).toBeCloseTo(section!.width, 0);
+    expect(artwork!.height).toBeCloseTo(section!.height, 0);
+    expect(artwork!.x).toBeCloseTo(section!.x, 0);
+    expect(artwork!.y).toBeCloseTo(section!.y, 0);
+  }
 });

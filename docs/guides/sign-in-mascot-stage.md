@@ -1,7 +1,7 @@
 # Sign-in cube stage
 
-The `/sign-in` page places plain white Three.js cubes beside the sign-in form.
-Subtle neutral face shading gives each cube depth. The form remains first in
+The `/sign-in` page places white outline Three.js cubes beside the sign-in form.
+Only the visible edges are drawn; depth-only faces hide rear edges and stamps. The form remains first in
 reading and tab order.
 
 ## Entry layout
@@ -21,36 +21,47 @@ content. These styles and color tokens are scoped to sign-in.
 
 ## Rendering and motion
 
-Five reusable cubes tumble diagonally from the upper right toward the lower left.
-Their initial positions are staggered across different lanes. Each crossing takes
-13–18 seconds; once a cube exits, it waits a random 0.6–4.2 seconds and receives a
-new lane, size and duration. Independent timing varies the order on later passes.
+The animation fills 100% of the decorative section's width and height, with no
+square aspect-ratio constraint. An isometric orthographic camera preserves the
+cube geometry at every viewport ratio. Exactly three parallel ground-plane lanes
+carry two reusable cubes each, moving from upper right to lower left. The lane
+spacing and offscreen entry/exit limits adapt to the section bounds on resize.
 
-Each cube leaves five short curved white strokes at past rolling positions.
-Older strokes fade out. The curves use narrow tube geometry so their width
-remains visible when the high-resolution canvas is scaled to its display size.
-There are no patterned faces, ghost cubes or smoky trails.
+All cubes have equal side lengths and share one clock: each 90-degree turn takes
+1.2 seconds at constant angular speed, with no easing or per-cube speed variation.
+Whole-step offsets stagger arrivals while keeping every cube's angular phase and
+instantaneous velocity equal. Each lane receives a random initial timing offset;
+its cubes keep a fixed safe separation and recycle only outside the viewport.
 
-An orthographic camera faces the scene along the Z axis. Travel is in screen X/Y;
-the tumble axis is perpendicular to travel. The drawing buffer's long edge targets
-3840 pixels, capped by GPU texture and renderbuffer limits. Rendering targets 30 fps.
-The cubes share geometry and face materials; trail geometry is also shared.
+The ground is Y=0. A cube pivots about its entire leading X edge, keeping both
+endpoints on the ground as its center follows a circular arc. At each landing,
+the next edge becomes the pivot. The geometrically symmetric cube has the same
+visible pose across quarter-turn boundaries. It does not slide or spin in place.
 
+Every face contact leaves a complete, face-sized square outline on the ground.
+The five latest prints remain stationary and fade with age. A depth prepass hides
+rear cube edges and any stamp lines occluded by the cube; faces have no color fill.
+Thin tube geometry keeps outlines legible on the high-resolution canvas.
+
+The drawing buffer's long edge targets 3840 pixels, capped by GPU texture and
+renderbuffer limits. The rectangular buffer follows the section's aspect ratio.
+Rendering targets 30 fps. Cube edges and stamp geometry are shared and disposed
+when the scene is removed.
 Focusing a form control or pressing Pause freezes the current positions.
 Leaving the form resumes from the held positions unless Pause is active.
 Reduced motion renders a still composition. Hidden tabs and offscreen stages stop
 scheduling frames. Screens up to 800 px hide the artwork and do not create WebGL;
 returning to desktop recreates the scene.
 
-Context loss or renderer failure displays static SVG white cubes with curved
+Context loss or renderer failure displays static SVG outline cubes with square
 trails. Authentication never depends on rendering. Cleanup releases geometry,
 materials, renderer, observers, listeners and the animation frame.
 
 ## Files and verification
 
 - `apps/web/src/components/sign-in-pattern.tsx`: lazy scene, static fallback and pause toggle.
-- `apps/web/src/components/sign-in-cube-model.ts`: cubes, curved traces, randomized recycling and motion state.
+- `apps/web/src/components/sign-in-cube-model.ts`: edge-pivot geometry, square stamps, three lanes and shared motion clock.
 - `apps/web/src/components/sign-in-cube-scene.ts`: camera, scheduling and lifecycle.
 - `apps/web/src/components/sign-in-pattern.css` and `apps/web/src/app/pages.css`: stage and entry layout.
-- `tests/unit/sign-in-cube.test.ts`: direction, focus freeze/resume, staggered cubes, trail fading, recycling and buffer limits.
-- `tests/e2e/sign-in-pet.spec.ts`: live rendering, pause, reduced motion, responsive lifecycle, fallbacks and form interaction without submitting authentication.
+- `tests/unit/sign-in-cube.test.ts`: ground contact, equal motion, fixed lanes, stationary square stamps, reset and buffer limits.
+- `tests/e2e/sign-in-pet.spec.ts`: live rendering, pause, reduced motion, full-section sizing, responsive lifecycle, fallbacks and form interaction without submitting authentication.

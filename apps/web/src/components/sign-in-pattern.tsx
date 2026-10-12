@@ -11,29 +11,36 @@ function CubeFallback() {
   return (
     <svg
       className="sign-in-pattern__fallback"
-      viewBox="0 0 400 400"
+      viewBox="0 0 400 500"
       focusable="false"
     >
       {[
-        { x: 85, y: 265, scale: 1 },
-        { x: 245, y: 125, scale: 0.7 },
-        { x: 220, y: 325, scale: 0.6 },
-      ].map(({ x, y, scale }) => (
-        <g key={x} transform={`translate(${x} ${y}) scale(${scale})`}>
+        { x: 80, y: 215 },
+        { x: 200, y: 290 },
+        { x: 310, y: 360 },
+      ].map(({ x, y }) => (
+        <g
+          key={x}
+          transform={`translate(${x} ${y})`}
+          strokeWidth="1"
+          strokeLinejoin="round"
+        >
           {[0, 1, 2, 3].map((i) => (
             <path
               key={i}
-              d="M0 0 Q10 -20 27 -14"
-              transform={`translate(${25 + i * 30} ${-35 - i * 27})`}
+              d="M-23 0 0 -13 23 0 0 13Z"
+              transform={`translate(${i * 23} ${-i * 13})`}
               fill="none"
               stroke="white"
-              strokeWidth="1"
-              opacity={0.65 - i * 0.15}
+              opacity={0.4 - i * 0.09}
             />
           ))}
-          <path d="M0 -30 27 -15 0 1 -27 -15Z" fill="#fff" />
-          <path d="M-27 -15 0 1 0 32 -27 16Z" fill="#e4e4e4" />
-          <path d="M0 1 27 -15 27 16 0 32Z" fill="#ccc" />
+          <path
+            d="M0 -53 23 -40 23 -13 0 0 -23 -13 -23 -40Z"
+            fill="#111"
+            stroke="white"
+          />
+          <path d="M-23 -40 0 -27 23 -40M0 -27V0" fill="none" stroke="white" />
         </g>
       ))}
     </svg>
