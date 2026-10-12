@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useId, useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import "./sign-in-pattern.css";
 
 type CubeScene = ReturnType<
@@ -8,74 +8,37 @@ type CubeScene = ReturnType<
 >;
 
 function CubeFallback() {
-  const patternId = useId();
   return (
     <svg
       className="sign-in-pattern__fallback"
-      viewBox="0 0 400 440"
+      viewBox="0 0 400 400"
       focusable="false"
     >
-      <defs>
-        <pattern
-          id={patternId}
-          width="100"
-          height="100"
-          patternUnits="userSpaceOnUse"
-        >
-          {Array.from({ length: 16 }, (_, index) => {
-            const x = index % 4;
-            const y = Math.floor(index / 4);
-            const inverted = (x + y) % 2 === 1;
-            const motif = (x + 3 * y) % 5;
-            return (
-              <g key={index} transform={`translate(${x * 25} ${y * 25})`}>
-                <rect
-                  width="25"
-                  height="25"
-                  fill={inverted ? "#090b09" : "#fff"}
-                />
-                <g
-                  fill={inverted ? "#fff" : "#090b09"}
-                  transform={`rotate(${((x + 2 * y) % 4) * 90} 12.5 12.5)`}
-                >
-                  {motif === 0 && <path d="M12.5 0 25 12.5 12.5 25 0 12.5z" />}
-                  {motif === 1 && <circle cx="12.5" cy="12.5" r="9" />}
-                  {motif === 2 && <path d="M12.5 2.5 23 22.5 2 22.5z" />}
-                  {motif === 3 && (
-                    <path
-                      fillRule="evenodd"
-                      d="M3.875 3.875h17.25v17.25H3.875zM6.625 6.625v11.75h11.75V6.625zM10.375 10.375h4.25v4.25h-4.25z"
-                    />
-                  )}
-                  {motif === 4 && (
-                    <path d="M5.25 3h2.5v19h-2.5zM11.25 3h2.5v19h-2.5zM17.25 3h2.5v19h-2.5z" />
-                  )}
-                </g>
-              </g>
-            );
-          })}
-        </pattern>
-      </defs>
-      <ellipse cx="200" cy="385" rx="82" ry="13" fill="#000" opacity="0.07" />
-      <g transform="translate(30 33) scale(.85)">
-        {[
-          "matrix(1.6 .924 -1.6 .924 200 35)",
-          "matrix(1.6 .924 0 1.848 40 127.4)",
-          "matrix(1.6 -.924 0 1.848 200 219.8)",
-        ].map((transform) => (
-          <rect
-            key={transform}
-            width="100"
-            height="100"
-            transform={transform}
-            fill={`url(#${patternId})`}
-          />
-        ))}
-      </g>
+      {[
+        { x: 85, y: 265, scale: 1 },
+        { x: 245, y: 125, scale: 0.7 },
+        { x: 220, y: 325, scale: 0.6 },
+      ].map(({ x, y, scale }) => (
+        <g key={x} transform={`translate(${x} ${y}) scale(${scale})`}>
+          {[0, 1, 2, 3].map((i) => (
+            <path
+              key={i}
+              d="M0 0 Q10 -20 27 -14"
+              transform={`translate(${25 + i * 30} ${-35 - i * 27})`}
+              fill="none"
+              stroke="white"
+              strokeWidth="1"
+              opacity={0.65 - i * 0.15}
+            />
+          ))}
+          <path d="M0 -30 27 -15 0 1 -27 -15Z" fill="#fff" />
+          <path d="M-27 -15 0 1 0 32 -27 16Z" fill="#e4e4e4" />
+          <path d="M0 1 27 -15 27 16 0 32Z" fill="#ccc" />
+        </g>
+      ))}
     </svg>
   );
 }
-
 export function SignInPattern({ pauseLabel }: { pauseLabel: string }) {
   const [paused, setPaused] = useState(false);
   const [ready, setReady] = useState(false);

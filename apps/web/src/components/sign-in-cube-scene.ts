@@ -13,7 +13,7 @@ export function createSignInCube(host: HTMLElement, unavailable: () => void) {
   const scene = new THREE.Scene();
   scene.add(model.root);
   const camera = new THREE.OrthographicCamera(-2, 2, 2, -2, 0.1, 30);
-  camera.position.set(6, 6, 6);
+  camera.position.set(0, 0, 10);
   camera.lookAt(0, 0, 0);
   renderer.setClearColor(0xffffff, 0);
   renderer.outputColorSpace = THREE.SRGBColorSpace;
@@ -49,7 +49,7 @@ export function createSignInCube(host: HTMLElement, unavailable: () => void) {
     const size = cubeBufferSize(width, height, maxSize);
     renderer.setSize(size.width, size.height, false);
     const aspect = width / height;
-    const halfHeight = 1.95 * Math.max(1, 1 / aspect);
+    const halfHeight = 3.2 * Math.max(1, 1 / aspect);
     camera.left = -halfHeight * aspect;
     camera.right = halfHeight * aspect;
     camera.top = halfHeight;
@@ -59,7 +59,7 @@ export function createSignInCube(host: HTMLElement, unavailable: () => void) {
   };
   const shouldRun = () =>
     !disposed &&
-    (!paused || motion.phase === "settling") &&
+    !paused &&
     motion.running &&
     !reduced.matches &&
     desktop.matches &&
@@ -98,6 +98,7 @@ export function createSignInCube(host: HTMLElement, unavailable: () => void) {
   };
   const focusChanged = () => {
     motion.setQuiet(!!panel?.contains(document.activeElement));
+    draw();
     if (reduced.matches) {
       motion.reset();
       draw();

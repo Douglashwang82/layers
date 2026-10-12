@@ -65,7 +65,7 @@ test("mobile has no WebGL and resizing restores the cube", async ({ page }) => {
   await expect(page.locator(canvas)).toHaveCount(0);
 });
 
-test("WebGL failure leaves a patterned SVG cube and working form", async ({
+test("WebGL failure leaves plain SVG cubes and working form", async ({
   page,
 }) => {
   await page.addInitScript(() => {
@@ -178,11 +178,9 @@ test("compact entry keeps language switching and has no mobile nav gap", async (
   ).toBe(true);
 });
 
-test("input focus smoothly reassembles an expanded cube and keeps it still", async ({
-  page,
-}) => {
+test("input focus holds the rolling cubes still", async ({ page }) => {
   await page.goto("/sign-in");
-  await expect(page.locator(canvas)).toHaveAttribute("data-phase", "open", {
+  await expect(page.locator(canvas)).toHaveAttribute("data-phase", "rolling", {
     timeout: 12000,
   });
   await page.getByLabel("Email", { exact: true }).fill("member@example.com");
@@ -193,26 +191,17 @@ test("input focus smoothly reassembles an expanded cube and keeps it still", asy
   await expect(page.locator(canvas)).toHaveAttribute("data-phase", "quiet");
   await page.locator(".auth-entry-header .language-button").focus();
   await expect(page.locator(canvas)).not.toHaveAttribute("data-frame", held!);
-  await expect(page.locator(canvas)).toHaveAttribute("data-phase", "whole");
+  await expect(page.locator(canvas)).toHaveAttribute("data-phase", "rolling");
 });
 
-test("cycle reaches reassembly and rest; reducing motion assembles immediately", async ({
+test("reducing motion freezes the rolling scene immediately", async ({
   page,
 }) => {
   await page.goto("/sign-in");
-  await expect(page.locator(canvas)).toHaveAttribute("data-phase", "sink", {
-    timeout: 12000,
-  });
-  await expect(page.locator(canvas)).toHaveAttribute("data-phase", "open");
-  await expect(page.locator(canvas)).toHaveAttribute(
-    "data-phase",
-    "reassemble",
-  );
-  await expect(page.locator(canvas)).toHaveAttribute("data-phase", "rest");
-  await expect(page.locator(canvas)).toHaveAttribute("data-phase", "open", {
-    timeout: 12000,
-  });
+  await expect(page.locator(canvas)).toHaveAttribute("data-phase", "rolling");
+  await expect(page.locator(canvas)).not.toHaveAttribute("data-frame", "0");
   await page.emulateMedia({ reducedMotion: "reduce" });
-  await expect(page.locator(canvas)).toHaveAttribute("data-phase", "whole");
+  await expect(page.locator(canvas)).toHaveAttribute("data-frame", "0");
+  await page.waitForTimeout(500);
   await expect(page.locator(canvas)).toHaveAttribute("data-frame", "0");
 });

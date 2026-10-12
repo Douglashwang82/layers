@@ -581,9 +581,9 @@ body:has(.auth-page-stage) {
   isolation: isolate;
 }
 .auth-scene .sign-in-pattern {
-  /* Keep the decorative cube secondary to the sign-in action. */
-  width: min(72%, 420px);
-  transform: translate(4%, 5%);
+  /* Give the rolling cubes room while keeping them beside the form. */
+  width: 100%;
+  overflow: hidden;
 }
 .auth-scene .sign-in-pattern__pause {
   right: 24px;

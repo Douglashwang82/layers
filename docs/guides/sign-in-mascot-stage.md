@@ -1,10 +1,8 @@
 # Sign-in cube stage
 
-The `/sign-in` page places a monochrome Three.js cube beside the sign-in form.
-An orthographic camera at (6, 6, 6) keeps the reference's equal-angle view:
-visible top, left and right faces, with vertical edges remaining vertical.
-All six faces carry the same alternating 4×4 black-and-white geometric pattern.
-The form remains first in reading and tab order.
+The `/sign-in` page places plain white Three.js cubes beside the sign-in form.
+Subtle neutral face shading gives each cube depth. The form remains first in
+reading and tab order.
 
 ## Entry layout
 
@@ -13,7 +11,7 @@ the existing English/Traditional Chinese switch. Global desktop/mobile navigatio
 city selection, footer and demo banner are omitted on this route. Normal site
 chrome returns when navigating away.
 
-Desktop allocates 52% to the brand side and 48% to the form, on a uniform black background, including the header. The brand side contains only a smaller decorative cube, keeping the form as the primary focus. The form is capped at 420 px, is lifted about
+Desktop allocates 52% to the brand side and 48% to the form, on a uniform black background, including the header. The brand side contains small decorative rolling cubes, keeping the form as the primary focus. The form is capped at 420 px, is lifted about
 48 px on screens at least 820 px tall, and uses white primary buttons, light
 text, `#181818` inputs with `#3a3a3a` borders and a single jade focus/hover
 accent. Secondary links point to `/join` and `/`. The form uses a short sign-in heading, labeled fields and actions, without introductory or promotional copy. The background remains black beyond the maximum content width. On mobile the
@@ -23,85 +21,36 @@ content. These styles and color tokens are scoped to sign-in.
 
 ## Rendering and motion
 
-The pattern is reconstructed analytically from the supplied geometric reference,
-not enlarged from its low-resolution raster. The fragment shader uses derivative
-antialiasing for the pattern edges; the renderer also enables MSAA. Subtle neutral
-paper tones distinguish the faces while keeping the ink near black.
+Five reusable cubes tumble diagonally from the upper right toward the lower left.
+Their initial positions are staggered across different lanes. Each crossing takes
+13–18 seconds; once a cube exits, it waits a random 0.6–4.2 seconds and receives a
+new lane, size and duration. Independent timing varies the order on later passes.
 
-The drawing buffer's long edge targets 3840 pixels, capped by the GPU's texture
-and renderbuffer limits. The square stage therefore renders at 3840×3840, rather
-than exporting a 3840×2160 video. This is a live canvas, not a video asset.
+Each cube leaves five short curved white strokes at past rolling positions.
+Older strokes fade out. The curves use narrow tube geometry so their width
+remains visible when the high-resolution canvas is scaled to its display size.
+There are no patterned faces, ghost cubes or smoky trails.
 
-The animation loop targets 30 rendered frames per second using elapsed time.
-The cube is 85% of its previous size and floats directly on the page, without
-a surrounding card. Four actual horizontal slices share continuous face UVs:
-their outside surfaces reconstruct the original pattern exactly when assembled.
-The newly exposed cut surfaces retain the same black-and-white pattern: diamonds,
-circles, triangles, nested squares and three-stripe motifs. Motifs and quarter-turn
-orientations use full-face cell coordinates, keeping slice seams and the recessed
-tile aligned. The static SVG fallback uses the same arrangement.
-A separate top tile descends into a real pocket with interior walls and a floor.
+An orthographic camera faces the scene along the Z axis. Travel is in screen X/Y;
+the tumble axis is perpendicular to travel. The drawing buffer's long edge targets
+3840 pixels, capped by GPU texture and renderbuffer limits. Rendering targets 30 fps.
+The cubes share geometry and face materials; trail geometry is also shared.
 
-Each eight-second loop uses quintic easing with zero endpoint velocity:
+Focusing a form control or pressing Pause freezes the current positions.
+Leaving the form resumes from the held positions unless Pause is active.
+Reduced motion renders a still composition. Hidden tabs and offscreen stages stop
+scheduling frames. Screens up to 800 px hide the artwork and do not create WebGL;
+returning to desktop recreates the scene.
 
-| Time      | Action                                                                              |
-| --------- | ----------------------------------------------------------------------------------- |
-| 0–1.1 s   | Complete cube, still                                                                |
-| 1.1–2.5 s | One top tile sinks 0.2 units, then holds                                            |
-| 2.5–3.6 s | Tile returns; slices separate vertically and one slides sideways with a slight turn |
-| 3.6–4.4 s | Expanded pose holds                                                                 |
-| 4.4–5.9 s | Layers return to their exact original transforms                                    |
-| 5.9–8 s   | Complete cube rests before repeating                                                |
+Context loss or renderer failure displays static SVG white cubes with curved
+trails. Authentication never depends on rendering. Cleanup releases geometry,
+materials, renderer, observers, listeners and the animation frame.
 
-Two soft analytic contact shadows sit beneath the object. Their offset, size and
-opacity follow the moving layer, establishing its height without an opaque floor
-or background rectangle. The orthographic camera remains stationary.
+## Files and verification
 
-Three local surface accents accompany the structural cycle, one cell at a time:
-0.9–2.3 s morphs the recessed top diamond into a circle with a quarter-turn;
-2.5–4 s turns a side stripe motif in the opposite direction and sweeps its
-black/white polarity across the cell; 4.2–5.75 s morphs a nested square into
-stripes with a half-turn and another polarity sweep. Each accent eases back to
-the original design before the rest phase. Shape boundaries interpolate as
-distance fields; color inversion sweeps spatially instead of flashing an entire
-face. The recessed tile shares the top-face effect, preserving alignment.
-
-Focusing any control inside the form interrupts the loop: the current pose
-smoothly returns to the assembled state and original surface motifs in 600 ms
-and then stops rendering.
-Moving between form controls keeps it quiet. Leaving the form restarts at the
-beginning after completing any return already in progress.
-
-Pause freezes the current state; focusing the form still returns it to rest.
-Reduced motion immediately assembles and renders a still cube, and the
-loop stops when the tab or stage is hidden. On screens up to 800 px the existing
-layout hides the stage and the WebGL scene is not created. Returning to desktop
-recreates it. Context loss or renderer failure displays a static SVG patterned
-cube; authentication never depends on the renderer. Cleanup disposes geometry,
-materials, renderer, observers, listeners, and the animation frame.
-
-## Files
-
-- `apps/web/src/components/sign-in-pattern.tsx`: lazy-loaded scene, SVG fallback, pause toggle.
-- `apps/web/src/components/sign-in-pattern.css`: stage size and pause control.
-- `apps/web/src/components/sign-in-cube-model.ts`: slice geometry, pocket, face shaders, shadows, timeline and focus-return state.
-- `apps/web/src/components/sign-in-cube-scene.ts`: orthographic camera, 30 fps scheduling, lifecycle.
-- `apps/web/src/app/sign-in/page.tsx`: server page and authentication form.
-
-Implementation uses the installed Three.js 0.183.2 APIs; references:
-[ShaderMaterial](https://threejs.org/docs/pages/ShaderMaterial.html) and
-[WebGLRenderer](https://threejs.org/docs/pages/WebGLRenderer.html).
-
-## Verification
-
-`tests/unit/sign-in-cube.test.ts` checks the eight-second timeline, exact reassembly,
-UV continuity, recess depth, shadow motion, interrupted focus return and GPU-limited
-resolution. `tests/e2e/sign-in-pet.spec.ts` checks live
-rendering, pause/resume, reduced motion, responsive teardown/recreation, WebGL
-failure, context loss, the full cycle and quiet form interaction without submitting
-authentication.
-
-A local Chromium D3D11 measurement on an NVIDIA RTX 5070 Ti rendered the
-3840×3840 layered stage at approximately 30 fps over eight seconds. This is a local
-observation, not a guarantee across devices; the implementation does not silently reduce
-resolution to reach the frame-rate target.
+- `apps/web/src/components/sign-in-pattern.tsx`: lazy scene, static fallback and pause toggle.
+- `apps/web/src/components/sign-in-cube-model.ts`: cubes, curved traces, randomized recycling and motion state.
+- `apps/web/src/components/sign-in-cube-scene.ts`: camera, scheduling and lifecycle.
+- `apps/web/src/components/sign-in-pattern.css` and `apps/web/src/app/pages.css`: stage and entry layout.
+- `tests/unit/sign-in-cube.test.ts`: direction, focus freeze/resume, staggered cubes, trail fading, recycling and buffer limits.
+- `tests/e2e/sign-in-pet.spec.ts`: live rendering, pause, reduced motion, responsive lifecycle, fallbacks and form interaction without submitting authentication.
