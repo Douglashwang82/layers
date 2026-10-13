@@ -67,13 +67,13 @@ fills lose contrast, so dark mode inverts the construction:
 
 | Kind      | Light     | Dark      | Dot vs land | Glyph vs dot |
 | --------- | --------- | --------- | ----------- | ------------ |
-| food      | `#A66B4F` | `#D9937A` | 6.8:1       | 7.2:1        |
-| retail    | `#5C7893` | `#8FB0CC` | 7.5:1       | 8.0:1        |
-| park      | `#617D59` | `#8FB487` | 7.4:1       | 7.8:1        |
-| culture   | `#867098` | `#B7A0CC` | 7.2:1       | 7.7:1        |
-| community | `#4F837D` | `#84BDB5` | 8.1:1       | 8.6:1        |
-| event     | `#B15F73` | `#DE90A3` | 7.0:1       | 7.4:1        |
-| info      | `#81796E` | `#B3AB9F` | 7.5:1       | 8.0:1        |
+| food      | `#A66B4F` | `#FF8A4C` | 6.8:1       | 7.2:1        |
+| retail    | `#5C7893` | `#4CC9FF` | 7.5:1       | 8.0:1        |
+| park      | `#617D59` | `#7CFF6B` | 7.4:1       | 7.8:1        |
+| culture   | `#867098` | `#C77DFF` | 7.2:1       | 7.7:1        |
+| community | `#4F837D` | `#2DFFD0` | 8.1:1       | 8.6:1        |
+| event     | `#B15F73` | `#FF5C9E` | 7.0:1       | 7.4:1        |
+| info      | `#81796E` | `#FFE94D` | 7.5:1       | 8.0:1        |
 
 All pass the 3:1 non-text threshold with room to spare. Ratios are computed
 against the dark land color. Implement as `markerColors.light/dark` and make
