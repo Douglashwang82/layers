@@ -1,6 +1,7 @@
 # Jade Atlas dark mode (map view)
 
-Status: design proposal. Nothing here is implemented. It extends
+Status: implemented in the working tree (theme rebuild on change, `atlasPalettes`,
+`markerPalettes`, `useMapTheme`). Places UI Kit stays a light card in dark mode. It extends
 [jade-atlas-map.md](jade-atlas-map.md) and keeps its structure: a flat, quiet,
 neutral basemap, with app markers, text and controls carrying the stronger values.
 
