@@ -6,7 +6,12 @@ import {
 } from "../../packages/database/src";
 import { addDays, localDate } from "../../packages/shared/src";
 import { pickDateLabel } from "../../apps/web/src/lib/daily-pick";
-import { createTestAccount, deleteTestAccount, signIn } from "./fixtures";
+import {
+  createTestAccount,
+  deleteTestAccount,
+  openMapList,
+  signIn,
+} from "./fixtures";
 /*
  * A throwaway city with non-demo places (the seeded Houston catalog is all
  * demo, which can never be a Daily Pick). Removed again after the run.
@@ -104,6 +109,7 @@ test("daily pick: card, map selection, filtered state and history", async ({
   const errors = collectPageErrors(page);
   await blockMapProvider(page);
   await page.goto(`/?city=${city.slug}&layers=${layer}`);
+  await openMapList(page);
   const card = page.getByRole("region", { name: "Daily Pick" });
   await expect(card.getByText(pickDateLabel(today, "en"))).toBeVisible();
   await expect(card).toBeVisible();
@@ -188,6 +194,7 @@ test("daily pick: saving from the card and the detail stay in agreement", async 
   await blockMapProvider(page);
   await signIn(page, memberEmail);
   await page.goto(`/?city=${city.slug}&layers=${layer}`);
+  await openMapList(page);
   const card = page.getByRole("region", { name: "Daily Pick" });
   await card.getByRole("button", { name: "Show on map" }).click();
   const detail = page.locator(".item-preview");

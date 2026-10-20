@@ -10,13 +10,17 @@ This is a proposed migration, based on the current repository's source. It does 
 
 ## Implemented map navigation (October 2026)
 
-The map home header contains the app mark and name, map search, city selector,
-and an icon-only profile disclosure with profile and language actions. Search
-scope, date, and category controls remain below the header. On desktop, the
-left sidebar provides Map, Layers, and Saved navigation and collapses to an icon
-rail. Its browser-local preference survives reloads; collapsing preserves map
-filters and panel contents. List fallback remains available, and mobile retains
-the bottom sheet and bottom navigation with search on a second header row.
+The map home now fills the viewport behind floating search, city, layer and menu
+controls. Its warm, low-saturation basemap uses dots and a selected ring/label.
+A fresh map session starts with results collapsed; the floating list opens on
+request or search. Results, layers and details share one panel, with a bottom
+sheet on phones. Existing desktop collapse preferences are retained. Missing
+tokens and provider failures force a usable list; explicit list view remains
+available. Map, Layers, Saved, Profile and language actions remain in the menu.
+
+The [minimalist floating-map plan](../plans/minimalist-floating-map-plan.md)
+supersedes this guide's older fixed header/sidebar and bright map composition
+below. Those sections remain historical design context, not current layout rules.
 
 ## 1. Scope and relationship to the style guide
 

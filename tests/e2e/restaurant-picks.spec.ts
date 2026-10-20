@@ -9,7 +9,12 @@ import {
   type RestaurantArea,
 } from "../../packages/database/src";
 import { localDate } from "../../packages/shared/src";
-import { createTestAccount, deleteTestAccount, signIn } from "./fixtures";
+import {
+  createTestAccount,
+  deleteTestAccount,
+  openMapList,
+  signIn,
+} from "./fixtures";
 
 const suffix = crypto.randomUUID().slice(0, 8);
 const city = {
@@ -153,10 +158,12 @@ test("review, queue, publish, discover, save, withdraw, and translate a restaura
   await expect(page.getByRole("status")).toContainText("Saved");
   expect((await workRestaurantJob(area, adapters))?.status).toBe("created");
   await page.goto(`/?city=${city.slug}&layers=discover-${city.slug}`);
+  await openMapList(page);
   await expect(
     page.getByRole("region", { name: "External businesses" }),
   ).toBeVisible();
   await page.goto(`/?city=${city.slug}&layers=daily-pick-${city.slug}`);
+  await openMapList(page);
   const card = page.getByRole("region", { name: "Daily Pick", exact: true });
   await expect(card).toContainText(/wood-fired pizza oven/i);
   await card.getByRole("button", { name: "Save", exact: true }).click();

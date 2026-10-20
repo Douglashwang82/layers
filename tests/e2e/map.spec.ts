@@ -1,5 +1,5 @@
 import { test, expect, type Page } from "@playwright/test";
-import { createTestAccount, submitSignIn } from "./fixtures";
+import { createTestAccount, openMapList, submitSignIn } from "./fixtures";
 const noodleHouse = "Little Taipei Noodle House";
 /** Deterministic provider failure, whether or not a Mapbox token is configured. */
 async function blockMapProvider(page: Page) {
@@ -9,6 +9,8 @@ test("map home: default layer, selection with Back, filters and layer toggles", 
   page,
 }) => {
   await page.goto("/");
+  // A fresh session starts with the list collapsed; opening it keeps everything else.
+  await openMapList(page);
   await expect(page.getByRole("tab", { name: /Results/ })).toHaveAttribute(
     "aria-selected",
     "true",
@@ -67,8 +69,12 @@ test("map home: default layer, selection with Back, filters and layer toggles", 
   await page.getByRole("tab", { name: /Results/ }).click();
   await expect(page.locator(".result-row").first()).toBeVisible();
   // Date preset and list view are URL state too.
+  await page.getByRole("button", { name: /^Filters/ }).click();
   await page.getByRole("button", { name: "Today", exact: true }).click();
   await expect(page).toHaveURL(/date=today/);
+  // Applied filters stay visible with a way to clear them.
+  await page.getByRole("button", { name: "Clear Today" }).click();
+  await expect(page).not.toHaveURL(/date=/);
   await page.getByRole("button", { name: "List view" }).first().click();
   await expect(page).toHaveURL(/view=list/);
   await page.getByRole("button", { name: "Map view" }).click();
@@ -82,6 +88,7 @@ test("library Apply adds to the current set; duplicates render once with members
   await page.waitForFunction(() =>
     sessionStorage.getItem("taiwanhub:map")?.includes("discover-houston"),
   );
+  await page.locator(".map-profile-menu summary").click();
   await page.getByRole("link", { name: "Layers", exact: true }).first().click();
   await expect(page).toHaveURL(/\/layers/);
   const food = page.locator(".layer-card", {
@@ -90,6 +97,7 @@ test("library Apply adds to the current set; duplicates render once with members
   await food.getByRole("button", { name: "Apply to map" }).click();
   await expect(page).toHaveURL(/layers=discover-houston(,|%2C)food-houston/);
   await expect(page).toHaveURL(/types=place/);
+  await openMapList(page);
   await page.getByRole("tab", { name: /Layers/ }).click();
   await expect(
     page.getByRole("checkbox", { name: /Local food favorites/ }),
@@ -127,6 +135,7 @@ test("sign-in return keeps the selected item; personal layer creation, add, appl
   page,
 }) => {
   await page.goto("/?types=place");
+  await openMapList(page);
   await page
     .getByRole("link", { name: noodleHouse, exact: false })
     .first()
@@ -149,6 +158,7 @@ test("sign-in return keeps the selected item; personal layer creation, add, appl
   await page.goto("/saved");
   await page.getByRole("link", { name: "Show on map" }).click();
   await expect(page).toHaveURL(/layers=my-saves/);
+  await openMapList(page);
   await expect(
     page.locator(".result-row", { hasText: noodleHouse }),
   ).toHaveCount(1);
@@ -213,6 +223,7 @@ test("sign-in return keeps the selected item; personal layer creation, add, appl
   const layerUrl = page.url();
   await page.getByRole("button", { name: "Apply to map" }).first().click();
   await expect(page).toHaveURL(/layers=.*weekend-plan/);
+  await openMapList(page);
   await page.getByRole("tab", { name: /Layers/ }).click();
   await expect(
     page.getByRole("checkbox", { name: new RegExp(title) }),
@@ -243,6 +254,7 @@ test("sign-in return keeps the selected item; personal layer creation, add, appl
   ).toHaveCount(0);
   // Returning users get their layers restored without explicit URL state.
   await page.goto("/");
+  await openMapList(page);
   await page.getByRole("tab", { name: /Layers/ }).click();
   await expect(
     page.getByRole("checkbox", { name: new RegExp(title) }),
@@ -261,6 +273,9 @@ test("a failed map provider keeps results, selection and directions usable", asy
   await expect(loadFailed.or(needsToken)).toBeVisible();
   if (await loadFailed.isVisible())
     await expect(page.getByRole("button", { name: "Try again" })).toBeVisible();
+  // The list opens by itself and cannot be hidden: no empty map with a hidden list.
+  await expect(page.locator("#map-panel")).toBeVisible();
+  await expect(page.getByRole("button", { name: /^Show list/ })).toHaveCount(0);
   // Every discovery and action flow still works from the semantic list.
   const row = page.locator(".result-row", { hasText: noodleHouse });
   await expect(row).toHaveCount(1);
@@ -276,41 +291,54 @@ test("a failed map provider keeps results, selection and directions usable", asy
   await expect(page.locator(".result-row").first()).toBeVisible();
 });
 
-test("map header and sidebar preserve search across collapse and mobile", async ({
+test("floating shell: full-viewport map, one search, labeled menu and no page scroll", async ({
   page,
 }) => {
   await blockMapProvider(page);
   await page.goto("/");
   const header = page.locator(".map-header");
   await expect(header.getByRole("searchbox")).toBeVisible();
+  await expect(page.getByRole("searchbox")).toHaveCount(1);
   await expect(header.locator(".desktop-nav")).toHaveCount(0);
-  const sidebar = page.locator(".map-sidebar-nav");
-  const stage = page.locator(".map-stage");
-  const before = await stage.boundingBox();
-  await sidebar.getByRole("button", { name: "Collapse", exact: true }).click();
-  await expect(page.locator("#map-sidebar-content")).toBeHidden();
-  await expect(
-    sidebar.getByRole("link", { name: "Saved", exact: true }),
-  ).toBeVisible();
-  expect((await stage.boundingBox())!.width).toBeGreaterThan(before!.width);
+  const viewport = page.viewportSize()!;
+  expect(await page.locator(".map-workspace").boundingBox()).toMatchObject({
+    x: 0,
+    y: 0,
+    width: viewport.width,
+    height: viewport.height,
+  });
+  expect(
+    await page.evaluate(() => document.documentElement.scrollHeight),
+  ).toBeLessThanOrEqual(viewport.height);
+  // Search commits to the URL and results appear in the same floating panel.
   await header.getByRole("searchbox").fill("noodle");
   await header.getByRole("searchbox").press("Enter");
   await expect(page).toHaveURL(/q=noodle/);
   await page.reload();
-  await expect(page.locator("#map-sidebar-content")).toBeHidden();
-  await sidebar.getByRole("button", { name: "Expand", exact: true }).click();
-  await expect(page.getByRole("tab", { name: /Results/ })).toBeVisible();
   await expect(header.getByRole("searchbox")).toHaveValue("noodle");
-  await page.locator(".map-profile-menu summary").click();
-  await expect(page.locator(".map-profile-options")).toBeVisible();
-  await page.locator(".map-profile-menu summary").press("Escape");
+  await expect(page.getByRole("tab", { name: /Results/ })).toBeVisible();
+  // The labeled menu reaches every destination and Escape returns focus.
+  const summary = page.locator(".map-profile-menu summary");
+  await expect(summary).toContainText("Menu");
+  await summary.click();
+  for (const name of ["Map", "Layers", "Saved", "Profile"])
+    await expect(
+      page.locator(".map-profile-options").getByRole("link", { name }),
+    ).toBeVisible();
+  await summary.press("Escape");
   await expect(page.locator(".map-profile-options")).toBeHidden();
-  await sidebar.getByRole("button", { name: "Collapse", exact: true }).click();
+  await expect(summary).toBeFocused();
+  // Phones: same full-bleed map, wrapped search and a floating bottom navigation.
   await page.setViewportSize({ width: 390, height: 844 });
   await expect(header.getByRole("searchbox")).toBeVisible();
   await expect(page.getByRole("tab", { name: /Results/ })).toBeVisible();
-  await expect(sidebar).toBeHidden();
+  const nav = await page.locator(".bottom-nav").boundingBox();
+  expect(nav!.x).toBeGreaterThan(0);
+  expect(nav!.y + nav!.height).toBeLessThan(844);
   expect(
     await page.evaluate(() => document.documentElement.scrollWidth),
   ).toBeLessThanOrEqual(390);
+  expect(
+    await page.evaluate(() => document.documentElement.scrollHeight),
+  ).toBeLessThanOrEqual(844);
 });

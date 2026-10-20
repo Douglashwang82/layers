@@ -2,7 +2,7 @@
 import { brand } from "@taiwanhub/shared";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import {
   Map as MapIcon,
   Layers,
@@ -10,9 +10,11 @@ import {
   UserRound,
   MapPin,
   Globe,
+  Menu,
 } from "lucide-react";
 import type { Copy, Locale } from "@/lib/i18n";
 import { format } from "@/lib/dictionary";
+import { useMapTheme, type MapThemePreference } from "@/lib/map-theme";
 /**
  * Route families owned by each destination. Whole path segments only.
  * Standalone catalog/detail pages (/places, /events, /explore, /products,
@@ -49,6 +51,18 @@ export function Navigation({
   const router = useRouter();
   const mapPage = mapHome && pathname === "/";
   const [switching, setSwitching] = useState(false);
+  const menu = useRef<HTMLDetailsElement>(null);
+  const mapTheme = useMapTheme();
+  // The floating menu is non-modal: an outside press dismisses it.
+  useEffect(() => {
+    if (!mapPage) return;
+    const close = (event: PointerEvent) => {
+      const node = menu.current;
+      if (node?.open && !node.contains(event.target as Node)) node.open = false;
+    };
+    document.addEventListener("pointerdown", close);
+    return () => document.removeEventListener("pointerdown", close);
+  }, [mapPage]);
   const nav = [
     ["/", t.mapNav, MapIcon],
     ["/layers", t.layers, Layers],
@@ -98,88 +112,127 @@ export function Navigation({
       </header>
     );
   }
+  const citySelect = (
+    <label className="city-select">
+      <MapPin size={16} aria-hidden="true" />
+      <span className="sr-only">{t.city}</span>
+      <select
+        value={city}
+        disabled={switching}
+        aria-busy={switching || undefined}
+        onChange={async (e) => {
+          const slug = e.target.value;
+          setSwitching(true);
+          try {
+            await fetch("/api/v1/preferences", {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ city: slug }),
+            });
+            // The map replaces city-specific defaults and clears incompatible state.
+            if (pathname === "/") router.push(`/?city=${slug}`);
+            else router.refresh();
+          } finally {
+            setSwitching(false);
+          }
+        }}
+      >
+        {cities.map((c) => (
+          <option key={c.id} value={c.slug}>
+            {c.name}
+          </option>
+        ))}
+      </select>
+    </label>
+  );
   return (
     <>
       <header className={`header ${mapPage ? "map-header" : ""}`}>
-        <Link href="/" className="brand" aria-label={t.brandHome}>
-          <span className="brand-mark" aria-hidden="true">
-            L
-          </span>
-          {mapPage ? (
-            brand.name
-          ) : (
-            <>
-              Local<span>Link</span>
-            </>
-          )}
-        </Link>
         {mapPage ? (
-          <div id="map-header-search" />
-        ) : (
-          <nav className="desktop-nav" aria-label={t.mainNav}>
-            {nav.slice(0, 3).map(([href, label]) => (
-              <Link key={href} href={href} aria-current={current(href)}>
-                {label}
+          <div className="map-top-left">
+            <div className="map-identity">
+              <Link href="/" className="brand" aria-label={t.brandHome}>
+                <span className="brand-mark" aria-hidden="true">
+                  L
+                </span>
+                <span className="brand-name">{brand.name}</span>
               </Link>
-            ))}
-          </nav>
+              {citySelect}
+            </div>
+            <div id="map-header-search" />
+          </div>
+        ) : (
+          <>
+            <Link href="/" className="brand" aria-label={t.brandHome}>
+              <span className="brand-mark" aria-hidden="true">
+                L
+              </span>
+              Local<span>Link</span>
+            </Link>
+            <nav className="desktop-nav" aria-label={t.mainNav}>
+              {nav.slice(0, 3).map(([href, label]) => (
+                <Link key={href} href={href} aria-current={current(href)}>
+                  {label}
+                </Link>
+              ))}
+            </nav>
+          </>
         )}
         <div className="header-tools">
-          <label className="city-select">
-            <MapPin size={16} aria-hidden="true" />
-            <span className="sr-only">{t.city}</span>
-            <select
-              value={city}
-              disabled={switching}
-              aria-busy={switching || undefined}
-              onChange={async (e) => {
-                const slug = e.target.value;
-                setSwitching(true);
-                try {
-                  await fetch("/api/v1/preferences", {
-                    method: "POST",
-                    headers: { "Content-Type": "application/json" },
-                    body: JSON.stringify({ city: slug }),
-                  });
-                  // The map replaces city-specific defaults and clears incompatible state.
-                  if (pathname === "/") router.push(`/?city=${slug}`);
-                  else router.refresh();
-                } finally {
-                  setSwitching(false);
-                }
-              }}
-            >
-              {cities.map((c) => (
-                <option key={c.id} value={c.slug}>
-                  {c.name}
-                </option>
-              ))}
-            </select>
-          </label>
           {mapPage ? (
-            <details
-              className="map-profile-menu"
-              onKeyDown={(event) => {
-                if (event.key === "Escape") {
-                  event.currentTarget.open = false;
-                  event.currentTarget.querySelector("summary")?.focus();
-                }
-              }}
-            >
-              <summary
-                className="icon-button"
-                aria-label={t.profile}
-                title={t.profile}
+            <>
+              <div id="map-header-actions" />
+              <details
+                ref={menu}
+                className="map-profile-menu"
+                onKeyDown={(event) => {
+                  if (event.key === "Escape") {
+                    event.currentTarget.open = false;
+                    event.currentTarget.querySelector("summary")?.focus();
+                  }
+                }}
               >
-                <UserRound size={22} aria-hidden="true" />
-              </summary>
-              <div className="map-profile-options">
-                <Link href="/profile">{t.profile}</Link>
-                {languageButton}
-              </div>
-            </details>
+                <summary className="map-float-button" title={t.menu}>
+                  <Menu size={20} aria-hidden="true" />
+                  <span>{t.menu}</span>
+                </summary>
+                <div className="map-profile-options">
+                  {nav.map(([href, label, Icon]) => (
+                    <Link key={href} href={href} aria-current={current(href)}>
+                      <Icon size={18} aria-hidden="true" />
+                      {label}
+                    </Link>
+                  ))}
+                  {languageButton}
+                  <div
+                    className="map-theme-control"
+                    role="radiogroup"
+                    aria-label={t.mapTheme}
+                  >
+                    {(
+                      [
+                        ["system", t.mapThemeSystem],
+                        ["light", t.mapThemeLight],
+                        ["dark", t.mapThemeDark],
+                      ] as [MapThemePreference, string][]
+                    ).map(([value, label]) => (
+                      <button
+                        key={value}
+                        type="button"
+                        role="radio"
+                        aria-checked={mapTheme.preference === value}
+                        onClick={() => mapTheme.setPreference(value)}
+                      >
+                        {label}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              </details>
+            </>
           ) : (
             <>
+              {citySelect}
               {languageButton}
               <Link
                 href="/profile"

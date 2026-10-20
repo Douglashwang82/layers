@@ -17,6 +17,7 @@ export * from "./time";
 export * from "./daily-pick-restaurant";
 export * from "./brand";
 export * from "./categories";
+export * from "./marker-kind";
 import { placeCategories } from "./categories";
 export const eventCategories = [
   "Food",

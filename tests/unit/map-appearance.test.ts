@@ -11,6 +11,7 @@ function fixture(layers: LayerSpecification[]) {
     getStyle: () => ({ layers }),
     setPaintProperty: vi.fn(),
     setLayoutProperty: vi.fn(),
+    setLayerZoomRange: vi.fn(),
   };
   return {
     map,
@@ -75,6 +76,39 @@ describe("Jade Atlas basemap", () => {
       "none",
     );
     expect(layers).toEqual(before);
+  });
+
+  it("uses the warm low-saturation palette", () => {
+    expect(jadePalette).toMatchObject({
+      land: "#f3f3f3",
+      road: "#ffffff",
+      roadEdge: "#d9d9d9",
+      park: "#e6e6e6",
+      water: "#d4d4d4",
+      primary: "#111111",
+    });
+  });
+
+  it("reduces detail when zoomed out without lowering a stricter provider minimum", () => {
+    const { map, apply } = fixture([
+      { id: "road-street", type: "line", source: "base", minzoom: 12 },
+      { id: "road-service", type: "line", source: "base", minzoom: 16 },
+      { id: "road-primary", type: "line", source: "base" },
+      { id: "road-label", type: "symbol", source: "base" },
+      { id: "admin-1-boundary", type: "line", source: "base" },
+    ]);
+    apply("en");
+    expect(map.setLayerZoomRange).toHaveBeenCalledWith("road-street", 14, 24);
+    expect(map.setLayerZoomRange).toHaveBeenCalledWith("road-service", 16, 24);
+    expect(map.setLayerZoomRange).toHaveBeenCalledWith("road-label", 14, 24);
+    expect(
+      map.setLayerZoomRange.mock.calls.some(([id]) => id === "road-primary"),
+    ).toBe(false);
+    expect(map.setPaintProperty).toHaveBeenCalledWith(
+      "admin-1-boundary",
+      "line-color",
+      jadePalette.boundary,
+    );
   });
 
   it("localizes after load and on language changes without replacing route numbers or app labels", () => {

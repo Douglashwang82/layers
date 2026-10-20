@@ -63,6 +63,18 @@ export async function signIn(page: Page, email: string) {
   await submitSignIn(page, email);
   await expect(page).toHaveURL("/");
 }
+/**
+ * The map home starts with the list collapsed. Opens it (retrying until the page
+ * has hydrated); it is already open for fallback, list view and shared items.
+ */
+export async function openMapList(page: Page) {
+  const panel = page.locator("#map-panel");
+  await expect(async () => {
+    if (!(await panel.isVisible()))
+      await page.locator(".map-list-toggle").click();
+    await expect(panel).toBeVisible({ timeout: 1000 });
+  }).toPass();
+}
 /** Creates the account and signs the page in, replacing the old public-signup flow in one call. */
 export async function createAndSignIn(
   page: Page,

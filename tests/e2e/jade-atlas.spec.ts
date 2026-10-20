@@ -1,4 +1,5 @@
-import { expect, test } from "@playwright/test";
+import { expect, test, type Page } from "@playwright/test";
+import { openMapList } from "./fixtures";
 
 // Exercise the actual Mapbox renderer without live tiles, geocoding or glyph fees.
 // Deliberately request tilt in the provider style: application camera constraints win.
@@ -17,12 +18,7 @@ const providerStyle = {
   ],
 };
 
-test("flat map loads with atlas artwork, selection companion and a usable mobile list", async ({
-  page,
-  context,
-}) => {
-  const errors: string[] = [];
-  page.on("pageerror", (error) => errors.push(error.message));
+async function mockProvider(page: Page) {
   await page.route(/(\/\/|\.)mapbox\.com\//, async (route) => {
     const url = route.request().url();
     if (url.includes("/styles/")) await route.fulfill({ json: providerStyle });
@@ -33,6 +29,62 @@ test("flat map loads with atlas artwork, selection companion and a usable mobile
       });
     else await route.fulfill({ status: 200, body: "{}" });
   });
+}
+
+test("the floating list remembers its preference, closes with Escape and yields to shared links", async ({
+  page,
+}) => {
+  await mockProvider(page);
+  await page.goto("/?types=place");
+  test.skip(
+    await page.getByText("Map preview needs a Mapbox token.").isVisible(),
+    "Requires NEXT_PUBLIC_MAPBOX_TOKEN (a fake test token is sufficient).",
+  );
+  const panel = page.locator("#map-panel");
+  await expect(panel).toBeHidden();
+  await expect(page.locator(".mapboxgl-canvas")).toBeVisible();
+  // Hidden content is out of the tab order; opening is an explicit, remembered choice.
+  await openMapList(page);
+  await page.reload();
+  await expect(panel).toBeVisible();
+  // Escape closes the panel and returns focus to the entry button.
+  await panel.focus();
+  await page.keyboard.press("Escape");
+  await expect(panel).toBeHidden();
+  await expect(page.getByRole("button", { name: /^Show list/ })).toBeFocused();
+  await page.reload();
+  await expect(panel).toBeHidden();
+  // A shared item link opens the panel with details whatever the stored preference is.
+  await openMapList(page);
+  await page.locator(".result-row a").first().click();
+  const shared = page.url();
+  expect(shared).toMatch(/item=/);
+  await page.locator(".map-list-toggle").click();
+  await expect(panel).toBeHidden();
+  await expect(page).toHaveURL(shared);
+  await page.goto(shared);
+  await expect(panel).toBeVisible();
+  await expect(page.locator(".item-preview")).toBeVisible();
+  await page
+    .getByRole("button", { name: "Back to results", exact: true })
+    .click();
+  await expect(page).not.toHaveURL(/item=/);
+  await page.locator(".result-row a").first().click();
+  await page.goBack();
+  await page.locator(".map-list-toggle").click();
+  await expect(panel).toBeHidden();
+  await page.goForward();
+  await expect(panel).toBeVisible();
+  await expect(page.locator(".item-preview")).toBeVisible();
+});
+
+test("flat map fills the viewport with a quiet atlas, a collapsed list and a usable mobile list", async ({
+  page,
+  context,
+}) => {
+  const errors: string[] = [];
+  page.on("pageerror", (error) => errors.push(error.message));
+  await mockProvider(page);
   await page.goto("/?types=place");
   // CI normally has no token; run this provider-fixture test with an explicit fake token.
   test.skip(
@@ -42,14 +94,24 @@ test("flat map loads with atlas artwork, selection companion and a usable mobile
   await expect(page.locator(".map-skeleton")).toHaveCount(0);
   await expect(page.locator(".map-unavailable")).toHaveCount(0);
   await expect(page.locator(".mapboxgl-canvas")).toBeVisible();
+  // A fresh session starts with the list collapsed over a full-viewport canvas.
+  await expect(page.locator("#map-panel")).toBeHidden();
+  const viewport = page.viewportSize()!;
+  const canvasBox = await page.locator(".mapboxgl-canvas").boundingBox();
+  expect(canvasBox).toMatchObject({
+    width: viewport.width,
+    height: viewport.height,
+  });
+  await openMapList(page);
+  expect(await page.locator(".mapboxgl-canvas").boundingBox()).toEqual(
+    canvasBox,
+  );
   const first = page.locator(".result-row a").first();
   await expect(first).toBeVisible();
   await first.click();
   await expect(page).toHaveURL(/item=/);
-  await expect(page.locator(".map-pet-host .marker-pet")).toBeVisible();
-  await expect(
-    page.locator(".map-pet-host [data-renderer='three'] canvas"),
-  ).toBeVisible();
+  // Selection is a quiet ring and label; the companion is not mounted on the map home.
+  await expect(page.locator(".map-pet-host")).toHaveCount(0);
   await page
     .getByRole("button", { name: "Back to results", exact: true })
     .click();
@@ -61,6 +123,7 @@ test("flat map loads with atlas artwork, selection companion and a usable mobile
   await page.reload();
   await expect(page.locator(".map-skeleton")).toHaveCount(0);
   await expect(page.locator(".map-unavailable")).toHaveCount(0);
+  await openMapList(page);
   await expect(page.locator(".result-row").first()).toBeVisible();
   expect(
     await page.evaluate(
@@ -68,4 +131,36 @@ test("flat map loads with atlas artwork, selection companion and a usable mobile
     ),
   ).toBe(true);
   expect(errors).toEqual([]);
+});
+
+test("dark map follows the OS, honours a stored override and keeps the map usable", async ({
+  page,
+}) => {
+  await page.emulateMedia({ colorScheme: "dark" });
+  await mockProvider(page);
+  await page.goto("/?types=place");
+  test.skip(
+    await page.getByText("Map preview needs a Mapbox token.").isVisible(),
+    "Requires NEXT_PUBLIC_MAPBOX_TOKEN (a fake test token is sufficient).",
+  );
+  await expect(page.locator(".map-skeleton")).toHaveCount(0);
+  await expect(page.locator(".map-workspace")).toHaveAttribute(
+    "data-map-theme",
+    "dark",
+  );
+  await expect(page.locator("body")).toHaveAttribute("data-map-theme", "dark");
+  await expect(page.locator(".mapboxgl-canvas")).toBeVisible();
+  // Choosing Light in the menu wins over the OS and survives a reload.
+  await page.locator(".map-profile-menu summary").click();
+  await page.getByRole("radio", { name: "Light", exact: true }).click();
+  await expect(page.locator(".map-workspace")).toHaveAttribute(
+    "data-map-theme",
+    "light",
+  );
+  await page.reload();
+  await expect(page.locator(".map-workspace")).toHaveAttribute(
+    "data-map-theme",
+    "light",
+  );
+  await expect(page.locator(".mapboxgl-canvas")).toBeVisible();
 });

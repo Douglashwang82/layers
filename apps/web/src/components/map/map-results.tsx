@@ -17,6 +17,7 @@ import {
   format,
 } from "@/lib/dictionary";
 import { Photo as Image } from "@/components/photo";
+import { markerKind, markerLabel } from "@/lib/marker-presentation";
 const icons = {
   place: Utensils,
   event: CalendarDays,
@@ -104,14 +105,18 @@ export function ResultRow({
   locale,
   selected,
   onSelect,
+  onHover,
 }: {
   item: MapItem;
   t: Copy;
   locale: Locale;
   selected: boolean;
   onSelect: (key: string) => void;
+  /** Row hover/focus highlights its pin; it never changes the URL or camera. */
+  onHover?: (key: string | null) => void;
 }) {
   const Icon = icons[item.type];
+  const kind = markerKind(item);
   const name = itemTitle(item, locale);
   const handle = (e: MouseEvent<HTMLAnchorElement>) => {
     if (e.metaKey || e.ctrlKey || e.shiftKey || e.altKey || e.button !== 0)
@@ -123,6 +128,11 @@ export function ResultRow({
     <li
       className={`result-row ${selected ? "selected" : ""}`}
       data-type={item.type}
+      data-kind={kind}
+      onMouseEnter={() => onHover?.(item.key)}
+      onMouseLeave={() => onHover?.(null)}
+      onFocus={() => onHover?.(item.key)}
+      onBlur={() => onHover?.(null)}
     >
       <a
         href={item.href}
@@ -138,6 +148,12 @@ export function ResultRow({
         </span>
         <span className="row-body">
           <span className="row-kicker">
+            <span
+              className="kind-dot"
+              style={{ background: `var(--marker-${kind})` }}
+              title={markerLabel(kind, t)}
+              aria-hidden="true"
+            />
             <Icon size={13} aria-hidden="true" />
             <span>{item.category}</span>
             {item.isDemo && <span className="demo-pill">{t.demoShort}</span>}
@@ -167,6 +183,7 @@ export function MapResults({
   onSelect,
   limit,
   onMore,
+  onHover,
 }: {
   items: MapItem[];
   unmapped: MapItem[];
@@ -176,6 +193,7 @@ export function MapResults({
   onSelect: (key: string) => void;
   limit: number;
   onMore: () => void;
+  onHover?: (key: string | null) => void;
 }) {
   const visible = items.slice(0, limit);
   return (
@@ -184,7 +202,7 @@ export function MapResults({
         {visible.map((item) => (
           <ResultRow
             key={item.key}
-            {...{ item, t, locale, onSelect }}
+            {...{ item, t, locale, onSelect, onHover }}
             selected={item.key === selectedKey}
           />
         ))}

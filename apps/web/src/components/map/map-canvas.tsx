@@ -8,18 +8,29 @@ import {
   type Ref,
 } from "react";
 import type { Map as MapboxMap, GeoJSONSource } from "mapbox-gl";
-import { maxMapPoints, type Bounds, type ItemType } from "@taiwanhub/shared";
+import {
+  markerKinds,
+  maxMapPoints,
+  type Bounds,
+  type ItemType,
+} from "@taiwanhub/shared";
 import type { MapItem } from "@/features/map/query";
 import type { Copy, Locale } from "@/lib/dictionary";
 import "mapbox-gl/dist/mapbox-gl.css";
-import { SelectedPet } from "./selected-pet";
-import { selectedPetTarget } from "@/lib/marker-pet";
 import {
   applyJadeAtlas,
+  atlasPalettes,
+  atlasStyles,
   flatMapOptions,
-  jadePalette,
+  type AtlasTheme,
 } from "@/lib/map-appearance";
-import { loadMarkerArtwork } from "@/lib/map-marker-art";
+import {
+  markerChrome,
+  markerColorExpressionFor,
+  markerGlyphImage,
+  markerImageId,
+  markerKind,
+} from "@/lib/marker-presentation";
 export type MapCanvasHandle = {
   fitTo: (items: MapItem[]) => void;
   /** Current camera center, used to bias provider search toward what the user sees. */
@@ -29,6 +40,8 @@ export type MapCanvasHandle = {
   /** Center a provider-resolved point, respecting reduced motion and panel padding. */
   focusPoint: (point: { lat: number; lng: number }) => void;
   fitBounds: (bounds: Bounds) => void;
+  /** Pan only when a point sits outside the visible (unpadded) area; never changes zoom. */
+  revealPoint: (point: { lat: number; lng: number }) => void;
   flyTo: (center: [number, number], zoom?: number) => void;
   resize: () => void;
   retry: () => void;
@@ -52,7 +65,10 @@ function extraGeoJSON(points: ExtraPoint[]) {
     type: "FeatureCollection" as const,
     features: points.map((p) => ({
       type: "Feature" as const,
-      properties: { key: p.key, kind: p.kind },
+      properties: {
+        key: p.key,
+        kind: p.kind,
+      },
       geometry: { type: "Point" as const, coordinates: [p.lng, p.lat] },
     })),
   };
@@ -63,21 +79,25 @@ function prefersReducedMotion() {
     window.matchMedia("(prefers-reduced-motion: reduce)").matches
   );
 }
-/** Resolve a theme token at runtime so pins follow the stylesheet, not a literal. */
-function themeColor(name: string, fallback: string) {
-  const value = getComputedStyle(document.documentElement)
-    .getPropertyValue(name)
-    .trim();
-  return value || fallback;
+/** The selected pin's short label, in the interface language. */
+function labelOf(item: MapItem, locale: Locale) {
+  return locale === "zh-TW"
+    ? item.nameChinese || item.name
+    : item.name || item.nameChinese;
 }
-function toGeoJSON(items: MapItem[]) {
+function toGeoJSON(items: MapItem[], locale: Locale) {
   return {
     type: "FeatureCollection" as const,
     features: items
       .filter((i) => i.latitude != null && i.longitude != null)
       .map((i) => ({
         type: "Feature" as const,
-        properties: { key: i.key, type: i.type },
+        properties: {
+          key: i.key,
+          type: i.type,
+          kind: markerKind(i),
+          label: labelOf(i, locale),
+        },
         geometry: {
           type: "Point" as const,
           coordinates: [i.longitude!, i.latitude!],
@@ -97,8 +117,11 @@ export function MapCanvas({
   center,
   zoom,
   locale,
+  theme = "light",
   t,
   padding,
+  highlightKey = null,
+  onItemHover,
   onSelect,
   onSelectExtra,
   onUserMove,
@@ -117,8 +140,14 @@ export function MapCanvas({
   center: [number, number];
   zoom: number;
   locale: Locale;
+  /** A theme change rebuilds the map with the matching provider style. */
+  theme?: AtlasTheme;
   t: Copy;
   padding: { top: number; right: number; bottom: number; left: number };
+  /** A list row under the pointer or focus; highlights its pin without moving the camera. */
+  highlightKey?: string | null;
+  /** Pin hover after a short dwell (null when it ends); positions are container pixels. */
+  onItemHover?: (hover: { key: string; x: number; y: number } | null) => void;
   onSelect: (key: string | null) => void;
   onUserMove: (bounds: Bounds) => void;
   onStatus: (status: CanvasStatus) => void;
@@ -129,12 +158,17 @@ export function MapCanvas({
   const [readyMap, setReadyMap] = useState<MapboxMap | null>(null);
   const loadedRef = useRef(false);
   const userMovedRef = useRef(false);
+  // Survives rebuilds (theme change, retry) so the user keeps their view.
+  const cameraRef = useRef<{ center: [number, number]; zoom: number } | null>(
+    null,
+  );
   // The canvas keeps its point budget: extra points reserve room within it.
   const catalogItems = useMemo(
     () => items.slice(0, Math.max(0, maxMapPoints - extraPoints.length)),
     [items, extraPoints.length],
   );
   const latest = useRef({
+    locale,
     items: catalogItems,
     extraPoints,
     extraSelectedKey,
@@ -146,9 +180,14 @@ export function MapCanvas({
     onStatus,
     onLocationDenied,
     padding,
+    highlightKey,
+    onItemHover,
   });
+  const mapHoverKey = useRef<string | null>(null);
+  const hoverTimer = useRef<number | undefined>(undefined);
   useEffect(() => {
     latest.current = {
+      locale,
       items: catalogItems,
       extraPoints,
       extraSelectedKey,
@@ -160,9 +199,27 @@ export function MapCanvas({
       onStatus,
       onLocationDenied,
       padding,
+      highlightKey,
+      onItemHover,
     };
   });
   const [attempt, setAttempt] = useState(0);
+  /** The enlarged hover pin: list highlight wins over map hover; the selected pin is never doubled. */
+  function syncHover(map: MapboxMap) {
+    const {
+      highlightKey: listKey,
+      items: all,
+      locale: lang,
+      selectedKey: chosen,
+    } = latest.current;
+    const key = listKey ?? mapHoverKey.current;
+    (map.getSource("hover-item") as GeoJSONSource | undefined)?.setData(
+      toGeoJSON(
+        key && key !== chosen ? all.filter((i) => i.key === key) : [],
+        lang,
+      ),
+    );
+  }
   /**
    * With effects on, a selection dims other pins (still legible, never hidden)
    * and changes ease in. Reduced motion keeps the dimming but not the easing.
@@ -171,31 +228,11 @@ export function MapCanvas({
     const { effects: on, selectedKey: a, extraSelectedKey: b } = latest.current;
     const opacity = on && (a || b) ? 0.55 : 1;
     const duration = on && !prefersReducedMotion() ? 200 : 0;
-    for (const layer of ["points", "extra-points"]) {
+    for (const layer of ["points", "extra-points", "point-icons"]) {
       if (!map.getLayer(layer)) continue;
-      map.setPaintProperty(layer, "circle-opacity-transition", {
-        duration,
-        delay: 0,
-      });
-      map.setPaintProperty(layer, "circle-opacity", opacity);
-    }
-    if (map.getLayer("points-icon")) {
-      map.setLayoutProperty("points-icon", "icon-size", [
-        "case",
-        ["==", ["get", "key"], a ?? ""],
-        0.8,
-        0.6,
-      ]);
-      map.setPaintProperty("points-icon", "icon-opacity-transition", {
-        duration,
-        delay: 0,
-      });
-      map.setPaintProperty("points-icon", "icon-opacity", [
-        "case",
-        ["==", ["get", "key"], a ?? ""],
-        1,
-        opacity,
-      ]);
+      const prop = layer === "point-icons" ? "icon-opacity" : "circle-opacity";
+      map.setPaintProperty(layer, `${prop}-transition`, { duration, delay: 0 });
+      map.setPaintProperty(layer, prop, opacity);
     }
   }
   useImperativeHandle(ref, () => ({
@@ -224,7 +261,7 @@ export function MapCanvas({
         n = Math.max(n, p.latitude!);
       }
       map.fitBounds([w, s, e, n], {
-        padding: 56,
+        padding: latest.current.padding,
         maxZoom: 15,
         duration: prefersReducedMotion() ? 0 : 240,
       });
@@ -247,7 +284,7 @@ export function MapCanvas({
         n = Math.max(n, p.lat);
       }
       map.fitBounds([w, s, e, n], {
-        padding: 56,
+        padding: latest.current.padding,
         maxZoom: 15,
         duration: prefersReducedMotion() || !latest.current.effects ? 0 : 400,
       });
@@ -264,7 +301,28 @@ export function MapCanvas({
       else map.easeTo({ ...options, duration: 400 });
     },
     fitBounds(bounds) {
-      mapRef.current?.fitBounds(bounds, { padding: 24, duration: 0 });
+      mapRef.current?.fitBounds(bounds, {
+        padding: latest.current.padding,
+        duration: 0,
+      });
+    },
+    revealPoint(point) {
+      const map = mapRef.current;
+      if (!map) return;
+      const spot = map.project([point.lng, point.lat]);
+      const pad = map.getPadding();
+      const view = map.getContainer();
+      const margin = 48;
+      const visible =
+        spot.x >= (pad.left ?? 0) + margin &&
+        spot.x <= view.clientWidth - (pad.right ?? 0) - margin &&
+        spot.y >= (pad.top ?? 0) + margin &&
+        spot.y <= view.clientHeight - (pad.bottom ?? 0) - margin;
+      if (!visible)
+        map.easeTo({
+          center: [point.lng, point.lat],
+          duration: prefersReducedMotion() ? 0 : 240,
+        });
     },
     flyTo(target, targetZoom) {
       mapRef.current?.easeTo({
@@ -294,9 +352,9 @@ export function MapCanvas({
           ...flatMapOptions,
           container: container.current,
           accessToken: token,
-          style: "mapbox://styles/mapbox/light-v11",
-          center,
-          zoom,
+          style: atlasStyles[theme],
+          center: cameraRef.current?.center ?? center,
+          zoom: cameraRef.current?.zoom ?? zoom,
           attributionControl: true,
           cooperativeGestures: false,
         });
@@ -304,6 +362,7 @@ export function MapCanvas({
         map.keyboard.disableRotation();
         mapRef.current = map;
         dispose = () => {
+          window.clearTimeout(hoverTimer.current);
           setReadyMap(null);
           mapRef.current = null;
           map.remove();
@@ -313,6 +372,15 @@ export function MapCanvas({
           "bottom-right",
         );
         const geolocate = new mapboxgl.GeolocateControl({
+          fitBoundsOptions: {
+            maxZoom: 15,
+            get padding() {
+              return latest.current.padding;
+            },
+            get duration() {
+              return prefersReducedMotion() ? 0 : 240;
+            },
+          },
           positionOptions: { enableHighAccuracy: false },
           trackUserLocation: false,
           showUserLocation: true,
@@ -333,37 +401,37 @@ export function MapCanvas({
             console.warn("Map tile error", event.error?.message);
         });
         const timeout = window.setTimeout(fail, 20000);
-        map.on("load", async () => {
+        map.on("load", () => {
           window.clearTimeout(timeout);
           if (stopped) return;
-          applyJadeAtlas(map, locale);
-          const text = jadePalette.ink;
+          applyJadeAtlas(map, locale, theme);
+          const palette = atlasPalettes[theme];
+          const chrome = markerChrome[theme];
+          const markerColorExpression = markerColorExpressionFor(theme);
+          const text = palette.ink;
           const colors: Record<ItemType, string> = {
-            place: jadePalette.place,
-            event: jadePalette.event,
-            content: jadePalette.content,
+            place: palette.place,
+            event: palette.event,
+            content: palette.content,
           };
-          const lime = themeColor("--th-primary", "#c7f464");
-          // One atlas image per type, not one WebGL renderer per point.
-          const artwork = await Promise.allSettled(
-            (["place", "event", "content"] as const).map(async (type) => ({
-              type,
-              image: await loadMarkerArtwork(type),
-            })),
-          );
-          if (stopped) return;
-          for (const result of artwork)
-            if (result.status === "fulfilled")
-              map.addImage(`th-${result.value.type}`, result.value.image, {
-                pixelRatio: 2,
-              });
+          // Quiet dots: the type is repeated in the list and the selected label.
           map.addSource("items", {
             type: "geojson",
-            data: toGeoJSON(latest.current.items),
+            data: toGeoJSON(latest.current.items, latest.current.locale),
             cluster: true,
             clusterRadius: 48,
             clusterMaxZoom: 16,
             promoteId: "key",
+          });
+          // A selected point remains visible even inside a cluster.
+          map.addSource("selected-item", {
+            type: "geojson",
+            data: toGeoJSON(
+              latest.current.items.filter(
+                (item) => item.key === latest.current.selectedKey,
+              ),
+              latest.current.locale,
+            ),
           });
           map.addLayer({
             id: "clusters",
@@ -371,8 +439,8 @@ export function MapCanvas({
             source: "items",
             filter: ["has", "point_count"],
             paint: {
-              "circle-color": "#ffffff",
-              "circle-stroke-color": jadePalette.roadEdge,
+              "circle-color": palette.surface,
+              "circle-stroke-color": palette.primary,
               "circle-stroke-width": 1.5,
               "circle-radius": [
                 "step",
@@ -400,14 +468,40 @@ export function MapCanvas({
           map.addLayer({
             id: "selected-halo",
             type: "circle",
-            source: "items",
+            source: "selected-item",
             filter: ["==", ["get", "key"], latest.current.selectedKey ?? ""],
             paint: {
-              "circle-radius": 12,
-              "circle-color": lime,
-              "circle-opacity": 0.9,
+              "circle-radius": 13,
+              "circle-color": palette.surface,
+              "circle-opacity": 0.85,
               "circle-stroke-color": text,
-              "circle-stroke-width": 1.5,
+              "circle-stroke-width": 2,
+            },
+          });
+          // Pins are colored by marker kind; a dark under-ring keeps pale
+          // kinds legible on the light basemap and kind is also in the list.
+          const radius = (base: number, big: number) => [
+            "interpolate",
+            ["linear"],
+            ["zoom"],
+            12,
+            base,
+            15,
+            big,
+          ];
+          map.addLayer({
+            id: "points-edge",
+            type: "circle",
+            source: "items",
+            filter: ["!", ["has", "point_count"]],
+            paint: {
+              "circle-radius": radius(
+                5.5 + chrome.edgeGrow,
+                9.5 + chrome.edgeGrow,
+              ) as never,
+              "circle-color": chrome.edge ?? markerColorExpression,
+              "circle-opacity": chrome.edgeOpacity,
+              "circle-blur": chrome.edgeBlur,
             },
           });
           map.addLayer({
@@ -416,18 +510,45 @@ export function MapCanvas({
             source: "items",
             filter: ["!", ["has", "point_count"]],
             paint: {
-              "circle-radius": 5,
-              "circle-color": [
-                "match",
-                ["get", "type"],
-                "place",
-                colors.place,
-                "event",
-                colors.event,
-                colors.content,
-              ],
-              "circle-stroke-color": "#ffffff",
+              "circle-radius": radius(5.5, 9.5) as never,
+              "circle-color": markerColorExpression,
+              "circle-stroke-color": chrome.stroke,
+              "circle-stroke-width": 1.5,
+            },
+          });
+          // Hover/list highlight: a single enlarged pin above the rest.
+          map.addSource("hover-item", {
+            type: "geojson",
+            data: toGeoJSON([], latest.current.locale),
+          });
+          map.addLayer({
+            id: "hover-point",
+            type: "circle",
+            source: "hover-item",
+            paint: {
+              "circle-radius": radius(6.5, 11) as never,
+              "circle-color": markerColorExpression,
+              "circle-stroke-color": chrome.outline,
               "circle-stroke-width": 2,
+              "circle-radius-transition": { duration: 150, delay: 0 },
+            },
+          });
+          for (const kind of markerKinds) {
+            const image = markerGlyphImage(kind, theme);
+            if (image && !map.hasImage(markerImageId(kind)))
+              map.addImage(markerImageId(kind), image, { pixelRatio: 2 });
+          }
+          map.addLayer({
+            id: "point-icons",
+            type: "symbol",
+            source: "items",
+            minzoom: 14,
+            filter: ["!", ["has", "point_count"]],
+            layout: {
+              "icon-image": ["concat", "marker-", ["get", "kind"]],
+              "icon-size": 0.55,
+              "icon-allow-overlap": true,
+              "icon-ignore-placement": true,
             },
           });
           map.addLayer({
@@ -441,24 +562,23 @@ export function MapCanvas({
             },
           });
           map.addLayer({
-            id: "points-icon",
+            id: "selected-label",
             type: "symbol",
-            source: "items",
-            minzoom: 12,
-            filter: ["!", ["has", "point_count"]],
+            source: "selected-item",
+            filter: ["==", ["get", "key"], latest.current.selectedKey ?? ""],
             layout: {
-              "icon-image": [
-                "coalesce",
-                ["image", ["concat", "th-", ["get", "type"]]],
-                "",
-              ],
-              "icon-size": 0.6,
-              "icon-anchor": "bottom",
-              "icon-offset": [0, 8],
-              "icon-pitch-alignment": "viewport",
-              "icon-rotation-alignment": "viewport",
-              "icon-allow-overlap": false,
-              "icon-padding": 5,
+              "text-field": ["get", "label"],
+              "text-size": 13,
+              "text-font": ["DIN Pro Medium", "Arial Unicode MS Regular"],
+              "text-anchor": "top",
+              "text-offset": [0, 1.3],
+              "text-max-width": 12,
+              "text-allow-overlap": true,
+            },
+            paint: {
+              "text-color": text,
+              "text-halo-color": palette.surface,
+              "text-halo-width": 2,
             },
           });
           type Feature = {
@@ -479,9 +599,9 @@ export function MapCanvas({
               latest.current.extraSelectedKey ?? "",
             ],
             paint: {
-              "circle-radius": 22,
-              "circle-color": lime,
-              "circle-opacity": 0.9,
+              "circle-radius": 20,
+              "circle-color": palette.surface,
+              "circle-opacity": 0.85,
               "circle-stroke-color": text,
               "circle-stroke-width": 2,
             },
@@ -491,13 +611,14 @@ export function MapCanvas({
             type: "circle",
             source: "places-extra",
             paint: {
-              "circle-radius": 11,
-              // Search results are hollow; saved/layer external places are filled.
+              // Larger than catalog dots; search results are hollow, saved/layer
+              // external places are filled.
+              "circle-radius": 10,
               "circle-color": [
                 "match",
                 ["get", "kind"],
                 "search",
-                "#ffffff",
+                palette.surface,
                 colors.place,
               ],
               "circle-stroke-color": text,
@@ -510,7 +631,7 @@ export function MapCanvas({
             if (key) latest.current.onSelectExtra?.(String(key));
           });
           applyEffects(map);
-          map.on("click", ["points-hit", "points-icon"], (e) => {
+          map.on("click", ["points-hit", "selected-halo"], (e) => {
             const feature = e.features?.[0] as Feature | undefined;
             const key = feature?.properties?.key;
             if (key) latest.current.onSelect(String(key));
@@ -537,12 +658,7 @@ export function MapCanvas({
               },
             );
           });
-          for (const layer of [
-            "points-hit",
-            "points-icon",
-            "clusters",
-            "extra-points",
-          ]) {
+          for (const layer of ["points-hit", "clusters", "extra-points"]) {
             map.on(
               "mouseenter",
               layer,
@@ -554,6 +670,31 @@ export function MapCanvas({
               () => (map.getCanvas().style.cursor = ""),
             );
           }
+          // Pin hover: immediate highlight, tooltip after a 250ms dwell.
+          map.on("mousemove", "points-hit", (e) => {
+            const key = (e.features?.[0] as Feature | undefined)?.properties
+              ?.key;
+            if (!key || String(key) === mapHoverKey.current) return;
+            mapHoverKey.current = String(key);
+            window.clearTimeout(hoverTimer.current);
+            latest.current.onItemHover?.(null);
+            syncHover(map);
+            const spot = { x: e.point.x, y: e.point.y };
+            hoverTimer.current = window.setTimeout(
+              () =>
+                latest.current.onItemHover?.({
+                  key: String(key),
+                  ...spot,
+                }),
+              250,
+            );
+          });
+          map.on("mouseleave", "points-hit", () => {
+            mapHoverKey.current = null;
+            window.clearTimeout(hoverTimer.current);
+            latest.current.onItemHover?.(null);
+            syncHover(map);
+          });
           const markUser = (e: unknown) => {
             if ((e as { originalEvent?: unknown }).originalEvent)
               userMovedRef.current = true;
@@ -562,6 +703,8 @@ export function MapCanvas({
           map.on("zoomstart", markUser);
           map.on("wheel", () => (userMovedRef.current = true));
           map.on("moveend", () => {
+            const c = map.getCenter();
+            cameraRef.current = { center: [c.lng, c.lat], zoom: map.getZoom() };
             if (!userMovedRef.current) return;
             userMovedRef.current = false;
             const b = map.getBounds();
@@ -587,14 +730,14 @@ export function MapCanvas({
     };
     // center/zoom only seed the initial camera; later changes go through the handle.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [token, attempt]);
+  }, [token, attempt, theme]);
   useEffect(() => {
     const map = mapRef.current;
     if (!map || !loadedRef.current) return;
     (map.getSource("items") as GeoJSONSource | undefined)?.setData(
-      toGeoJSON(catalogItems),
+      toGeoJSON(catalogItems, locale),
     );
-  }, [catalogItems]);
+  }, [catalogItems, locale, readyMap]);
   useEffect(() => {
     const map = mapRef.current;
     if (!map || !loadedRef.current) return;
@@ -602,14 +745,45 @@ export function MapCanvas({
       extraGeoJSON(extraPoints),
     );
   }, [extraPoints]);
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!map || !loadedRef.current) return;
+    syncHover(map);
+  }, [highlightKey, items, selectedKey, locale, readyMap]);
+  // A brief ring on selection, once; never a loop and not under reduced motion.
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!map || !loadedRef.current || !selectedKey || !effects) return;
+    if (prefersReducedMotion() || !map.getLayer("selected-halo")) return;
+    map.setPaintProperty("selected-halo", "circle-radius-transition", {
+      duration: 0,
+      delay: 0,
+    });
+    map.setPaintProperty("selected-halo", "circle-radius", 22);
+    const frame = window.requestAnimationFrame(() => {
+      map.setPaintProperty("selected-halo", "circle-radius-transition", {
+        duration: 250,
+        delay: 0,
+      });
+      map.setPaintProperty("selected-halo", "circle-radius", 13);
+    });
+    return () => window.cancelAnimationFrame(frame);
+  }, [selectedKey, effects, readyMap]);
   // Selection is a filter/paint update on the stable map; it never remounts or refetches.
   useEffect(() => {
     const map = mapRef.current;
     if (!map || !loadedRef.current) return;
-    map.setFilter("selected-halo", ["==", ["get", "key"], selectedKey ?? ""]);
+    (map.getSource("selected-item") as GeoJSONSource | undefined)?.setData(
+      toGeoJSON(
+        items.filter((item) => item.key === selectedKey),
+        locale,
+      ),
+    );
+    for (const layer of ["selected-halo", "selected-label"])
+      map.setFilter(layer, ["==", ["get", "key"], selectedKey ?? ""]);
     map.setFilter("extra-halo", ["==", ["get", "key"], extraSelectedKey ?? ""]);
     applyEffects(map);
-  }, [selectedKey, extraSelectedKey, effects]);
+  }, [selectedKey, extraSelectedKey, effects, items, locale, readyMap]);
   useEffect(() => {
     const map = mapRef.current;
     if (!map || !loadedRef.current) return;
@@ -617,46 +791,22 @@ export function MapCanvas({
   }, [padding]);
   // Base map labels follow the interface language; item titles are localized in the panel.
   useEffect(() => {
-    if (readyMap) applyJadeAtlas(readyMap, locale);
-  }, [locale, readyMap]);
+    if (readyMap) applyJadeAtlas(readyMap, locale, theme);
+  }, [locale, readyMap, theme]);
   useEffect(() => {
     if (!container.current) return;
     const observer = new ResizeObserver(() => mapRef.current?.resize());
     observer.observe(container.current);
     return () => observer.disconnect();
   }, []);
-  const petTarget = selectedPetTarget(
-    catalogItems,
-    extraPoints,
-    selectedKey,
-    extraSelectedKey,
-  );
-  const petItem = catalogItems.find((item) => item.key === petTarget?.key);
-  const petName = petItem
-    ? locale === "zh-TW"
-      ? petItem.nameChinese || petItem.name
-      : petItem.name || petItem.nameChinese
-    : t.mascotSelectedPlace;
   return (
-    <>
-      <div
-        ref={container}
-        className="map-canvas"
-        role="region"
-        aria-label={t.map}
-        data-attempt={attempt}
-      />
-      <SelectedPet
-        map={readyMap}
-        target={petTarget}
-        label={`${t.mascotInspect}: ${petName}`}
-        animate={effects}
-        onActivate={() => {
-          if (!petTarget) return;
-          if (extraSelectedKey) onSelectExtra?.(petTarget.key);
-          else onSelect(petTarget.key);
-        }}
-      />
-    </>
+    <div
+      ref={container}
+      className="map-canvas"
+      role="region"
+      aria-label={t.map}
+      data-theme={theme}
+      data-attempt={attempt}
+    />
   );
 }

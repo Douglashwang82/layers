@@ -8,11 +8,9 @@ import {
   type CSSProperties,
 } from "react";
 import Link from "next/link";
+import { createPortal } from "react-dom";
 import { useSearchParams } from "next/navigation";
 import {
-  Bookmark,
-  PanelLeftClose,
-  PanelLeftOpen,
   ChevronDown,
   ChevronUp,
   List,
@@ -20,6 +18,7 @@ import {
   Layers as LayersIcon,
   Crosshair,
   Info,
+  X,
 } from "lucide-react";
 import {
   itemTypes,
@@ -35,7 +34,12 @@ import type {
   MapQueryResult,
 } from "@/features/map/query";
 import type { ItemDetail } from "@/features/map/detail";
-import { type Copy, type Locale, format } from "@/lib/dictionary";
+import {
+  type Copy,
+  type Locale,
+  format,
+  localized as localizedName,
+} from "@/lib/dictionary";
 import {
   MapCanvas,
   type CanvasStatus,
@@ -47,13 +51,30 @@ import { BusinessDiscovery } from "@/components/places/business-discovery";
 import { BusinessPanel } from "@/components/places/business-panel";
 import { ExternalReferences } from "@/components/places/external-references";
 import { MapToolbar } from "./map-toolbar";
+import { MarkerLegend } from "./marker-legend";
+import {
+  markerCssVars,
+  markerKind,
+  markerLabel,
+} from "@/lib/marker-presentation";
+import { useMapTheme } from "@/lib/map-theme";
 import { ActiveLayersPanel } from "./active-layers-panel";
 import { MapResults } from "./map-results";
 import { ItemPreview } from "./item-preview";
 import { DailyPickCard } from "@/components/daily-pick/daily-pick-card";
 import { track } from "@/lib/track";
 import { mapSessionKey } from "@/lib/map-session";
-type Sheet = "peek" | "half" | "expanded";
+import {
+  initialPanelOpen,
+  mapPadding,
+  panelStorageKey,
+  panelVisible,
+  storedPanelOpen,
+} from "@/lib/map-panel";
+/** Mobile sheet height; the sheet is closed when the panel is not open. */
+type Sheet = "half" | "expanded";
+/** Wait for the panel and padding to settle before moving the camera. */
+const afterLayout = (run: () => void) => window.setTimeout(run, 80);
 /** Server-read flags and the browser-visible provider key (only when discovery is on). */
 export type PlacesConfig = {
   providerKey: string | null;
@@ -131,6 +152,14 @@ export function MapWorkspace({
 }) {
   const searchParams = useSearchParams();
   const canvas = useRef<MapCanvasHandle>(null);
+  const { theme } = useMapTheme();
+  // Tokens live on body (the header sits outside the workspace), so publish the theme there.
+  useEffect(() => {
+    document.body.dataset.mapTheme = theme;
+    return () => {
+      delete document.body.dataset.mapTheme;
+    };
+  }, [theme]);
   const hasExplicitCity = searchParams.has("city");
   const state = useMemo<MapState>(() => {
     const parsed = parseMapQuery(Object.fromEntries(searchParams));
@@ -141,6 +170,15 @@ export function MapWorkspace({
     };
   }, [searchParams, city.slug, initial.state.layers]);
   const queryKey = keyOf(state, true);
+  const listView = state.view === "list";
+  // Declared early: effects below open the panel when a selection arrives.
+  const [panelOpen, setPanelOpen] = useState(() =>
+    initialPanelOpen({
+      hasItem: !!state.item,
+      listView,
+      fallback: !token,
+    }),
+  );
   /* Results: keep the previous dataset usable during refresh; ignore stale responses. */
   const [result, setResult] = useState(initial);
   const resultKey = useRef(keyOf(initial.state, true));
@@ -327,8 +365,19 @@ export function MapWorkspace({
       setAnnounce(t.selectionCleared);
     }
   }, [selectedKey, selected, refreshing, queryKey, commit, t.selectionCleared]);
+  // Layers can be shown over an open detail; any new selection brings detail back.
+  const [detailHidden, setDetailHidden] = useState(false);
+  useEffect(() => {
+    setDetailHidden(false);
+    if (selectedKey) setPanelOpen(true);
+  }, [selectedKey]);
+  const reveal = () => {
+    setDetailHidden(false);
+    setPanelOpen(true);
+  };
   const select = (key: string) => {
-    if (sidebarCollapsed && !wide && !mobile) toggleSidebar();
+    reveal();
+    setBusiness(null);
     commit({ item: key }, "push");
     pushedSelection.current = true;
     setSheet("half");
@@ -340,6 +389,28 @@ export function MapWorkspace({
       window.history.back();
     } else commit({ item: undefined }, "replace");
   };
+  /* Pin hover: list rows highlight pins; pins show a tooltip after a dwell. */
+  const [listHoverKey, setListHoverKey] = useState<string | null>(null);
+  const [tip, setTip] = useState<{ key: string; x: number; y: number } | null>(
+    null,
+  );
+  const tipTimer = useRef<number | undefined>(undefined);
+  const onItemHover = (hover: { key: string; x: number; y: number } | null) => {
+    window.clearTimeout(tipTimer.current);
+    if (hover) {
+      // Keep the tooltip inside the map: clamp against the stage width at event time.
+      const width = stageBody.current?.clientWidth ?? 1024;
+      setTip({
+        key: hover.key,
+        x: Math.max(8, Math.min(hover.x + 14, width - 248)),
+        y: Math.max(8, hover.y + 14),
+      });
+    }
+    // A short grace lets the pointer move onto the tooltip to read it.
+    else tipTimer.current = window.setTimeout(() => setTip(null), 160);
+  };
+  useEffect(() => () => window.clearTimeout(tipTimer.current), []);
+  const stageBody = useRef<HTMLDivElement>(null);
   /* Business discovery: a separate mode and in-memory selection, lazily loading the provider. */
   const provider = useMemo(
     () => getPlacesProvider(places.providerKey ?? undefined, locale),
@@ -362,10 +433,11 @@ export function MapWorkspace({
     return points;
   }, [externalPoints, searchPoints, business]);
   const selectBusiness = (next: BusinessSelection) => {
-    if (sidebarCollapsed && !wide && !mobile) toggleSidebar();
+    reveal();
     setBusiness(next);
     setSheet("half");
-    if (next.location) canvas.current?.focusPoint(next.location);
+    const spot = next.location;
+    if (spot) afterLayout(() => canvas.current?.focusPoint(spot));
   };
   const selectSearchPlace = (place: ProviderPlace) =>
     selectBusiness({
@@ -418,55 +490,144 @@ export function MapWorkspace({
     setPendingArea(null);
     track("map_area_searched", {});
   };
-  /* Layout: sheet on mobile, panel/rail on wider screens */
+  /* Layout: everything floats over one full-viewport map; the list is a collapsible panel. */
   const mobile = useMedia("(max-width: 800px)");
-  const wide = useMedia("(min-width: 1440px)");
-  const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
+  // Without a token or after a provider failure the list is the product and cannot be hidden.
+  const fallback = !token || canvasStatus === "failed";
+  const visible = panelVisible({ open: panelOpen, listView, fallback });
+  const savedScroll = useRef(0);
+  const wasDetail = useRef(false);
   useEffect(() => {
-    try {
-      setSidebarCollapsed(
-        localStorage.getItem("taiwanhub.map.sidebar-collapsed") === "true",
-      );
-    } catch {
-      /* Storage may be unavailable. */
+    const node = panelRef.current;
+    if (!node) return;
+    const showingDetail = (!!selected || !!business) && !detailHidden;
+    if (showingDetail !== wasDetail.current) {
+      if (showingDetail) {
+        node.scrollTop = 0;
+      } else {
+        node.scrollTop = savedScroll.current;
+      }
+      wasDetail.current = showingDetail;
     }
-  }, []);
-  const toggleSidebar = () => {
-    const next = !sidebarCollapsed;
-    setSidebarCollapsed(next);
-    try {
-      localStorage.setItem("taiwanhub.map.sidebar-collapsed", String(next));
-    } catch {
-      /* Keep the in-memory preference. */
+  }, [selected, business, detailHidden]);
+  // Shared item links, list view and fallback win over the remembered preference.
+  useEffect(() => {
+    const forced = !!state.item || listView || !token;
+    if (mobile) {
+      // Phones start with the entry button only.
+      setPanelOpen(forced);
+      return;
     }
+    if (forced) return;
+    try {
+      const stored = storedPanelOpen(localStorage.getItem(panelStorageKey));
+      if (stored !== null) setPanelOpen(stored);
+    } catch {
+      /* Storage may be unavailable; stay collapsed. */
+    }
+    // Only a breakpoint change re-seeds the panel; later URL changes must not.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [mobile]);
+  const launcher = useRef<HTMLButtonElement>(null);
+  const panelRef = useRef<HTMLDivElement>(null);
+  const togglePanel = (open: boolean) => {
+    setPanelOpen(open);
+    if (!mobile)
+      try {
+        localStorage.setItem(panelStorageKey, String(!open));
+      } catch {
+        /* Keep the in-memory preference. */
+      }
+    // Focus follows the control the user just used; hidden content leaves the tab order.
+    window.requestAnimationFrame(() =>
+      (open ? panelRef.current : launcher.current)?.focus(),
+    );
   };
   const [sheet, setSheet] = useState<Sheet>("half");
   const [tab, setTab] = useState<"layers" | "results">("results");
   const [limit, setLimit] = useState(20);
-  const panelRef = useRef<HTMLDivElement>(null);
   const [panelHeight, setPanelHeight] = useState(0);
+  const [panelRight, setPanelRight] = useState(0);
+  const [topInset, setTopInset] = useState(0);
+  const [viewportHeight, setViewportHeight] = useState(0);
+  const root = useRef<HTMLDivElement>(null);
   useEffect(() => {
     const node = panelRef.current;
     if (!node) return;
-    const observer = new ResizeObserver(([entry]) =>
-      setPanelHeight(entry.contentRect.height),
-    );
+    const measure = () => {
+      const box = node.getBoundingClientRect();
+      setPanelHeight(Math.round(box.height));
+      setPanelRight(Math.round(box.right));
+    };
+    measure();
+    const observer = new ResizeObserver(measure);
     observer.observe(node);
     return () => observer.disconnect();
   }, []);
+  // The search cluster floats above the map; the panel and camera clear its measured bottom.
+  useEffect(() => {
+    const cluster = document.querySelector<HTMLElement>(".map-top-left");
+    const measure = () => {
+      setTopInset(Math.round(cluster?.getBoundingClientRect().bottom ?? 0));
+      setViewportHeight(root.current?.clientHeight ?? window.innerHeight);
+    };
+    measure();
+    const observer = new ResizeObserver(measure);
+    if (cluster) observer.observe(cluster);
+    window.addEventListener("resize", measure);
+    return () => {
+      observer.disconnect();
+      window.removeEventListener("resize", measure);
+    };
+  }, []);
   const padding = useMemo(
-    () => ({
-      top: 0,
-      right: 0,
-      bottom: mobile && state.view === "map" ? Math.min(panelHeight, 320) : 0,
-      left: 0,
-    }),
-    [mobile, panelHeight, state.view],
+    () =>
+      mapPadding({
+        mobile,
+        listView,
+        visible,
+        panelRight,
+        panelHeight,
+        topInset,
+        // Floating navigation and the list entry sit at the bottom of a phone.
+        bottomInset: visible ? 76 : 128,
+        viewportHeight,
+      }),
+    [
+      mobile,
+      listView,
+      visible,
+      panelRight,
+      panelHeight,
+      topInset,
+      viewportHeight,
+    ],
   );
   useEffect(() => {
     canvas.current?.resize();
-  }, [state.view, sheet, sidebarCollapsed, mobile]);
-  const listView = state.view === "list";
+  }, [state.view, sheet, visible, mobile]);
+  // A selected pin hidden behind the panel or an edge is brought into view, not zoomed.
+  const selectedLat = selected?.latitude ?? null;
+  const selectedLng = selected?.longitude ?? null;
+  useEffect(() => {
+    if (canvasStatus !== "ready" || selectedLat == null || selectedLng == null)
+      return;
+    const timer = afterLayout(() =>
+      canvas.current?.revealPoint({ lat: selectedLat, lng: selectedLng }),
+    );
+    return () => window.clearTimeout(timer);
+  }, [selectedKey, selectedLat, selectedLng, canvasStatus, padding]);
+  const [actionsTarget, setActionsTarget] = useState<HTMLElement | null>(null);
+  useEffect(() => {
+    setActionsTarget(document.getElementById("map-header-actions"));
+  }, []);
+  const showLayers = () => {
+    setTab("layers");
+    setMode("layers");
+    setDetailHidden(true);
+    setPanelOpen(true);
+    window.requestAnimationFrame(() => panelRef.current?.focus());
+  };
   const setView = (view: MapState["view"]) => {
     commit({ view }, "replace");
     try {
@@ -520,10 +681,22 @@ export function MapWorkspace({
       }}
     />
   );
-  // On wide screens the rail hosts details, except in list view where there is no rail.
-  const businessInPanel = !!business && (!wide || listView);
-  const detailInPanel = (!!selected && !wide) || businessInPanel;
-  const showDetailRail = (!!selected || !!business) && wide && !listView;
+  // Details share the one floating panel with results and layers (business wins when both exist).
+  const detailInPanel = (!!selected || !!business) && !detailHidden;
+  // Escape closes a pin tooltip. Menus, fields and an open detail keep the key.
+  useEffect(() => {
+    const onKey = (event: KeyboardEvent) => {
+      if (event.key !== "Escape" || event.defaultPrevented) return;
+      const target = event.target as HTMLElement | null;
+      if (
+        target?.closest("input, textarea, select, details[open], [role=dialog]")
+      )
+        return;
+      if (tip) setTip(null);
+    };
+    document.addEventListener("keydown", onKey);
+    return () => document.removeEventListener("keydown", onKey);
+  }, [tip]);
   const layerCount = result.layers.filter((l) => l.status === "ok").length;
   const otherCity = result.layers.filter((l) => l.status === "other-city");
   const preview = selected && (
@@ -685,6 +858,7 @@ export function MapWorkspace({
         });
         pushedSelection.current = true;
         setPendingArea(null);
+        reveal();
         setSheet("half");
       }}
     />
@@ -703,6 +877,7 @@ export function MapWorkspace({
           onSelect={select}
           limit={limit}
           onMore={() => setLimit((n) => n + 20)}
+          onHover={setListHoverKey}
         />
       )}
       <ExternalReferences
@@ -778,12 +953,18 @@ export function MapWorkspace({
   );
   return (
     <div
-      className={`map-workspace ${sidebarCollapsed ? "sidebar-collapsed" : ""} ${listView ? "view-list" : "view-map"} sheet-${sheet} ${showDetailRail ? "has-rail" : ""} ${detailInPanel ? "has-detail" : ""}`}
+      ref={root}
+      className={`map-workspace ${listView ? "view-list" : "view-map"} sheet-${sheet} ${visible ? "has-panel" : "panel-closed"} ${fallback ? "map-fallback" : ""} ${detailInPanel ? "has-detail" : ""}`}
       data-canvas={canvasStatus}
+      data-map-theme={theme}
+      data-panel={visible ? "open" : "closed"}
       style={
         {
-          // Map controls and attribution sit above the sheet at its real height.
-          "--th-sheet-height": `${Math.round(panelHeight)}px`,
+          // The panel starts under the measured search cluster and clears the dock.
+          "--th-map-top": `${topInset + 12}px`,
+          // Provider attribution clears a phone sheet at its real height.
+          "--th-sheet-height": `${Math.round(visible ? panelHeight : 0)}px`,
+          ...markerCssVars(theme),
         } as CSSProperties
       }
     >
@@ -791,46 +972,37 @@ export function MapWorkspace({
         {city.name} · {t.mapNav}
       </h1>
       <div className="map-stage">
-        {provider && (
-          <div
-            className="segmented discovery-modes"
-            role="group"
-            aria-label={t.discoveryModes}
-          >
-            {(
-              [
-                ["layers", t.layersMode],
-                ["business", t.businessMode],
-              ] as const
-            ).map(([value, label]) => (
-              <button
-                key={value}
-                type="button"
-                aria-pressed={mode === value}
-                className={mode === value ? "on" : ""}
-                onClick={() => {
-                  setMode(value);
-                  setTab("results");
-                  // Leaving discovery clears temporary pins but keeps layer pins and selection.
-                  if (value === "layers") {
-                    setSearchPoints([]);
-                    if (business?.temporary) setBusiness(null);
-                  }
-                }}
-              >
-                {label}
-              </button>
-            ))}
-          </div>
-        )}
         <MapToolbar
           state={state}
           cityName={city.name}
           t={t}
           contentEnabled={contentEnabled}
-          onCommit={(patch) => commit(patch)}
+          onCommit={(patch) => {
+            commit(patch);
+            // A submitted search shows its results in the panel.
+            if (patch.q) {
+              setTab("results");
+              setDetailHidden(true);
+              setPanelOpen(true);
+            }
+          }}
         />
-        <div className="map-stage-body" hidden={listView}>
+        {actionsTarget &&
+          createPortal(
+            <button
+              type="button"
+              className="map-float-button"
+              aria-expanded={visible && !detailInPanel && tab === "layers"}
+              aria-controls="map-panel"
+              onClick={showLayers}
+            >
+              <LayersIcon size={20} aria-hidden="true" />
+              <span>{t.layersTab}</span>
+              <span className="count-pill">{layerCount}</span>
+            </button>,
+            actionsTarget,
+          )}
+        <div className="map-stage-body" hidden={listView} ref={stageBody}>
           {token && canvasStatus !== "failed" ? (
             <MapCanvas
               ref={canvas}
@@ -844,8 +1016,11 @@ export function MapWorkspace({
               center={[city.longitude, city.latitude]}
               zoom={10.5}
               locale={locale}
+              theme={theme}
               t={t}
               padding={padding}
+              highlightKey={listHoverKey}
+              onItemHover={onItemHover}
               onSelect={(key) => key && select(key)}
               onUserMove={setPendingArea}
               onStatus={onStatus}
@@ -881,6 +1056,40 @@ export function MapWorkspace({
               <span>{t.mapLoading}</span>
             </div>
           )}
+          {canvasStatus === "ready" && (
+            <div className="map-side-stack">
+              <MarkerLegend t={t} />
+            </div>
+          )}
+          {tip &&
+            (() => {
+              const item = result.items.find((i) => i.key === tip.key);
+              if (!item) return null;
+              const kind = markerKind(item);
+              return (
+                <div
+                  className="map-tooltip"
+                  role="tooltip"
+                  style={{
+                    left: tip.x,
+                    top: tip.y,
+                  }}
+                  onMouseEnter={() => window.clearTimeout(tipTimer.current)}
+                  onMouseLeave={() => setTip(null)}
+                >
+                  <strong>{localizedName(item, locale)}</strong>
+                  <span>
+                    <i
+                      className="kind-dot"
+                      style={{ background: `var(--marker-${kind})` }}
+                      aria-hidden="true"
+                    />
+                    {markerLabel(kind, t)}
+                    {item.category ? ` · ${item.category}` : ""}
+                  </span>
+                </div>
+              );
+            })()}
           <div className="map-overlays">
             {pendingArea && (
               <button
@@ -916,118 +1125,101 @@ export function MapWorkspace({
               </div>
             )}
           </div>
-          <div className="map-controls">
-            {canvasStatus === "ready" && (
-              <button
-                type="button"
-                className="button secondary small"
-                onClick={() => canvas.current?.fitTo(result.items)}
-                disabled={mapped.length === 0}
-              >
-                <Crosshair size={14} aria-hidden="true" /> {t.fitResults}
-              </button>
-            )}
-            {state.area && (
-              <button
-                type="button"
-                className="button secondary small"
-                onClick={() => commit({ area: undefined })}
-              >
-                {t.clearArea}
-              </button>
-            )}
-            <button
-              type="button"
-              className="button secondary small"
-              onClick={() => setView("list")}
-            >
-              <List size={14} aria-hidden="true" /> {t.listView}
-            </button>
-          </div>
         </div>
-        {listView && (
-          <div className="list-mode-bar">
+        <div className="map-dock">
+          {!listView && !fallback && (
             <button
+              ref={launcher}
               type="button"
-              className="button secondary small"
-              onClick={() => setView("map")}
+              className="map-float-button map-list-toggle"
+              aria-expanded={panelOpen}
+              aria-controls="map-panel"
+              onClick={() => togglePanel(!panelOpen)}
             >
-              <MapIcon size={14} aria-hidden="true" /> {t.mapView}
-            </button>
-          </div>
-        )}
-      </div>
-      <div
-        className="map-panel"
-        ref={panelRef}
-        aria-label={t.mapNav}
-        tabIndex={-1}
-      >
-        <nav className="map-sidebar-nav" aria-label={t.mainNav}>
-          {!listView && (
-            <button
-              type="button"
-              onClick={toggleSidebar}
-              aria-expanded={!sidebarCollapsed}
-              aria-controls="map-sidebar-content"
-              aria-label={sidebarCollapsed ? t.expand : t.collapse}
-              title={sidebarCollapsed ? t.expand : t.collapse}
-            >
-              {sidebarCollapsed ? (
-                <PanelLeftOpen size={22} aria-hidden="true" />
-              ) : (
-                <PanelLeftClose size={22} aria-hidden="true" />
-              )}
-              <span>{t.collapse}</span>
+              <List size={18} aria-hidden="true" />
+              <span>
+                {panelOpen
+                  ? t.hideList
+                  : format(t.showList, { count: result.total })}
+              </span>
             </button>
           )}
-          <button
-            type="button"
-            aria-label={t.mapNav}
-            title={t.mapNav}
-            aria-current="page"
-            onClick={() => {
-              if (sidebarCollapsed) toggleSidebar();
-              setTab("results");
-              setMode("layers");
-            }}
-          >
-            <MapIcon size={22} aria-hidden="true" />
-            <span>{t.mapNav}</span>
-          </button>
-          <Link href="/layers" aria-label={t.layers} title={t.layers}>
-            <LayersIcon size={22} aria-hidden="true" />
-            <span>{t.layers}</span>
-          </Link>
-          <Link href="/saved" aria-label={t.saved} title={t.saved}>
-            <Bookmark size={22} aria-hidden="true" />
-            <span>{t.saved}</span>
-          </Link>
-        </nav>
-        <div
-          id="map-sidebar-content"
-          className="map-sidebar-content"
-          hidden={!mobile && !listView && sidebarCollapsed}
-        >
-          <div className="sheet-handle">
+          {!listView && canvasStatus === "ready" && (
             <button
               type="button"
-              className="text-button"
-              onClick={() => {
-                setTab("layers");
-                setSheet("half");
-              }}
+              className="map-float-button map-fit"
+              onClick={() => canvas.current?.fitTo(result.items)}
+              disabled={mapped.length === 0}
             >
-              <LayersIcon size={14} aria-hidden="true" />{" "}
-              {format(t.layerCount, { count: layerCount })}
+              <Crosshair size={16} aria-hidden="true" />
+              <span>{t.fitResults}</span>
             </button>
+          )}
+          {state.area && !listView && (
+            <button
+              type="button"
+              className="map-float-button"
+              onClick={() => commit({ area: undefined })}
+            >
+              <X size={16} aria-hidden="true" />
+              <span>{t.clearArea}</span>
+            </button>
+          )}
+          {!listView ? (
+            <button
+              type="button"
+              className="map-float-button"
+              onClick={() => setView("list")}
+            >
+              <List size={16} aria-hidden="true" />
+              <span>{t.listView}</span>
+            </button>
+          ) : (
+            <button
+              type="button"
+              className="map-float-button"
+              onClick={() => setView("map")}
+            >
+              <MapIcon size={16} aria-hidden="true" />
+              <span>{t.mapView}</span>
+            </button>
+          )}
+          {hasDemo && !visible && (
+            <span className="map-demo-chip">{t.demoNotice}</span>
+          )}
+        </div>
+      </div>
+      <div
+        id="map-panel"
+        className="map-panel"
+        ref={panelRef}
+        role="region"
+        aria-label={t.mapNav}
+        tabIndex={-1}
+        hidden={!visible}
+        onScroll={(event) => {
+          if (!detailInPanel)
+            savedScroll.current = event.currentTarget.scrollTop;
+        }}
+        onKeyDown={(event) => {
+          // Escape closes the panel unless a field or open menu owns the key.
+          if (event.key !== "Escape" || event.defaultPrevented) return;
+          const target = event.target as HTMLElement;
+          if (target.closest("input, textarea, select, details[open]")) return;
+          if (listView || fallback) return;
+          event.preventDefault();
+          togglePanel(false);
+        }}
+      >
+        <div id="map-sidebar-content" className="map-sidebar-content">
+          <div className="sheet-handle">
             <span className="sheet-buttons">
               <button
                 type="button"
                 className="icon-button"
-                aria-label={t.collapse}
-                disabled={sheet === "peek"}
-                onClick={() => setSheet(sheet === "expanded" ? "half" : "peek")}
+                aria-label={t.shrinkPanel}
+                disabled={sheet === "half"}
+                onClick={() => setSheet("half")}
               >
                 <ChevronDown size={18} aria-hidden="true" />
               </button>
@@ -1036,12 +1228,56 @@ export function MapWorkspace({
                 className="icon-button"
                 aria-label={t.expand}
                 disabled={sheet === "expanded"}
-                onClick={() => setSheet(sheet === "peek" ? "half" : "expanded")}
+                onClick={() => setSheet("expanded")}
               >
                 <ChevronUp size={18} aria-hidden="true" />
               </button>
             </span>
+            {!listView && !fallback && (
+              <button
+                type="button"
+                className="icon-button"
+                aria-label={t.hideList}
+                title={t.hideList}
+                onClick={() => togglePanel(false)}
+              >
+                <X size={18} aria-hidden="true" />
+              </button>
+            )}
           </div>
+          {provider && (
+            <div
+              className="segmented discovery-modes"
+              role="group"
+              aria-label={t.discoveryModes}
+            >
+              {(
+                [
+                  ["layers", t.layersMode],
+                  ["business", t.businessMode],
+                ] as const
+              ).map(([value, label]) => (
+                <button
+                  key={value}
+                  type="button"
+                  aria-pressed={mode === value}
+                  className={mode === value ? "on" : ""}
+                  onClick={() => {
+                    setMode(value);
+                    setTab("results");
+                    setDetailHidden(true);
+                    // Leaving discovery clears temporary pins but keeps layer pins and selection.
+                    if (value === "layers") {
+                      setSearchPoints([]);
+                      if (business?.temporary) setBusiness(null);
+                    }
+                  }}
+                >
+                  {label}
+                </button>
+              ))}
+            </div>
+          )}
           {restored && (
             <p className="fine-print restored">{t.restoredLayers}</p>
           )}
@@ -1051,11 +1287,7 @@ export function MapWorkspace({
             </p>
           ))}
           {detailInPanel ? (
-            businessInPanel ? (
-              businessPanel
-            ) : (
-              preview
-            )
+            (businessPanel ?? preview)
           ) : mode === "business" && discoveryPanel ? (
             <div className="panel-body">{discoveryPanel}</div>
           ) : (
@@ -1087,9 +1319,6 @@ export function MapWorkspace({
           {footer}
         </div>
       </div>
-      {showDetailRail && (
-        <aside className="map-rail">{businessPanel ?? preview}</aside>
-      )}
     </div>
   );
 }

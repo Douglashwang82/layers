@@ -1,12 +1,58 @@
-/* Map workspace and layer surfaces. Jade Atlas keeps its darker location accents
-   local to the map; global action and status colors remain unchanged. */
+/* Map workspace and layer surfaces. The map home is one full-viewport map with
+   floating search, list, layers and menu; the warm tokens below apply only
+   while the map home is mounted, and global action/status colors are unchanged. */
 :root {
-  --th-map-place: #087f65;
-  --th-map-event: #cf705b;
-  --th-map-content: #dab654;
-  --th-map-panel-width: 340px;
-  --th-map-rail-width: 380px;
-  --th-map-shell-height: calc(100dvh - var(--th-header-height));
+  --th-map-place: #111111;
+  --th-map-event: #5c5c5c;
+  --th-map-content: #8a8a8a;
+  --th-map-edge: 24px;
+  --th-map-panel-width: clamp(320px, 27vw, 380px);
+  --th-float-radius: 16px;
+  --th-float-control-radius: 12px;
+  --th-float-shadow: 0 6px 24px rgb(0 0 0 / 14%), 0 1px 3px rgb(0 0 0 / 10%);
+}
+body:has(.map-workspace) {
+  --th-canvas: #f3f3f3;
+  --th-surface: #ffffff;
+  --th-surface-soft: #f6f6f6;
+  --th-text: #111111;
+  --th-muted: #5c5c5c;
+  --th-brand-text: #111111;
+  --th-divider: #e4e4e4;
+  --th-control-border: #808080;
+  --th-on-brand: #ffffff;
+  --th-map-hover-solid: #2b2b2b;
+  --th-pill-bg: #e6e6e6;
+  --th-pill-text: #111111;
+  --th-pin-outline: #111111;
+  --th-shimmer: rgb(255 255 255 / 0.6);
+  overflow: hidden;
+  padding-bottom: 0;
+}
+/* Dark map appearance (docs/design/jade-atlas-dark.md). The theme is published on
+   body by the map workspace because the header sits outside it. */
+body[data-map-theme="dark"]:has(.map-workspace) {
+  color-scheme: dark;
+  --th-map-place: #f2f2f2;
+  --th-map-event: #b0b0b0;
+  --th-canvas: #1b1c1e;
+  --th-surface: #26272a;
+  --th-surface-soft: #2e3033;
+  --th-text: #f2f2f2;
+  --th-muted: #a3a6ab;
+  --th-brand-text: #f2f2f2;
+  --th-divider: #3a3c40;
+  --th-control-border: #8d9096;
+  --th-focus: #8fb0ff;
+  --th-on-brand: #15161a;
+  --th-map-hover-solid: #ffffff;
+  --th-pill-bg: #3a3c40;
+  --th-pill-text: #f2f2f2;
+  --th-pin-outline: #f2f2f2;
+  --th-shimmer: rgb(255 255 255 / 0.08);
+  --th-float-shadow:
+    0 6px 24px rgb(0 0 0 / 55%), 0 1px 3px rgb(0 0 0 / 40%),
+    inset 0 0 0 1px rgb(255 255 255 / 8%);
 }
 .sr-only {
   position: absolute;
@@ -19,74 +65,40 @@
   white-space: nowrap;
   border: 0;
 }
+/* Layers, bottom to top: canvas, panel/dock (10), header cluster and menus (20). */
 .map-workspace {
-  display: grid;
-  grid-template-columns: var(--th-map-panel-width) minmax(0, 1fr);
-  height: var(--th-map-shell-height);
-  min-height: 480px;
-  background: var(--th-canvas);
-  overflow: hidden;
-}
-.map-workspace.has-rail {
-  grid-template-columns: var(--th-map-panel-width) minmax(0, 1fr) var(
-      --th-map-rail-width
-    );
-}
-.map-workspace.view-list {
-  grid-template-columns: minmax(0, 1fr);
-  grid-template-rows: auto minmax(0, 1fr);
-}
-.map-workspace .map-panel {
-  grid-column: 1;
-  grid-row: 1;
-}
-.map-workspace .map-stage {
-  grid-column: 2;
-  grid-row: 1;
-}
-.map-workspace .map-rail {
-  grid-column: 3;
-  grid-row: 1;
-}
-.map-workspace.view-list .map-stage {
-  grid-column: 1;
-  grid-row: 1;
-}
-.map-workspace.view-list .map-panel {
-  grid-column: 1;
-  grid-row: 2;
+  position: relative;
   width: 100%;
-  max-width: 760px;
-  margin: 0 auto;
-  border-right: 0;
+  height: 100vh;
+  height: 100dvh;
+  overflow: hidden;
+  background: var(--th-canvas);
+  isolation: isolate;
 }
-/* Stage: toolbar in flow, canvas fills the rest */
+/* The stage never takes space of its own; chrome floats over the canvas. */
 .map-stage {
-  display: flex;
-  flex-direction: column;
+  position: absolute;
+  inset: 0;
   min-width: 0;
   min-height: 0;
-  position: relative;
 }
-.map-toolbar {
-  display: grid;
-  gap: var(--th-space-2);
-  padding: var(--th-space-3) var(--th-space-4);
-  background: var(--th-surface);
-  border-bottom: 1px solid var(--th-divider);
-  z-index: 3;
+/* The search cluster lives in the fixed header; it must not block map drags. */
+.map-toolbar,
+#map-header-search {
+  display: contents;
 }
 .map-search {
   display: flex;
   align-items: center;
   gap: var(--th-space-2);
-  flex-wrap: wrap;
-  min-height: var(--th-control-height);
-  padding: 4px 4px 4px 12px;
+  grid-area: search;
+  min-width: 0;
+  min-height: 48px;
+  padding: 2px 4px 2px 14px;
   border: 1px solid var(--th-divider);
-  border-radius: var(--th-radius-input);
+  border-radius: var(--th-float-control-radius);
   background: var(--th-surface);
-  box-shadow: 0 2px 8px rgb(25 57 47 / 4%);
+  box-shadow: var(--th-float-shadow);
 }
 .map-search > svg {
   color: var(--th-muted);
@@ -129,15 +141,120 @@
   background: var(--th-surface);
   color: var(--th-brand-text);
   font-weight: 600;
-  box-shadow: 0 1px 2px rgb(20 38 31 / 0.08);
+  box-shadow: 0 1px 2px rgb(0 0 0 / 0.08);
 }
 .map-filters {
   display: flex;
-  gap: var(--th-space-3);
+  grid-area: filters;
+  align-items: center;
+  gap: var(--th-space-2);
   flex-wrap: wrap;
+  min-width: 0;
 }
 .map-filters .segmented {
   margin: 0;
+  background: var(--th-surface);
+  border: 1px solid var(--th-divider);
+  border-radius: var(--th-float-control-radius);
+  box-shadow: var(--th-float-shadow);
+}
+.map-filters .segmented button {
+  border-radius: 8px;
+}
+.map-filters .segmented button.on {
+  background: var(--th-brand-text);
+  color: var(--th-on-brand);
+  box-shadow: none;
+}
+/* Floating pill buttons shared by the filter, layers, menu and dock controls. */
+.map-float-button {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 44px;
+  padding: 0 14px;
+  border: 1px solid var(--th-divider);
+  border-radius: var(--th-float-control-radius);
+  background: var(--th-surface);
+  color: var(--th-text);
+  font-size: 14px;
+  font-weight: 600;
+  white-space: nowrap;
+  cursor: pointer;
+  box-shadow: var(--th-float-shadow);
+  transition: background-color var(--th-fast) var(--th-ease);
+}
+.map-float-button:hover:not(:disabled) {
+  background: var(--th-surface-soft);
+}
+.map-float-button[aria-expanded="true"] {
+  border-color: var(--th-brand-text);
+  color: var(--th-brand-text);
+}
+.map-header .count-pill,
+.map-workspace .count-pill {
+  background: var(--th-pill-bg);
+  color: var(--th-pill-text);
+}
+.map-float-button:disabled {
+  opacity: 0.6;
+  cursor: default;
+}
+summary.map-float-button {
+  list-style: none;
+}
+summary.map-float-button::-webkit-details-marker {
+  display: none;
+}
+.filter-menu {
+  position: relative;
+}
+.filter-popover {
+  position: absolute;
+  top: calc(100% + 8px);
+  left: 0;
+  z-index: 25;
+  display: grid;
+  gap: var(--th-space-3);
+  width: max-content;
+  max-width: min(420px, calc(100vw - 24px));
+  max-height: calc(100dvh - var(--th-map-top, 180px) - 24px);
+  overflow-y: auto;
+  padding: var(--th-space-3);
+  background: var(--th-surface);
+  border: 1px solid var(--th-divider);
+  border-radius: var(--th-float-radius);
+  box-shadow: var(--th-float-shadow);
+}
+.filter-popover .scope-toggle,
+.filter-popover .segmented {
+  margin: 0;
+  max-width: 100%;
+  flex-wrap: wrap;
+}
+.applied-filters {
+  display: contents;
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+.applied-filters li {
+  display: inline-flex;
+}
+.filter-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 36px;
+  padding: 0 10px 0 12px;
+  border: 1px solid var(--th-brand-text);
+  border-radius: var(--th-radius-pill);
+  background: var(--th-surface);
+  color: var(--th-brand-text);
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  box-shadow: var(--th-float-shadow);
 }
 .date-picker {
   display: flex;
@@ -160,10 +277,9 @@
   font-size: 16px;
 }
 .map-stage-body {
-  flex: 1;
-  position: relative;
-  min-height: 0;
-  background: var(--th-surface-soft);
+  position: absolute;
+  inset: 0;
+  background: var(--th-canvas);
 }
 .map-stage-body[hidden] {
   display: none;
@@ -171,17 +287,25 @@
 .map-canvas {
   position: absolute;
   inset: 0;
-  background: #f0f4ef;
+  background: var(--th-canvas);
 }
-.map-canvas .mapboxgl-ctrl-group {
+/* Provider controls and attribution keep the screen margin and clear the dock. */
+.map-stage-body .mapboxgl-ctrl-bottom-right {
+  right: calc(var(--th-map-edge) - 10px);
+  bottom: calc(var(--th-map-edge) - 10px);
+}
+.map-stage-body .mapboxgl-ctrl-bottom-left {
+  left: calc(var(--th-map-edge) - 10px);
+}
+.map-stage-body .mapboxgl-ctrl-group {
   border: 1px solid var(--th-divider);
-  border-radius: 10px;
-  box-shadow: 0 2px 8px rgb(25 57 47 / 8%);
+  border-radius: var(--th-float-control-radius);
+  box-shadow: var(--th-float-shadow);
   overflow: hidden;
 }
-.map-canvas .mapboxgl-ctrl-group button {
-  width: 40px;
-  height: 40px;
+.map-stage-body .mapboxgl-ctrl-group button {
+  width: 44px;
+  height: 44px;
 }
 .map-unavailable,
 .map-skeleton {
@@ -195,6 +319,11 @@
   text-align: center;
   background: var(--th-canvas);
 }
+/* With no map, the notice sits beside the always-visible panel, below the search. */
+.map-fallback:not(.view-list) .map-unavailable {
+  padding-left: calc(var(--th-map-edge) * 2 + var(--th-map-panel-width));
+  padding-top: var(--th-map-top, 160px);
+}
 .map-unavailable p {
   max-width: 380px;
 }
@@ -203,14 +332,14 @@
   color: var(--th-muted);
   font-size: 14px;
   background:
-    linear-gradient(90deg, transparent, rgb(255 255 255 / 0.6), transparent) 0
-      0/200% 100% no-repeat,
+    linear-gradient(90deg, transparent, var(--th-shimmer), transparent) 0 0/200%
+      100% no-repeat,
     var(--th-surface-soft);
   animation: pulse 1.5s ease-in-out infinite;
 }
 .map-overlays {
   position: absolute;
-  top: var(--th-space-3);
+  top: var(--th-map-top, 160px);
   left: 50%;
   transform: translateX(-50%);
   display: grid;
@@ -220,7 +349,9 @@
   max-width: calc(100% - 24px);
 }
 .map-overlays .search-area {
-  box-shadow: 0 2px 8px rgb(20 38 31 / 0.18);
+  color: #000;
+  border: thick solid #000;
+  box-shadow: 0 2px 8px rgb(0 0 0 / 0.18);
 }
 .map-chip {
   background: var(--th-surface);
@@ -228,47 +359,105 @@
   border-radius: var(--th-radius-pill);
   padding: 8px 14px;
   font-size: 14px;
-  box-shadow: 0 1px 4px rgb(20 38 31 / 0.12);
+  box-shadow: 0 1px 4px rgb(0 0 0 / 0.12);
 }
-.map-controls {
+.map-unavailable .button {
+  box-shadow: 0 1px 4px rgb(0 0 0 / 0.12);
+}
+/* Dock: the list entry and map actions, bottom left. */
+.map-dock {
   position: absolute;
-  left: var(--th-space-3);
-  bottom: 36px;
+  left: var(--th-map-edge);
+  bottom: var(--th-map-edge);
+  z-index: 10;
   display: flex;
+  align-items: center;
   gap: var(--th-space-2);
   flex-wrap: wrap;
-  z-index: 4;
+  max-width: calc(100% - var(--th-map-edge) * 2 - 72px);
 }
-.map-controls .button,
-.map-unavailable .button {
-  box-shadow: 0 1px 4px rgb(20 38 31 / 0.12);
+.map-list-toggle {
+  background: var(--th-brand-text);
+  border-color: var(--th-brand-text);
+  color: var(--th-on-brand);
 }
-.list-mode-bar {
-  padding: var(--th-space-2) var(--th-space-4);
-  border-bottom: 1px solid var(--th-divider);
-  background: var(--th-surface);
+.map-list-toggle:hover:not(:disabled) {
+  background: var(--th-map-hover-solid);
 }
-/* Panel */
+.map-list-toggle[aria-expanded="true"] {
+  color: var(--th-on-brand);
+}
+.map-demo-chip {
+  padding: 6px 12px;
+  border-radius: var(--th-radius-pill);
+  background: var(--th-warning-bg);
+  color: var(--th-warning);
+  font-size: 13px;
+  font-weight: 600;
+  box-shadow: var(--th-float-shadow);
+}
+/* Panel: one floating, non-modal surface for results, layers and details. */
 .map-panel {
+  position: absolute;
+  z-index: 10;
+  left: var(--th-map-edge);
+  top: var(--th-map-top, 160px);
+  bottom: calc(var(--th-map-edge) + 56px);
+  width: var(--th-map-panel-width);
   display: flex;
   flex-direction: column;
   min-height: 0;
   overflow-y: auto;
+  overscroll-behavior: contain;
   background: var(--th-surface);
-  border-right: 1px solid var(--th-divider);
+  border: 1px solid var(--th-divider);
+  border-radius: var(--th-float-radius);
+  box-shadow: var(--th-float-shadow);
+  animation: panel-in var(--th-normal) var(--th-ease);
 }
-.map-rail {
-  overflow-y: auto;
-  background: var(--th-surface);
-  border-left: 1px solid var(--th-divider);
+.map-panel[hidden] {
+  display: none;
+}
+@keyframes panel-in {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
 }
 .sheet-handle {
   flex-shrink: 0;
-  display: none;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 4px 8px 0 12px;
+  position: sticky;
+  top: 0;
+  z-index: 3;
+  background: var(--th-surface);
 }
+.sheet-handle .icon-button:last-child {
+  margin-left: auto;
+}
+/* Phone-only sheet sizing buttons. */
 .sheet-buttons {
-  display: inline-flex;
+  display: none;
   gap: 4px;
+}
+.map-panel .discovery-modes {
+  margin: var(--th-space-2) var(--th-space-4) 0;
+}
+.view-list .map-panel {
+  left: 50%;
+  right: auto;
+  bottom: 0;
+  width: min(760px, calc(100% - var(--th-map-edge) * 2));
+  transform: translateX(-50%);
+  border-bottom: 0;
+  border-radius: var(--th-float-radius) var(--th-float-radius) 0 0;
+  animation: none;
+}
+.view-list .sheet-handle {
+  display: none;
 }
 .restored {
   padding: var(--th-space-2) var(--th-space-4) 0;
@@ -409,6 +598,24 @@
   gap: 4px;
   color: var(--th-brand-text);
   font-weight: 500;
+}
+/* Floating list: compact rows; name, type, date, demo/private marks lead, photos do not. */
+.map-panel .result-row a {
+  grid-template-columns: 36px minmax(0, 1fr);
+  gap: var(--th-space-2);
+  padding: 8px;
+}
+.map-panel .row-thumb {
+  width: 36px;
+  height: 36px;
+  border-radius: 10px;
+}
+.map-panel .row-title {
+  font-size: 16px;
+  line-height: 22px;
+}
+.map-panel .result-row.selected a {
+  box-shadow: inset 0 0 0 2px var(--th-brand-text);
 }
 .show-more {
   margin: var(--th-space-3) auto 0;
@@ -849,133 +1056,120 @@
 }
 /* Responsive */
 @media (max-width: 1099px) {
-  :root {
-    --th-map-panel-width: 320px;
-  }
   .layer-editor-layout {
     grid-template-columns: 1fr;
   }
 }
-@media (max-width: 800px) {
-  :root {
-    --th-map-shell-height: calc(
-      100dvh - var(--th-header-height) - var(--th-bottom-nav-height) -
-        env(safe-area-inset-bottom)
-    );
-  }
-  .map-workspace,
-  .map-workspace.has-rail,
-  .map-workspace.view-list {
-    display: flex;
-    flex-direction: column;
-    position: relative;
-    min-height: 0;
-  }
-  .map-stage {
-    flex: 1;
-  }
-  .map-toolbar {
-    padding: var(--th-space-2) var(--th-space-3);
-  }
-  .map-filters {
-    flex-wrap: nowrap;
-    overflow-x: auto;
-    scrollbar-width: none;
-    padding-bottom: 2px;
-  }
-  .map-filters::-webkit-scrollbar {
+@media (min-width: 801px) {
+  /* Without a map the panel cannot be hidden, so it has no controls row. */
+  .map-fallback .sheet-handle {
     display: none;
   }
-  .map-filters .segmented {
-    flex-wrap: nowrap;
-    flex-shrink: 0;
+}
+@media (max-width: 800px) {
+  :root {
+    --th-map-edge: 12px;
+    /* Floating navigation (56px + 12px margin + 8px gap) under the sheet. */
+    --th-map-bottom: calc(76px + env(safe-area-inset-bottom));
   }
-  .map-search .scope-toggle {
-    order: 3;
-    flex-basis: 100%;
+  /* The compact navigation floats over the map instead of owning a bar. */
+  body:has(.map-workspace) .bottom-nav {
+    left: var(--th-map-edge);
+    right: var(--th-map-edge);
+    bottom: calc(12px + env(safe-area-inset-bottom));
+    min-height: 56px;
+    padding: 4px;
+    border: 1px solid var(--th-divider);
+    border-radius: var(--th-float-radius);
+    box-shadow: var(--th-float-shadow);
   }
-  .map-search .button {
-    min-width: 44px;
+  body:has(.map-workspace) .bottom-nav a {
+    min-height: 48px;
   }
-  .map-panel {
-    position: absolute;
-    left: 0;
-    right: 0;
-    bottom: 0;
-    height: 50%;
-    border-right: 0;
-    border-top: 1px solid var(--th-divider);
-    border-radius: var(--th-radius-sheet) var(--th-radius-sheet) 0 0;
-    box-shadow: 0 -4px 16px rgb(20 38 31 / 0.12);
-    z-index: 6;
+  .map-panel,
+  .view-list .map-panel {
+    left: var(--th-map-edge);
+    right: var(--th-map-edge);
+    top: auto;
+    bottom: var(--th-map-bottom);
+    width: auto;
+    transform: none;
+    border-bottom: 1px solid var(--th-divider);
+    border-radius: var(--th-float-radius);
     transition: height var(--th-normal) var(--th-ease);
   }
-  .sheet-peek .map-panel {
-    height: 148px;
-    overflow: hidden;
+  /* The map keeps a strip above an expanded sheet for attribution. */
+  .sheet-half .map-panel {
+    height: min(
+      50dvh,
+      calc(
+        100dvh - var(--th-map-top, 160px) - 120px - env(safe-area-inset-bottom)
+      )
+    );
   }
   .sheet-expanded .map-panel {
-    height: calc(100% - 132px);
+    height: calc(
+      100dvh - var(--th-map-top, 160px) - 120px - env(safe-area-inset-bottom)
+    );
   }
   .view-list .map-panel {
-    position: static;
+    top: var(--th-map-top, 160px);
+    bottom: calc(var(--th-map-bottom) + 52px);
     height: auto;
-    flex: 1;
-    max-width: none;
-    border-radius: 0;
-    box-shadow: none;
-    overflow-y: auto;
   }
-  .sheet-handle {
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    padding: 6px 12px 6px 16px;
-    border-bottom: 1px solid var(--th-divider);
-    position: sticky;
-    top: 0;
-    background: var(--th-surface);
-    z-index: 3;
-  }
-  .sheet-handle .text-button {
+  .sheet-buttons {
     display: inline-flex;
-    align-items: center;
-    gap: 4px;
-    text-decoration: none;
   }
   .view-list .sheet-buttons {
     display: none;
   }
-  .map-controls,
-  .mapboxgl-ctrl-bottom-right,
-  .mapboxgl-ctrl-bottom-left {
-    transition: bottom var(--th-normal) var(--th-ease);
+  .map-dock {
+    bottom: var(--th-map-bottom);
   }
-  /* Controls and provider attribution clear the sheet at its measured height,
-     whatever mode it is in; a percentage guess leaves them covered. */
-  .view-map .map-controls,
+  /* An open sheet carries its own close control; the dock returns when it closes. */
+  .map-workspace.has-panel:not(.view-list) .map-dock {
+    display: none;
+  }
+  /* Provider controls and attribution ride above the sheet at its measured height. */
   .view-map .map-stage-body .mapboxgl-ctrl-bottom-right,
   .view-map .map-stage-body .mapboxgl-ctrl-bottom-left {
-    bottom: calc(var(--th-sheet-height, 160px) + 8px);
+    right: 2px;
+    bottom: calc(var(--th-map-bottom) + var(--th-sheet-height, 0px));
+    transition: bottom var(--th-normal) var(--th-ease);
   }
-  /* Expanded sheet: the map is a thin strip, so only attribution stays. */
-  .sheet-expanded .map-controls,
-  .sheet-expanded .map-stage-body .mapboxgl-ctrl-bottom-right {
+  .view-map.sheet-expanded.has-panel .map-stage-body .mapboxgl-ctrl-group {
     display: none;
   }
-  .map-controls {
-    bottom: 36px;
-  }
-  .map-rail {
-    display: none;
-  }
-  .map-unavailable {
+  .map-fallback:not(.view-list) .map-unavailable {
     place-content: start center;
-    padding-top: var(--th-space-6);
+    padding-left: var(--th-space-6);
   }
-  .row-title {
-    font-size: 17px;
-    line-height: 24px;
+  .row-title,
+  .map-panel .row-title {
+    font-size: 16px;
+    line-height: 22px;
+  }
+}
+/* Short or landscape phones: one content panel, no stacked chrome. */
+@media (max-height: 500px) and (max-width: 800px) {
+  .map-workspace.has-panel {
+    --th-map-bottom: 8px;
+  }
+  body:has(.map-workspace.has-panel:not(.view-list)) .bottom-nav {
+    display: none;
+  }
+  .map-panel,
+  .view-list .map-panel {
+    top: calc(var(--th-map-top, 80px) + 32px);
+    bottom: 8px;
+    height: auto;
+  }
+  .sheet-half .map-panel,
+  .sheet-expanded .map-panel {
+    height: auto;
+  }
+  .map-workspace.has-panel .mapboxgl-ctrl-group {
+    display: none;
   }
 }
 @media (max-width: 599px) {
@@ -985,8 +1179,17 @@
   .map-search {
     padding-left: 8px;
   }
-  .map-controls .button span {
-    display: none;
+  /* Secondary floating controls keep their names for assistive technology. */
+  .map-dock .map-float-button:not(.map-list-toggle) span {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip: rect(0, 0, 0, 0);
+    white-space: nowrap;
+  }
+  .map-dock .map-float-button:not(.map-list-toggle) {
+    padding: 0 12px;
   }
 }
 /* Groups */
@@ -1225,7 +1428,8 @@
   list-style: none;
 }
 .map-panel:focus {
-  outline: none;
+  outline: 2px solid var(--th-focus);
+  outline-offset: 2px;
 }
 /* Daily Pick card: map panel, bottom sheet and the /daily-pick page. */
 .daily-pick-card {
@@ -1299,120 +1503,372 @@
   border-bottom: 1px solid var(--th-divider);
   padding-bottom: 12px;
 }
-/* Compact map-only navigation; other routes retain their existing header. */
+/* Map home header: a fixed, transparent layer. Only its controls take pointer
+   events, so empty space still pans the map. Other routes keep the normal bar. */
 .header.map-header {
+  position: fixed;
+  inset: 0 0 auto 0;
+  z-index: 20;
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: var(--th-space-4);
   max-width: none;
-  gap: 24px;
-  height: var(--th-header-height);
+  min-height: 0;
+  margin: 0;
+  padding: var(--th-map-edge);
+  background: transparent;
+  border: 0;
+  pointer-events: none;
 }
-#map-header-search {
-  flex: 1;
+.map-header > * {
+  pointer-events: none;
+}
+.map-header
+  :is(
+    a,
+    button,
+    input,
+    select,
+    summary,
+    label,
+    form,
+    ul,
+    details,
+    .segmented,
+    .filter-popover,
+    .map-profile-options
+  ) {
+  pointer-events: auto;
+}
+/* Before hydration the toolbar renders in the stage; it then moves into the header. */
+.map-stage > .map-toolbar {
+  position: absolute;
+  z-index: 5;
+  top: calc(var(--th-map-edge) + 60px);
+  left: var(--th-map-edge);
+  display: grid;
+  gap: var(--th-space-2);
+  width: min(560px, calc(100vw - 2 * var(--th-map-edge)));
+}
+.map-stage > .map-toolbar > .map-search,
+.map-stage > .map-toolbar > .map-filters {
+  grid-area: auto;
+}
+/* Identity and search share a row; filters wrap beneath them. */
+.map-top-left {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  grid-template-areas:
+    "identity search"
+    "filters filters";
+  align-items: center;
+  gap: var(--th-space-2) var(--th-space-2);
+  width: min(560px, calc(100vw - 280px));
   min-width: 0;
-  max-width: 760px;
 }
-.map-header .map-search {
-  flex-wrap: nowrap;
+.map-identity {
+  display: flex;
+  grid-area: identity;
+  align-items: center;
+  gap: var(--th-space-2);
+  min-height: 48px;
+  padding: 0 10px 0 8px;
+  border: 1px solid var(--th-divider);
+  border-radius: var(--th-float-control-radius);
+  background: var(--th-surface);
+  box-shadow: var(--th-float-shadow);
+  pointer-events: auto;
 }
-.map-header .map-search input {
-  width: 0;
+.map-identity .brand {
+  font-size: 18px;
+}
+.map-identity .brand-mark {
+  margin-right: 6px;
+  width: 30px;
+  height: 30px;
+  background: var(--th-brand-text);
+  color: #ffffff;
+}
+.map-identity .city-select select {
+  max-width: 130px;
+  min-height: 40px;
+}
+.map-header .header-tools {
+  margin-left: 0;
+}
+.map-header .header-tools {
+  display: flex;
+  align-items: center;
+  gap: var(--th-space-2);
+}
+#map-header-actions {
+  display: contents;
 }
 .map-profile-menu {
   position: relative;
 }
-.map-profile-menu summary {
-  list-style: none;
-  cursor: pointer;
-}
-.map-profile-menu summary::-webkit-details-marker {
-  display: none;
-}
 .map-profile-options {
   position: absolute;
   right: 0;
-  top: 48px;
+  top: calc(100% + 8px);
   z-index: 40;
-  min-width: 160px;
+  min-width: 200px;
   display: grid;
-  gap: 8px;
-  padding: 12px;
+  gap: 4px;
+  padding: 8px;
   background: var(--th-surface);
   border: 1px solid var(--th-divider);
-  border-radius: 12px;
-  box-shadow: 0 6px 24px #0002;
+  border-radius: var(--th-float-radius);
+  box-shadow: var(--th-float-shadow);
 }
 .map-profile-options a {
-  padding: 10px;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-height: 44px;
+  padding: 0 12px;
+  border-radius: 8px;
+}
+.map-profile-options :is(a:hover, [aria-current="page"]) {
+  background: var(--th-surface-soft);
+  color: var(--th-brand-text);
+}
+.map-profile-options [aria-current="page"] {
+  font-weight: 600;
 }
 .map-sidebar-content {
   display: flex;
   flex-direction: column;
   flex: 1;
   min-height: 0;
-  overflow-y: auto;
-}
-.map-sidebar-content[hidden] {
-  display: none;
-}
-.map-sidebar-nav {
-  display: grid;
-  gap: 4px;
-  padding: 8px;
-  border-bottom: 1px solid var(--th-divider);
-  flex-shrink: 0;
-}
-.map-sidebar-nav a,
-.map-sidebar-nav button {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  min-height: 44px;
-  padding: 10px;
-  background: none;
-  color: var(--th-text);
-  border-radius: 8px;
-  font-size: 14px;
-}
-.map-sidebar-nav :is(a, button):hover,
-.map-sidebar-nav [aria-current] {
-  background: var(--th-surface-soft);
-  color: var(--th-brand-text);
-}
-.map-sidebar-nav svg {
-  flex-shrink: 0;
-}
-@media (min-width: 801px) {
-  .map-workspace.sidebar-collapsed.view-map {
-    --th-map-panel-width: 64px;
-  }
-  .sidebar-collapsed.view-map .map-sidebar-nav span {
-    display: none;
-  }
-  .sidebar-collapsed.view-map .map-sidebar-nav :is(a, button) {
-    justify-content: center;
-  }
 }
 @media (max-width: 800px) {
-  body:has(.map-header) {
-    --th-header-height: 124px;
+  .map-top-left {
+    width: min(560px, calc(100vw - 2 * var(--th-map-edge) - 160px));
   }
-  .header.map-header {
-    flex-wrap: wrap;
-    gap: 4px 12px;
-    padding: 8px 12px;
-    align-content: center;
+  /* Icon-only header buttons and a mark-only brand; names stay for assistive technology. */
+  .map-header .header-tools .map-float-button span:not(.count-pill) {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip: rect(0, 0, 0, 0);
+    white-space: nowrap;
   }
-  .map-header .brand {
-    font-size: 18px;
+  .map-header .header-tools .map-float-button {
+    padding: 0 12px;
   }
-  #map-header-search {
-    order: 3;
-    flex-basis: 100%;
-    max-width: none;
-  }
-  .map-sidebar-nav {
+  .map-identity .brand-name {
     display: none;
   }
-  .map-header .city-select select {
-    max-width: 110px;
+}
+@media (max-width: 599px) {
+  /* Phones: identity row (with menu on its right), then search, then filters. */
+  .header.map-header {
+    padding: var(--th-map-edge);
   }
+  .map-top-left {
+    grid-template-columns: minmax(0, 1fr);
+    grid-template-areas:
+      "identity"
+      "search"
+      "filters";
+    width: calc(100vw - 2 * var(--th-map-edge));
+  }
+  .map-identity {
+    width: max-content;
+    max-width: calc(100vw - 2 * var(--th-map-edge) - 130px);
+  }
+  .map-header .header-tools {
+    position: absolute;
+    top: var(--th-map-edge);
+    right: var(--th-map-edge);
+  }
+  .map-header .header-tools :is(a, button, summary) {
+    pointer-events: auto;
+  }
+  .map-identity .city-select select {
+    max-width: 100px;
+  }
+  .map-filters {
+    flex-wrap: nowrap;
+    overflow-x: auto;
+    scrollbar-width: none;
+    padding: 0 0 6px;
+    margin-bottom: -6px;
+  }
+  .map-filters::-webkit-scrollbar {
+    display: none;
+  }
+  .map-filters .segmented {
+    flex-wrap: nowrap;
+    flex-shrink: 0;
+  }
+  .filter-menu {
+    flex-shrink: 0;
+  }
+  .filter-popover {
+    position: fixed;
+    top: auto;
+    left: var(--th-map-edge);
+    right: var(--th-map-edge);
+    width: auto;
+    max-width: none;
+    margin-top: 8px;
+  }
+}
+/* Landscape and short screens keep the cluster to one compact row. */
+@media (max-height: 500px) {
+  .map-filters {
+    flex-wrap: nowrap;
+    overflow-x: auto;
+    scrollbar-width: none;
+  }
+  /* A scrolling row would clip an absolute popover. */
+  .filter-popover {
+    position: fixed;
+    top: auto;
+    left: var(--th-map-edge);
+    margin-top: 8px;
+  }
+}
+/* Legend and pin tooltip (grayscale surfaces; pin hues only for markers). */
+.map-side-stack {
+  position: absolute;
+  top: var(--th-map-top, 160px);
+  right: var(--th-map-edge);
+  z-index: 6;
+  display: grid;
+  gap: var(--th-space-2);
+  width: min(280px, calc(100% - var(--th-map-edge) * 2));
+  justify-items: stretch;
+  pointer-events: none;
+}
+.map-side-stack > * {
+  pointer-events: auto;
+}
+.map-key {
+  background: var(--th-surface);
+  border: 1px solid var(--th-divider);
+  border-radius: var(--th-float-control-radius);
+  box-shadow: var(--th-float-shadow);
+  padding: 10px 12px;
+  font-size: 14px;
+}
+.map-key summary {
+  cursor: pointer;
+  font-weight: 600;
+  min-height: 24px;
+}
+.map-key ul {
+  list-style: none;
+  margin: 8px 0 0;
+  padding: 0;
+  display: grid;
+  gap: 6px;
+}
+.map-key li {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.key-dot,
+.kind-dot {
+  display: inline-block;
+  flex: none;
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  border: 1.5px solid var(--th-pin-outline);
+  box-sizing: border-box;
+}
+.map-tooltip {
+  position: absolute;
+  z-index: 7;
+  display: grid;
+  gap: 2px;
+  max-width: 240px;
+  padding: 8px 10px;
+  font-size: 13px;
+  line-height: 1.35;
+  color: var(--th-text);
+  background: var(--th-surface);
+  border: 1px solid var(--th-divider);
+  border-radius: var(--th-float-control-radius);
+  box-shadow: var(--th-float-shadow);
+  overflow-wrap: anywhere;
+}
+.map-tooltip span {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--th-muted);
+}
+@media (max-width: 800px) {
+  .map-side-stack {
+    left: var(--th-map-edge);
+    right: var(--th-map-edge);
+    width: auto;
+  }
+  .map-tooltip {
+    display: none;
+  }
+}
+
+.map-theme-control {
+  display: flex;
+  gap: 2px;
+  margin-top: 4px;
+  padding: 3px;
+  border: 1px solid var(--th-divider);
+  border-radius: 10px;
+}
+.map-theme-control button {
+  flex: 1;
+  min-height: 36px;
+  padding: 0 8px;
+  border: 0;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--th-muted);
+  font: inherit;
+  font-size: 14px;
+  cursor: pointer;
+}
+.map-theme-control button[aria-checked="true"] {
+  background: var(--th-brand-text);
+  color: var(--th-on-brand);
+  font-weight: 600;
+}
+/* Mapbox control icons are raster/SVG backgrounds; invert only the icons. */
+body[data-map-theme="dark"]
+  .map-stage-body
+  .mapboxgl-ctrl-group
+  button
+  .mapboxgl-ctrl-icon,
+body[data-map-theme="dark"] .map-stage-body .mapboxgl-ctrl-group button span {
+  filter: invert(1);
+}
+body[data-map-theme="dark"] .map-stage-body .mapboxgl-ctrl-group {
+  background: var(--th-surface);
+}
+body[data-map-theme="dark"] .map-stage-body .mapboxgl-ctrl-attrib {
+  background: rgb(27 28 30 / 75%);
+  color: var(--th-muted);
+}
+body[data-map-theme="dark"] .map-stage-body .mapboxgl-ctrl-attrib a {
+  color: var(--th-text);
+}
+/* Photos stay unfiltered; a faint edge keeps pale images from bleeding into the panel. */
+body[data-map-theme="dark"] .map-panel .row-thumb {
+  outline: 1px solid rgb(255 255 255 / 10%);
+  outline-offset: -1px;
+}
+/* The Places UI Kit element cannot be themed reliably: keep it a light card. */
+body[data-map-theme="dark"] .provider-slot {
+  padding: 4px;
+  border-radius: var(--th-radius-input);
+  background: #ffffff;
+  color: #111111;
 }
