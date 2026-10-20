@@ -1,6 +1,6 @@
 # Map MVP: layers built from Google Maps links
 
-Status: proposed (2026-10-20). Supersedes the search-first parts of [map-first-layer-experience-guide.md](../guides/map-first-layer-experience-guide.md) while `FEATURE_MAP_MVP` is on.
+Status: approved (2026-10-20), not started. Supersedes the search-first parts of [map-first-layer-experience-guide.md](../guides/map-first-layer-experience-guide.md) while `FEATURE_MAP_MVP` is on.
 
 ## Goal
 
@@ -20,6 +20,10 @@ Search is disabled, not deleted.
 | M2  | Links are resolved **server-side with Places API (New)** to a Google `place_id`.                                                                                                                                                             |
 | M3  | Events are LocalLink-only data, attached by editing a place inside a layer. Google links never produce events.                                                                                                                               |
 | M4  | Search is hidden behind a feature flag (`FEATURE_MAP_MVP=true` hides it); the code stays.                                                                                                                                                    |
+| M5  | Built-in system layers (today/weekend/food/community/Daily Pick/Discover) are disabled while the flag is on: hidden from the picker and dropped by the server from map queries.                                                              |
+| M6  | No geographic limit on imported places; the camera fits the loaded POIs.                                                                                                                                                                     |
+| M7  | Custom (hand-dropped) places stay addable as a fallback for places Google doesn't know; catalog search in the editor is hidden.                                                                                                              |
+| M8  | Recurring events are out of scope; each attached event is a single occurrence.                                                                                                                                                               |
 
 ## What already exists (reuse, don't rebuild)
 
@@ -36,7 +40,8 @@ Search is disabled, not deleted.
 
 - Hide the toolbar search input, "Search this area", city-scope search overlay, and Google discovery search results (`searchPoints`, `search:` keys) in `map-workspace.tsx` / `map-toolbar.tsx`.
 - Server ignores `q` and `scope=city` in `parseMapQuery` (UI hiding is not enough; old URLs must not reach the city-wide path).
-- Layer picker lists only layers the actor owns, edits, belongs to via a group, or follows. System catalog layers (today/weekend/food/Daily Pick/Discover) are hidden from the picker. _(Default proposed here — confirm, see Q1.)_
+- Layer picker lists only layers the actor owns, edits, belongs to via a group, or follows. System layers are disabled (M5): hidden from the picker, and `resolveLayers` drops `ownerKind = 'system'` slugs so old URLs and saved preferences cannot load them. The default layer set becomes empty instead of the city's system defaults.
+- Editor: Google links and custom places only; catalog search hidden (M7).
 - Hide type filters for products/content; places (and attached events, §4) only.
 - Empty state when no layer is loaded: "Create a layer from Google Maps links" CTA plus a list of the user's layers. Signed-out visitors see the sign-in prompt.
 
@@ -104,7 +109,4 @@ layer_item_event
 
 ## Open questions
 
-- **Q1.** Hide system catalog layers (today/weekend/food/Daily Pick) from the MVP picker? Proposed: yes, while the flag is on.
-- **Q2.** Must imported places be inside the layer's city (Greater Houston)? Proposed: accept any location for private/group layers; the camera fits the loaded POIs.
-- **Q3.** Should catalog places and custom (hand-dropped) places still be addable in the MVP editor, or only Google links? Proposed: keep custom places as a fallback for places Google doesn't know; hide catalog search.
-- **Q4.** Recurring events (weekly meetups) — out of scope for the MVP?
+None. Q1–Q4 were answered by the owner on 2026-10-20 and recorded as M5–M8.
