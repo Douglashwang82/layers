@@ -273,6 +273,49 @@ describe("the MVP map", () => {
     expect(picker.map((l) => l.layer.slug)).toContain(mine);
     expect(picker[0].layer.slug).toBe("my-saves");
   });
+  it("shows a layer in every city and counts its Google places", async () => {
+    // Made while Houston was selected, holding places that are elsewhere (M6).
+    const trip = (
+      await createLayerFromGoogle(alice, {
+        title: "Tokyo trip",
+        city: "houston",
+        providerPlaceIds: [placeId(30), placeId(31)],
+      })
+    ).layer.slug;
+    const { rows } = await pool.query(
+      "SELECT id,slug,name,timezone,latitude,longitude FROM city WHERE slug='tokyo'",
+    );
+    const tokyo = rows[0];
+    const result = await runMapQuery(
+      state([trip], { city: "tokyo" }),
+      tokyo,
+      alice,
+    );
+    expect(result.layers).toMatchObject([
+      { slug: trip, status: "ok", count: 2 },
+    ]);
+    const refs = await listExternalReferences(
+      state([trip], { city: "tokyo" }),
+      tokyo,
+      alice,
+      0,
+    );
+    expect(refs.references).toHaveLength(2);
+    // With the flag off, layers stay scoped to their own city.
+    flags.mapMvp = false;
+    try {
+      const scoped = await runMapQuery(
+        state([trip], { city: "tokyo" }),
+        tokyo,
+        alice,
+      );
+      expect(scoped.layers).toMatchObject([
+        { slug: trip, status: "other-city" },
+      ]);
+    } finally {
+      flags.mapMvp = true;
+    }
+  });
   it("ignores search, area, dates and non-place types from the URL", async () => {
     const parsed = parseMapQuery({
       q: "noodles",

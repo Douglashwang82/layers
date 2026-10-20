@@ -263,7 +263,8 @@ export async function requireEditableLayer(id: string, actor: Actor) {
 /**
  * Resolve applied layer slugs for a map query. Unavailable slugs are reported
  * without titles or counts; other-city layers are reported so the UI can
- * explain why they were hidden. While the map MVP is on, system layers are
+ * explain why they were hidden (not under the map MVP, where a layer shows
+ * in every city). While the map MVP is on, system layers are
  * disabled: they are dropped silently (`disabled`) so an old link or a
  * remembered preference never loads them.
  */
@@ -322,7 +323,10 @@ export async function resolveLayers(
       unavailable.push(slug);
       continue;
     }
-    if (layer.cityId !== city.id) otherCity.push({ layer, access });
+    // The MVP has no geographic limit (a layer's places can be anywhere), so
+    // the selected city only moves the camera; elsewhere layers stay city-scoped.
+    if (layer.cityId !== city.id && !flags.mapMvp)
+      otherCity.push({ layer, access });
     else resolved.push({ layer, access });
   }
   return { resolved, unavailable, otherCity, disabled };

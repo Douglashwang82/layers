@@ -670,9 +670,15 @@ export function MapWorkspace({
     return () => window.clearInterval(timer);
   }, [result.generatedAt, city.timezone]);
   useEffect(() => {
-    setAnnounce(format(t.resultsInArea, { count: result.total }));
     setLimit(20);
-  }, [result.total, result.generatedAt, t.resultsInArea]);
+  }, [result.total, result.generatedAt]);
+  // MVP counts include Google places as they get a location (as placeCount).
+  const announcedCount = mvp
+    ? result.total + externalPoints.length
+    : result.total;
+  useEffect(() => {
+    setAnnounce(format(t.resultsInArea, { count: announcedCount }));
+  }, [announcedCount, result.generatedAt, t.resultsInArea]);
   const mapped = result.items.filter(
     (i) => i.latitude != null && i.longitude != null,
   );
@@ -761,7 +767,7 @@ export function MapWorkspace({
   }, [tip]);
   const layerCount = result.layers.filter((l) => l.status === "ok").length;
   // MVP layers are mostly Google places, counted once they have a location.
-  const placeCount = mvp ? result.total + externalPoints.length : result.total;
+  const placeCount = announcedCount;
   const otherCity = result.layers.filter((l) => l.status === "other-city");
   const preview = selected && (
     <ItemPreview
@@ -808,7 +814,7 @@ export function MapWorkspace({
       <p className="result-count" role="status" aria-live="polite">
         {refreshing
           ? t.previousResults
-          : format(t.resultsInArea, { count: result.total })}
+          : format(t.resultsInArea, { count: placeCount })}
         {!refreshing && result.unmapped > 0 && (
           <small>
             {" "}

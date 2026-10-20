@@ -26,6 +26,7 @@ import {
   resolveLayers,
 } from "../layers/repository";
 import { listMapEvents } from "../layers/events";
+import { countExternalReferences } from "./external";
 import { flags } from "@/lib/config";
 import { customMapItem } from "@/lib/custom-places";
 import { listActiveCustomPlaces } from "../custom-places/repository";
@@ -602,6 +603,11 @@ export async function runMapQuery(
   for (const item of items)
     for (const slug of item.layers)
       counts.set(slug, (counts.get(slug) ?? 0) + 1);
+  // MVP layers are mostly Google places, which the item list above never
+  // holds; count them too (the MVP has no area or date filter to apply).
+  if (flags.mapMvp)
+    for (const [slug, n] of await countExternalReferences(resolved, actor, now))
+      counts.set(slug, (counts.get(slug) ?? 0) + n);
   const availability: LayerAvailability[] = [];
   const describe = (
     { layer }: LayerWithAccess,

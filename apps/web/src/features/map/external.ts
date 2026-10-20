@@ -6,7 +6,7 @@ import {
   type MapState,
 } from "@taiwanhub/shared";
 import { flags } from "@/lib/config";
-import { resolveLayers } from "../layers/repository";
+import { resolveLayers, type LayerWithAccess } from "../layers/repository";
 import type { MapCity } from "./query";
 /**
  * Every MVP layer place is external, so a whole layer resolves in one page
@@ -158,6 +158,52 @@ export async function listExternalReferences(
         : null,
     totalAuthorizedReferences: matching.length,
   };
+}
+/**
+ * How many external places each resolved member layer contributes, by the
+ * same visibility rules as listExternalReferences (system layers excluded).
+ * Layer counts would otherwise show only catalog and custom places.
+ */
+export async function countExternalReferences(
+  resolved: LayerWithAccess[],
+  actor: Actor | null,
+  now = new Date(),
+) {
+  const counts = new Map<string, number>();
+  const curated = resolved.filter(
+    (r) => r.layer.ownerKind !== "system" && r.layer.rule?.kind !== "saves",
+  );
+  if (curated.length) {
+    const result = await pool.query<{ layer_id: string; count: number }>(
+      `SELECT i.layer_id, count(*)::int AS count
+       FROM layer_item i JOIN place_subject s ON s.id=i.subject_id
+       WHERE i.layer_id=ANY($1::uuid[]) AND s.status='active' AND s.catalog_place_id IS NULL
+         AND (i.layer_id=ANY($2::uuid[]) OR s.city_review_status='approved')
+         AND (i.valid_from IS NULL OR i.valid_from <= $3) AND (i.valid_until IS NULL OR i.valid_until > $3)
+       GROUP BY i.layer_id`,
+      [
+        curated.map((r) => r.layer.id),
+        curated
+          .filter((r) => r.access.role !== "public")
+          .map((r) => r.layer.id),
+        now,
+      ],
+    );
+    for (const row of result.rows) {
+      const slug = curated.find((r) => r.layer.id === row.layer_id)!.layer.slug;
+      counts.set(slug, row.count);
+    }
+  }
+  const saves = resolved.find((r) => r.layer.rule?.kind === "saves");
+  if (saves && actor) {
+    const result = await pool.query<{ count: number }>(
+      `SELECT count(*)::int AS count FROM saved_place_subject x JOIN place_subject s ON s.id=x.subject_id
+       WHERE x.user_id=$1 AND s.status='active' AND s.catalog_place_id IS NULL`,
+      [actor.id],
+    );
+    counts.set(saves.layer.slug, result.rows[0].count);
+  }
+  return counts;
 }
 /** The actor's saved external places, for the My saves page. Owner-only. */
 export async function listSavedExternalPlaces(userId: string) {
