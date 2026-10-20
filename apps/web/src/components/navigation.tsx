@@ -1,7 +1,7 @@
 "use client";
 import { brand, localizedCityName } from "@taiwanhub/shared";
 import Link from "next/link";
-import { usePathname, useRouter } from "next/navigation";
+import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
 import {
   Map as MapIcon,
@@ -49,8 +49,21 @@ export function Navigation({
 }) {
   const pathname = usePathname();
   const router = useRouter();
+  const searchParams = useSearchParams();
   const mapPage = mapHome && pathname === "/";
   const [switching, setSwitching] = useState(false);
+  /*
+   * This layout-level component is not re-rendered by a query-only
+   * navigation, so `city` can be stale. Show the city actually on screen:
+   * the map URL's city, else the one just chosen, else the server's. A stale
+   * value would also make re-choosing that city a no-op (no change event).
+   */
+  const [chosen, setChosen] = useState<string | null>(null);
+  useEffect(() => setChosen(null), [city]);
+  const urlCity = pathname === "/" ? searchParams.get("city") : null;
+  const currentCity =
+    [urlCity, chosen].find((slug) => cities.some((c) => c.slug === slug)) ??
+    city;
   const menu = useRef<HTMLDetailsElement>(null);
   const mapTheme = useMapTheme();
   // The floating menu is non-modal: an outside press dismisses it.
@@ -117,11 +130,12 @@ export function Navigation({
       <MapPin size={16} aria-hidden="true" />
       <span className="sr-only">{t.city}</span>
       <select
-        value={city}
+        value={currentCity}
         disabled={switching}
         aria-busy={switching || undefined}
         onChange={async (e) => {
           const slug = e.target.value;
+          setChosen(slug);
           setSwitching(true);
           try {
             await fetch("/api/v1/preferences", {

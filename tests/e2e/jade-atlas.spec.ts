@@ -173,16 +173,19 @@ test("choosing another city moves the map to it", async ({ page }) => {
   );
   await expect(page.locator(".mapboxgl-canvas")).toBeVisible();
   const map = page.locator(".map-canvas");
-  // Tokyo, then Taipei: the camera settles on each city's center.
-  await page.getByLabel("Your city").selectOption("tokyo");
-  await expect(page).toHaveURL(/city=tokyo/);
-  await expect(map).toHaveAttribute(
-    "data-camera",
-    /^139\.6\d*,35\.6\d*,10\.5$/,
-  );
-  await page.getByLabel("Your city").selectOption("taipei");
-  await expect(map).toHaveAttribute(
-    "data-camera",
-    /^121\.5\d*,25\.0\d*,10\.5$/,
-  );
+  const select = page.getByLabel("Your city");
+  // Tokyo, Taipei, then back to the starting city: the camera settles on each
+  // city's center, and the picker shows the city on screen (a stale value
+  // would make re-choosing the starting city fire no change at all).
+  const visits = [
+    ["tokyo", /^139\.6\d*,35\.6\d*,10\.5$/],
+    ["taipei", /^121\.5\d*,25\.0\d*,10\.5$/],
+    ["houston", /^-95\.3\d*,29\.7\d*,10\.5$/],
+  ] as const;
+  for (const [slug, camera] of visits) {
+    await select.selectOption(slug);
+    await expect(page).toHaveURL(new RegExp(`city=${slug}`));
+    await expect(select).toHaveValue(slug);
+    await expect(map).toHaveAttribute("data-camera", camera);
+  }
 });
