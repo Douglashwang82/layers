@@ -3,6 +3,7 @@ import {
   type Actor,
   type Bounds,
   type DateWindow,
+  type LayerEvent,
   type MapItemKey,
   type ItemType,
   type LocationStatus,
@@ -24,6 +25,7 @@ import {
   type LayerWithAccess,
   resolveLayers,
 } from "../layers/repository";
+import { listMapEvents } from "../layers/events";
 import { flags } from "@/lib/config";
 import { customMapItem } from "@/lib/custom-places";
 import { listActiveCustomPlaces } from "../custom-places/repository";
@@ -105,6 +107,8 @@ export type MapQueryResult = {
   searchScope: "layers" | "city";
   /** Present when a Daily Pick layer of this city is applied. */
   dailyPick: DailyPickView | null;
+  /** Upcoming events attached to places in the applied layers, by place key (catalog, custom or subject). */
+  events: Record<string, LayerEvent[]>;
 };
 type Row = Record<string, unknown>;
 const iso = (v: unknown) =>
@@ -485,11 +489,14 @@ export async function runMapQuery(
 ): Promise<MapQueryResult> {
   const window = resolveDateWindow(state.date, city.timezone, now);
   const candidates = await loadCandidates(city, window.start);
-  const slugs = state.layers === "none" ? [] : state.layers;
-  const { resolved, unavailable, otherCity } = await resolveLayers(
-    slugs,
+  const { resolved, unavailable, otherCity, disabled } = await resolveLayers(
+    state.layers === "none" ? [] : state.layers,
     actor,
     city,
+  );
+  // Disabled (system, under the map MVP) layers leave the state as if never applied.
+  const slugs = (state.layers === "none" ? [] : state.layers).filter(
+    (slug) => !disabled.includes(slug),
   );
   const searchAll = state.scope === "city" && state.q.length > 0;
   const groups: MapItem[][] = [];
@@ -633,10 +640,12 @@ export async function runMapQuery(
         count: 0,
       });
   }
+  const events = searchAll ? {} : await listMapEvents(resolved, now);
   return {
     generatedAt: now.toISOString(),
     city,
     state: { ...state, layers: state.layers === "none" ? "none" : slugs },
+    events,
     layers: availability,
     window: {
       start: window.start.toISOString(),

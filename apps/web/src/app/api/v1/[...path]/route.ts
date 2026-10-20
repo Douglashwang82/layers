@@ -43,6 +43,17 @@ import {
   publishLayer,
 } from "@/features/layers/service";
 import {
+  createLayerEvent,
+  deleteLayerEvent,
+  listLayerEvents,
+  updateLayerEvent,
+} from "@/features/layers/events";
+import {
+  createLayerFromGoogle,
+  importGooglePlaces,
+  resolveGoogleLinks,
+} from "@/features/google-links/service";
+import {
   getContentPost,
   listContentPosts,
 } from "@/features/content/repository";
@@ -216,6 +227,8 @@ async function handler(
         const found = await getLayer(id, actor, city);
         if (!found)
           throw new AppError(404, "NOT_FOUND", "This layer is unavailable.");
+        if (action === "events")
+          return ok({ events: await listLayerEvents(actor, id) });
         if (action === "items")
           return ok({ items: await listLayerItemRefs(found.layer.id) });
         if (action === "places") {
@@ -347,12 +360,16 @@ async function handler(
       }
       const a = requireActor(actor);
       await contributionLimit(a);
-      if (Number(request.headers.get("content-length") ?? 0) > 16384)
+      // Pasted Google Maps URLs are long; every other write stays small.
+      const maxBody = resource === "google-links" ? 131072 : 16384;
+      if (Number(request.headers.get("content-length") ?? 0) > maxBody)
         throw new AppError(413, "TOO_LARGE", "Request is too large.");
       const raw = method === "DELETE" ? "{}" : await request.text();
-      if (raw.length > 16384)
+      if (raw.length > maxBody)
         throw new AppError(413, "TOO_LARGE", "Request is too large.");
       const body: unknown = JSON.parse(raw);
+      if (resource === "google-links" && id === "resolve" && method === "POST")
+        return ok(await resolveGoogleLinks(a, body));
       if (
         resource === "admin" &&
         id === "ingestion" &&
@@ -485,6 +502,18 @@ async function handler(
       if (resource === "layers") {
         if (!id && method === "POST")
           return ok(await createLayer(a, body), 201);
+        if (id === "from-google" && !action && method === "POST")
+          return ok(await createLayerFromGoogle(a, body), 201);
+        if (id && action === "google-places" && method === "POST")
+          return ok(await importGooglePlaces(a, id, body), 201);
+        if (id && action === "events" && !path[3] && method === "POST")
+          return ok(await createLayerEvent(a, id, body), 201);
+        if (id && action === "events" && path[3] && method === "PATCH")
+          return ok(
+            await updateLayerEvent(a, id, z.uuid().parse(path[3]), body),
+          );
+        if (id && action === "events" && path[3] && method === "DELETE")
+          return ok(await deleteLayerEvent(a, id, z.uuid().parse(path[3])));
         if (id && !action && method === "PATCH")
           return ok(await updateLayer(a, id, body));
         if (id && !action && method === "DELETE")

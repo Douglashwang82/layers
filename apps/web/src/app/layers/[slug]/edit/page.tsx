@@ -3,7 +3,7 @@ import Link from "next/link";
 import { notFound, redirect } from "next/navigation";
 import { getCopy, getLocale } from "@/lib/i18n";
 import { currentActor } from "@/lib/session";
-import { flags } from "@/lib/config";
+import { flags, placesClientConfig } from "@/lib/config";
 import { getLayer } from "@/features/layers/repository";
 import { getLayerContents } from "@/features/layers/contents";
 import { getCities } from "@/features/catalog/repository";
@@ -65,6 +65,8 @@ export default async function EditLayerPage({
             ? { latitude: cityRow.latitude, longitude: cityRow.longitude }
             : undefined
         }
+        mvp={flags.mapMvp}
+        providerKey={placesClientConfig().providerKey}
         t={t}
         locale={locale}
       />

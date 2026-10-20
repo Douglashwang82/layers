@@ -12,6 +12,7 @@ import {
   normalizeSystemLayerTitles,
   systemRule,
 } from "@taiwanhub/shared";
+import { flags } from "@/lib/config";
 export type GroupRole = "owner" | "editor" | "viewer";
 export type LayerRecord = {
   id: string;
@@ -262,7 +263,9 @@ export async function requireEditableLayer(id: string, actor: Actor) {
 /**
  * Resolve applied layer slugs for a map query. Unavailable slugs are reported
  * without titles or counts; other-city layers are reported so the UI can
- * explain why they were hidden.
+ * explain why they were hidden. While the map MVP is on, system layers are
+ * disabled: they are dropped silently (`disabled`) so an old link or a
+ * remembered preference never loads them.
  */
 export async function resolveLayers(
   slugs: string[],
@@ -272,7 +275,8 @@ export async function resolveLayers(
   const resolved: LayerWithAccess[] = [];
   const unavailable: string[] = [];
   const otherCity: LayerWithAccess[] = [];
-  if (!slugs.length) return { resolved, unavailable, otherCity };
+  const disabled: string[] = [];
+  if (!slugs.length) return { resolved, unavailable, otherCity, disabled };
   const [memberships, following, result] = await Promise.all([
     getMemberships(actor?.id),
     followingSet(actor?.id),
@@ -304,6 +308,10 @@ export async function resolveLayers(
       unavailable.push(slug);
       continue;
     }
+    if (flags.mapMvp && layer.ownerKind === "system") {
+      disabled.push(slug);
+      continue;
+    }
     const access = accessFor(
       layer,
       actor,
@@ -317,7 +325,7 @@ export async function resolveLayers(
     if (layer.cityId !== city.id) otherCity.push({ layer, access });
     else resolved.push({ layer, access });
   }
-  return { resolved, unavailable, otherCity };
+  return { resolved, unavailable, otherCity, disabled };
 }
 export type LibraryScope = "discover" | "following" | "mine" | "groups";
 /** Library tabs: a finite curated set, not an infinite feed. Search matches title, owner and purpose. */
@@ -349,6 +357,7 @@ export async function listLibrary(
       `l.owner_kind='group' AND l.owner_group_id IN (SELECT group_id FROM group_member WHERE user_id=$1) AND l.lifecycle<>'archived'`,
     );
   }
+  if (flags.mapMvp) where.push(`l.owner_kind<>'system'`);
   if (q) {
     values.push("%" + q.replace(/[\\%_]/g, "\\$&") + "%");
     where.push(
@@ -383,6 +392,31 @@ export async function listLibrary(
       },
     });
   return layers;
+}
+/**
+ * The map MVP's layer picker: the actor's own layers (with My saves), their
+ * groups' layers and the layers they follow, in this city, without archived
+ * ones and without duplicates.
+ */
+export async function listMapLibrary(
+  actor: Actor,
+  city: { id: string; slug: string; name: string; timezone: string },
+) {
+  const scopes = await Promise.all(
+    (["mine", "groups", "following"] as const).map((scope) =>
+      listLibrary(scope, actor, city),
+    ),
+  );
+  const seen = new Set<string>();
+  return scopes
+    .flat()
+    .filter(
+      ({ layer }) =>
+        layer.lifecycle !== "archived" &&
+        layer.cityId === city.id &&
+        !seen.has(layer.slug) &&
+        !!seen.add(layer.slug),
+    );
 }
 /** Layers the actor can add items to, for the Add-to-layer picker. */
 export async function listEditableLayers(actor: Actor) {

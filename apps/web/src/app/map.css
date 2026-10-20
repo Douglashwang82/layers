@@ -1872,3 +1872,87 @@ body[data-map-theme="dark"] .provider-slot {
   background: #ffffff;
   color: #111111;
 }
+
+/* Map MVP: layers from Google Maps links and events attached to places. */
+.row-event {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 13px;
+  line-height: 19px;
+  color: var(--th-primary);
+}
+.attached-events,
+.layer-item-events {
+  display: grid;
+  gap: var(--th-space-2);
+}
+.attached-events {
+  padding: var(--th-space-3) var(--th-space-3) 0;
+}
+.attached-events h3 {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin: 0;
+  font-size: 15px;
+}
+.event-list {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+  display: grid;
+  gap: var(--th-space-2);
+}
+.event-list li {
+  display: grid;
+  gap: 2px;
+}
+.event-when {
+  font-size: 13px;
+  color: var(--th-muted);
+}
+.layer-item-events {
+  padding: 0 var(--th-space-2) var(--th-space-2);
+}
+.layer-item-events summary {
+  cursor: pointer;
+  font-size: 13px;
+  color: var(--th-muted);
+}
+.layer-item-events .event-list li {
+  grid-template-columns: minmax(0, 1fr) auto;
+}
+.layer-item-events .event-list li .editor-item-actions {
+  grid-column: 2;
+  grid-row: 1 / span 3;
+  align-self: center;
+}
+.google-place-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: var(--th-space-2);
+  align-items: center;
+  padding: var(--th-space-2);
+}
+.google-place-row > * {
+  min-width: 0;
+}
+.google-link-results {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+  display: grid;
+  gap: var(--th-space-3);
+}
+.google-link-result {
+  display: grid;
+  gap: var(--th-space-1);
+  min-width: 0;
+}
+.google-link-input {
+  overflow-wrap: anywhere;
+}
+.mvp-places:empty {
+  display: none;
+}

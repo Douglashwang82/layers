@@ -12,6 +12,10 @@ import { itemTitle, ItemMeta } from "@/components/map/map-results";
 import type { CustomPlace } from "@/features/custom-places/repository";
 import { customMapItem } from "@/lib/custom-places";
 import { NewPlaceForm } from "./new-place-form";
+import type { LayerEvent } from "@taiwanhub/shared";
+import { GoogleLinksForm } from "./google-links-form";
+import { LayerGooglePlaces } from "./layer-google-places";
+import { LayerItemEvents } from "./layer-item-events";
 type Feedback = { tone: "success" | "error"; text: string } | null;
 type Draft = {
   title: string;
@@ -58,6 +62,8 @@ export function LayerEditor({
   canCreatePlaces = false,
   mapToken,
   cityCenter = { latitude: 29.7604, longitude: -95.3698 },
+  mvp = false,
+  providerKey = null,
 }: {
   mode: "create" | "edit";
   layer?: LayerRecord;
@@ -77,6 +83,13 @@ export function LayerEditor({
   mapToken?: string;
   /** The layer city's centre, where the pin map starts. */
   cityCenter?: { latitude: number; longitude: number };
+  /**
+   * Map MVP: places come from Google Maps links (or custom places) instead of
+   * catalog search, and each place can carry events.
+   */
+  mvp?: boolean;
+  /** Places UI Kit key for Google place previews. */
+  providerKey?: string | null;
 }) {
   const router = useRouter();
   const [draft, setDraft] = useState<Draft>(
@@ -117,6 +130,29 @@ export function LayerEditor({
   const [searched, setSearched] = useState<string | null>(null);
   const [searching, setSearching] = useState(false);
   const searchSeq = useRef(0);
+  /** Attached events for every place in the layer (MVP). */
+  const [events, setEvents] = useState<LayerEvent[]>([]);
+  /** Bumped after Google places are added, so their list reloads. */
+  const [googleReload, setGoogleReload] = useState(0);
+  const layerId = layer?.id;
+  useEffect(() => {
+    if (!mvp || !layerId) return;
+    let cancelled = false;
+    (
+      api(`layers/${layerId}/events`, "GET") as Promise<{
+        events: LayerEvent[];
+      }>
+    )
+      .then((data) => {
+        if (!cancelled) setEvents(data.events);
+      })
+      .catch(() => {});
+    return () => {
+      cancelled = true;
+    };
+  }, [mvp, layerId]);
+  const setKeyEvents = (key: string, next: LayerEvent[]) =>
+    setEvents((all) => [...all.filter((e) => e.key !== key), ...next]);
   const update = (patch: Partial<Draft>) => {
     setDraft((d) => ({ ...d, ...patch }));
     setDirty(true);
@@ -571,9 +607,33 @@ export function LayerEditor({
                     </button>
                   </span>
                 </a>
+                {mvp && item.type === "place" && (
+                  <LayerItemEvents
+                    layerId={layer.id}
+                    itemKey={item.key}
+                    itemName={itemTitle(item, locale)}
+                    events={events.filter((e) => e.key === item.key)}
+                    city={city}
+                    t={t}
+                    locale={locale}
+                    onChange={(next) => setKeyEvents(item.key, next)}
+                  />
+                )}
               </li>
             ))}
           </ul>
+          {mvp && (
+            <LayerGooglePlaces
+              layer={layer}
+              city={city}
+              providerKey={providerKey}
+              events={events}
+              onEvents={setKeyEvents}
+              reload={googleReload}
+              t={t}
+              locale={locale}
+            />
+          )}
           {editingPlace && (
             <NewPlaceForm
               key={editingPlace.id}
@@ -618,12 +678,24 @@ export function LayerEditor({
             </p>
           )}
           <StatusMessage feedback={itemFeedback} />
-          <h3 id="add-items">{t.addItems}</h3>
+          <h3 id="add-items">{mvp ? t.addFromGoogle : t.addItems}</h3>
+          {mvp && (
+            <GoogleLinksForm
+              mode="add"
+              layerId={layer.id}
+              city={city}
+              providerKey={providerKey}
+              t={t}
+              locale={locale}
+              onAdded={() => setGoogleReload((n) => n + 1)}
+            />
+          )}
           <form
             className="editor-search"
             onSubmit={search}
             role="search"
             aria-labelledby="add-items"
+            hidden={mvp}
           >
             <input
               type="search"

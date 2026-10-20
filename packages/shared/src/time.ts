@@ -61,6 +61,33 @@ export function zonedMidnight(isoDay: string, timeZone: string) {
   }
   return new Date(guess);
 }
+/** `YYYY-MM-DDTHH:mm` wall-clock time, as a `datetime-local` input submits it. */
+export const localDateTime = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}$/;
+/**
+ * The instant a wall-clock time occurs in a time zone, DST-safe (the same
+ * fixed-point search as zonedMidnight).
+ */
+export function zonedDateTime(local: string, timeZone: string) {
+  const [day, time] = local.split("T");
+  const [y, m, d] = day.split("-").map(Number);
+  const [hours, minutes] = time.split(":").map(Number);
+  const target = Date.UTC(y, m - 1, d, hours, minutes);
+  let guess = target;
+  for (let i = 0; i < 3; i++) {
+    const p = zonedParts(new Date(guess), timeZone);
+    const diff =
+      Date.UTC(p.year, p.month - 1, p.day, p.hour, p.minute) - target;
+    if (diff === 0) break;
+    guess -= diff;
+  }
+  return new Date(guess);
+}
+/** The `YYYY-MM-DDTHH:mm` wall-clock time of an instant in a time zone. */
+export function localDateTimeOf(date: Date, timeZone: string) {
+  const p = zonedParts(date, timeZone);
+  const pad = (n: number) => String(n).padStart(2, "0");
+  return `${p.year}-${pad(p.month)}-${pad(p.day)}T${pad(p.hour)}:${pad(p.minute)}`;
+}
 export function addDays(isoDay: string, days: number) {
   const t = Date.parse(isoDay + "T00:00:00Z") + days * 86400000;
   return new Date(t).toISOString().slice(0, 10);

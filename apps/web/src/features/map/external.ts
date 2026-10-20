@@ -5,9 +5,14 @@ import {
   type Actor,
   type MapState,
 } from "@taiwanhub/shared";
+import { flags } from "@/lib/config";
 import { resolveLayers } from "../layers/repository";
 import type { MapCity } from "./query";
-export const externalPageSize = 12;
+/**
+ * Every MVP layer place is external, so a whole layer resolves in one page
+ * there; elsewhere external places supplement catalog results in small pages.
+ */
+export const externalPageSize = flags.mapMvp ? 60 : 12;
 export type ExternalReference = {
   subjectId: string;
   canonicalKey: `subject:${string}`;

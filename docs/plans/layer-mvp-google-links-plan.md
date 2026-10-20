@@ -1,6 +1,6 @@
 # Map MVP: layers built from Google Maps links
 
-Status: approved (2026-10-20), not started. Supersedes the search-first parts of [map-first-layer-experience-guide.md](../guides/map-first-layer-experience-guide.md) while `FEATURE_MAP_MVP` is on.
+Status: P1–P5 implemented 2026-10-20 (migration `0023`, local only; see [Implementation notes](#implementation-notes-2026-10-20)). P0 (live key) and P6 (rollout) wait on the owner. Supersedes the search-first parts of [map-first-layer-experience-guide.md](../guides/map-first-layer-experience-guide.md) while `FEATURE_MAP_MVP` is on.
 
 ## Goal
 
@@ -14,16 +14,16 @@ Search is disabled, not deleted.
 
 ## Decisions (owner, 2026-10-20)
 
-| #   | Decision                                                                                                                                                                                                                                     |
-| --- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| M1  | Only **single-place** share links (`maps.app.goo.gl/…`, `goo.gl/maps/…`, `google.com/maps/place/…`, `maps.google.com/?cid=…`). Google Maps saved lists are out of scope: there is no official API and parsing them is fragile and ToS-risky. |
-| M2  | Links are resolved **server-side with Places API (New)** to a Google `place_id`.                                                                                                                                                             |
-| M3  | Events are LocalLink-only data, attached by editing a place inside a layer. Google links never produce events.                                                                                                                               |
-| M4  | Search is hidden behind a feature flag (`FEATURE_MAP_MVP=true` hides it); the code stays.                                                                                                                                                    |
-| M5  | Built-in system layers (today/weekend/food/community/Daily Pick/Discover) are disabled while the flag is on: hidden from the picker and dropped by the server from map queries.                                                              |
-| M6  | No geographic limit on imported places; the camera fits the loaded POIs.                                                                                                                                                                     |
-| M7  | Custom (hand-dropped) places stay addable as a fallback for places Google doesn't know; catalog search in the editor is hidden.                                                                                                              |
-| M8  | Recurring events are out of scope; each attached event is a single occurrence.                                                                                                                                                               |
+| #   | Decision                                                                                                                                                                                                                                   |
+| --- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| M1  | Only **single-place** share links (`maps.app.goo.gl/…`, `goo.gl/maps/…`, `google.com/maps/place/…`, `maps.google.com/?q=…`). Google Maps saved lists are out of scope: there is no official API and parsing them is fragile and ToS-risky. |
+| M2  | Links are resolved **server-side with Places API (New)** to a Google `place_id`.                                                                                                                                                           |
+| M3  | Events are LocalLink-only data, attached by editing a place inside a layer. Google links never produce events.                                                                                                                             |
+| M4  | Search is hidden behind a feature flag (`FEATURE_MAP_MVP=true` hides it); the code stays.                                                                                                                                                  |
+| M5  | Built-in system layers (today/weekend/food/community/Daily Pick/Discover) are disabled while the flag is on: hidden from the picker and dropped by the server from map queries.                                                            |
+| M6  | No geographic limit on imported places; the camera fits the loaded POIs.                                                                                                                                                                   |
+| M7  | Custom (hand-dropped) places stay addable as a fallback for places Google doesn't know; catalog search in the editor is hidden.                                                                                                            |
+| M8  | Recurring events are out of scope; each attached event is a single occurrence.                                                                                                                                                             |
 
 ## What already exists (reuse, don't rebuild)
 
@@ -60,7 +60,7 @@ Input: up to 50 URLs (Zod: strings, max length 2 048). Per URL:
 Rules:
 
 - The model is never involved; no LLM, no free-form text is trusted. Coordinates from the URL are used only as a search bias and are **not stored**.
-- Server key `GOOGLE_PLACES_SERVER_KEY` (server-only, IP/API-restricted, separate from `NEXT_PUBLIC_GOOGLE_PLACES_UI_KIT_KEY`). Document it in `.env.example`. Daily quota + budget alert set in Google Cloud by the owner.
+- Server key `GOOGLE_MAPS_LINK_API_KEY` (server-only, IP/API-restricted, separate from `NEXT_PUBLIC_GOOGLE_PLACES_UI_KIT_KEY`). Document it in `.env.example`. Daily quota + budget alert set in Google Cloud by the owner.
 - Fixtures cover: each URL shape, list links (→ `unsupported`), redirect to a non-allowlisted host, redirect loop, timeout, API zero results, API error, partial batch failure.
 
 ### 3. Create-layer-from-links flow
@@ -110,3 +110,18 @@ layer_item_event
 ## Open questions
 
 None. Q1–Q4 were answered by the owner on 2026-10-20 and recorded as M5–M8.
+
+## Implementation notes (2026-10-20)
+
+Where the build differs from, or settles, the design above:
+
+- **Flag and URLs.** `FEATURE_MAP_MVP` (default off). `resolveMapRequest` applies `mvpMapState` (no `q`, city scope, `area`, date filter; types `place` only), and the home page redirects any URL carrying those parameters or an explicit system layer to its canonical form, so the client never shows a state the server ignores. Without a remembered preference the MVP map starts empty (`layers=none` semantics) instead of on Discover.
+- **System layers.** `resolveLayers` returns them as `disabled` (neither resolved nor "unavailable"); the library hides them; `runMapQuery` removes them from `state.layers`.
+- **Picker.** The Layers tab lists the member's own layers (with My saves), group layers and followed layers (`listMapLibrary`) as checkboxes, plus "Create a layer from Google Maps". Signed-in members with nothing loaded land on that tab; signed-out visitors see the sign-in prompt.
+- **Resolver.** `features/google-links/resolver.ts`. Links with only a `cid` and no name are reported as `unsupported` (`no_place_name`): Places API (New) cannot search by CID, and fetching the Maps page body to find a name is out of bounds. Consent interstitials (`consent.google.com?continue=`) are read, never fetched. Budget: 150 links per member per 10 minutes on top of the 30 writes/minute limit. `GOOGLE_MAPS_LINK_API_KEY=fake` (non-production) selects a deterministic test double that never expands short links.
+- **Import.** `POST /api/v1/layers/from-google` creates an **active** private/group layer and its places in one transaction; `POST /api/v1/layers/{id}/google-places` adds to an existing layer. Placement reuses `subjectPlacement` with `anyCity` (M6): private/group layers take reviewed external places from any city; public layers still require a city review, and catalog-linked places keep the city match. Skipped places come back with a reason code.
+- **Events.** `layer_item_event` as designed. Shown as the next event on result rows and Google place rows, and as an "Upcoming events" list above the selected place's details. Not built: a marker badge and date-filter narrowing (the MVP has no date filter). Viewers of a public layer only see events on city-reviewed external places, the same rule as for the places themselves. Writes need `FEATURE_MAP_MVP`.
+- **Many Google places.** External references come 60 per page under the flag, every page loads automatically, and the rows stay mounted (hidden) while the panel shows layers or details, so pins never disappear. The camera keeps framing all loaded places until the user moves the map.
+- **Tests.** Unit: `tests/unit/google-links.test.ts`. Integration: `tests/integration/map-mvp.test.ts`. Browser: `tests/e2e/mvp/` via `pnpm test:e2e:mvp` (`playwright.mvp.config.ts`, its own dev server with the flag on; CI runs it after `pnpm test:e2e`).
+
+Rollout (P6), once the owner authorizes it: apply migration `0023` to production, create the restricted `GOOGLE_MAPS_LINK_API_KEY` with a daily quota and budget alert, confirm `NEXT_PUBLIC_GOOGLE_PLACES_UI_KIT_KEY` is set, set `FEATURE_MAP_MVP=true` in Vercel, then run the P0 live checks on production links.

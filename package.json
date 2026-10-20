@@ -13,6 +13,7 @@
     "test": "vitest run",
     "test:integration": "vitest run --config vitest.integration.config.ts",
     "test:e2e": "playwright test",
+    "test:e2e:mvp": "playwright test --config playwright.mvp.config.ts",
     "db:generate": "drizzle-kit generate",
     "db:migrate": "tsx packages/database/src/migrate.ts",
     "db:seed": "tsx packages/database/src/seed.ts",

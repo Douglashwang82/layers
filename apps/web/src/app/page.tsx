@@ -3,7 +3,53 @@ import { currentActor } from "@/lib/session";
 import { flags, placesClientConfig } from "@/lib/config";
 import { resolveMapRequest } from "@/features/map/request";
 import { runMapQuery } from "@/features/map/query";
+import { redirect } from "next/navigation";
 import { getMapItemDetail } from "@/features/map/detail";
+import { listMapLibrary, resolveLayers } from "@/features/layers/repository";
+import {
+  serializeMapQuery,
+  type Actor,
+  type MapState,
+} from "@taiwanhub/shared";
+import type { MapCity } from "@/features/map/query";
+const ignoredByMvp = ["q", "scope", "area", "date", "types"] as const;
+/** The MVP's canonical map URL when the requested one carries what it ignores; null when already canonical. */
+async function mvpCanonicalUrl(
+  params: Record<string, string | undefined>,
+  state: MapState,
+  city: MapCity,
+  actor: Actor | null,
+) {
+  // Remembered layers never come from the URL; the map query already drops
+  // their disabled entries, so only explicit URL layers are rewritten.
+  const explicit =
+    params.layers === undefined || state.layers === "none" ? [] : state.layers;
+  const { disabled } = await resolveLayers(explicit, actor, city);
+  if (
+    !disabled.length &&
+    !ignoredByMvp.some((key) => params[key] !== undefined)
+  )
+    return null;
+  const layers = explicit.filter((slug) => !disabled.includes(slug));
+  // Only what the MVP honours: city, layers, the selected item and the view.
+  return (
+    "/" +
+    serializeMapQuery(
+      {
+        city: state.city,
+        layers:
+          params.layers === undefined
+            ? undefined
+            : layers.length
+              ? layers
+              : "none",
+        item: state.item,
+        view: state.view,
+      },
+      { includeCity: params.city !== undefined },
+    )
+  );
+}
 import { MapWorkspace } from "@/components/map/map-workspace";
 import { LegacyHome } from "@/components/home/legacy-home";
 /**
@@ -24,11 +70,19 @@ export default async function HomePage({
     currentActor(),
   ]);
   const { city, state, restored } = await resolveMapRequest(params, actor);
-  const [result, detail] = await Promise.all([
+  if (flags.mapMvp) {
+    // The URL is the client's source of truth: drop what the MVP ignores
+    // (search, filters, area, disabled system layers) instead of showing it.
+    const canonical = await mvpCanonicalUrl(params, state, city, actor);
+    if (canonical) redirect(canonical);
+  }
+  const [result, detail, library] = await Promise.all([
     runMapQuery(state, city, actor),
     state.item
       ? getMapItemDetail(state.item, actor).catch(() => null)
       : Promise.resolve(null),
+    // The MVP picker lists the member's own, group and followed layers.
+    flags.mapMvp && actor ? listMapLibrary(actor, city) : Promise.resolve(null),
   ]);
   return (
     <MapWorkspace
@@ -44,6 +98,22 @@ export default async function HomePage({
       contentEnabled={flags.content}
       layerWrites={flags.layerWrites}
       places={placesClientConfig()}
+      library={
+        library &&
+        library.map(({ layer }) => ({
+          slug: layer.slug,
+          title: layer.title,
+          titleChinese: layer.titleChinese,
+          ownerKind: layer.ownerKind,
+          ownerName: layer.ownerName,
+          audience: layer.audience,
+          schedule: layer.schedule,
+          startsOn: layer.startsOn,
+          endsOn: layer.endsOn,
+          status: "ok" as const,
+          count: layer.itemCount,
+        }))
+      }
     />
   );
 }

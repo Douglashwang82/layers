@@ -56,18 +56,19 @@ pnpm dev
 
 Before migrations, seeds, integration tests, or browser tests, verify that the effective `DATABASE_URL` points to the intended disposable development/test database without printing credentials. These commands use the configured connection; they do not provision an isolated test database automatically. Docker supplies PostgreSQL/PostGIS locally. Mapbox, Google OAuth, and S3 are optional for local startup.
 
-| Command                                             | Purpose / prerequisites                                               |
-| --------------------------------------------------- | --------------------------------------------------------------------- |
-| `pnpm lint`                                         | Repository ESLint checks                                              |
-| `pnpm typecheck`                                    | Strict TypeScript checks                                              |
-| `pnpm test`                                         | Unit tests only                                                       |
-| `pnpm exec vitest run tests/unit/ingestion.test.ts` | Example focused unit test run                                         |
-| `pnpm test:integration`                             | Database integration tests; requires migrated and seeded test PostGIS |
-| `pnpm exec playwright install chromium`             | Install the browser for local E2E checks                              |
-| `pnpm test:e2e`                                     | Browser tests; requires test DB, starts/reuses a local dev server     |
-| `pnpm build`                                        | Next.js production build                                              |
-| `pnpm start`                                        | Serve an existing production build                                    |
-| `pnpm exec prettier --check AGENTS.md`              | Example formatting check limited to an edited file                    |
+| Command                                             | Purpose / prerequisites                                                |
+| --------------------------------------------------- | ---------------------------------------------------------------------- |
+| `pnpm lint`                                         | Repository ESLint checks                                               |
+| `pnpm typecheck`                                    | Strict TypeScript checks                                               |
+| `pnpm test`                                         | Unit tests only                                                        |
+| `pnpm exec vitest run tests/unit/ingestion.test.ts` | Example focused unit test run                                          |
+| `pnpm test:integration`                             | Database integration tests; requires migrated and seeded test PostGIS  |
+| `pnpm exec playwright install chromium`             | Install the browser for local E2E checks                               |
+| `pnpm test:e2e`                                     | Browser tests; requires test DB, starts/reuses a local dev server      |
+| `pnpm test:e2e:mvp`                                 | Map MVP browser tests (`FEATURE_MAP_MVP` on); run after, not alongside |
+| `pnpm build`                                        | Next.js production build                                               |
+| `pnpm start`                                        | Serve an existing production build                                     |
+| `pnpm exec prettier --check AGENTS.md`              | Example formatting check limited to an edited file                     |
 
 Playwright uses one worker and `E2E_PORT` (default 3000). Ensure a reused server points at the test database. Browser tests intentionally leave contribution fixtures and can change scores. Do not run development and production servers on the same port. `pnpm format` rewrites the whole repository; use file-scoped Prettier commands for focused changes.
 

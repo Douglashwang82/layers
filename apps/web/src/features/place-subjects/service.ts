@@ -82,7 +82,7 @@ async function resolveCatalogPlace(placeId: string) {
  * wins the unique (provider, provider_place_id) race, this transaction rolls
  * back entirely — no orphan subject — and the winner is returned.
  */
-async function resolveProviderPlace(providerPlaceId: string) {
+export async function resolveProviderPlace(providerPlaceId: string) {
   const existing = await findSubjectByProvider(pool, "google", providerPlaceId);
   if (existing) return existing;
   try {

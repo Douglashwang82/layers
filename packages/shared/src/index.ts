@@ -18,6 +18,8 @@ export * from "./daily-pick-restaurant";
 export * from "./brand";
 export * from "./categories";
 export * from "./marker-kind";
+export * from "./google-links";
+export * from "./layer-events";
 import { placeCategories } from "./categories";
 export const eventCategories = [
   "Food",

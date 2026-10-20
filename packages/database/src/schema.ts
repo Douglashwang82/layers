@@ -810,6 +810,43 @@ export const layerItem = pgTable(
     ),
   ],
 );
+/* ---------------------------------------------------------------------------
+   Events attached to a place in a layer: LocalLink-only, single occurrence,
+   located at the parent item's place and visible exactly as widely as the
+   layer. See docs/plans/layer-mvp-google-links-plan.md (M3, M8).
+   --------------------------------------------------------------------------- */
+export const layerItemEvent = pgTable(
+  "layer_item_event",
+  {
+    id: id(),
+    layerItemId: uuid("layer_item_id")
+      .notNull()
+      .references(() => layerItem.id, { onDelete: "cascade" }),
+    title: text("title").notNull(),
+    titleChinese: text("title_chinese").default("").notNull(),
+    startTime: timestamp("start_time", { withTimezone: true }).notNull(),
+    endTime: timestamp("end_time", { withTimezone: true }).notNull(),
+    note: text("note").default("").notNull(),
+    status: text("status", { enum: ["active", "deleted"] })
+      .default("active")
+      .notNull(),
+    createdBy: uuid("created_by").references(() => user.id, {
+      onDelete: "set null",
+    }),
+    updatedBy: uuid("updated_by").references(() => user.id, {
+      onDelete: "set null",
+    }),
+    ...timestamps(),
+  },
+  (t) => [
+    index("layer_item_event_item_idx").on(t.layerItemId, t.startTime),
+    check("layer_item_event_time_check", sql`${t.startTime} <= ${t.endTime}`),
+    check(
+      "layer_item_event_status_check",
+      sql`${t.status} IN ('active', 'deleted')`,
+    ),
+  ],
+);
 export const layerFollow = pgTable(
   "layer_follow",
   {

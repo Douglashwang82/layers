@@ -70,8 +70,10 @@ export async function signIn(page: Page, email: string) {
 export async function openMapList(page: Page) {
   const panel = page.locator("#map-panel");
   await expect(async () => {
+    // A short click timeout keeps retrying while a client navigation is still
+    // rendering; without a token the toggle never appears and the panel opens itself.
     if (!(await panel.isVisible()))
-      await page.locator(".map-list-toggle").click();
+      await page.locator(".map-list-toggle").click({ timeout: 1000 });
     await expect(panel).toBeVisible({ timeout: 1000 });
   }).toPass();
 }

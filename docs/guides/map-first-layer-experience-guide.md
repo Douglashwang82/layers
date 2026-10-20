@@ -2,6 +2,8 @@
 
 Design and implementation specification · September 21, 2026
 
+> While `FEATURE_MAP_MVP` is on, the map is layers-only (no search, no system layers, layers built from Google Maps links): see [the map MVP plan](../plans/layer-mvp-google-links-plan.md). This guide still describes the flag-off experience.
+
 **Make the map the home experience. Let people apply layers of restaurants, events, and local content to decide where to go, what to do, and what to share with their community.**
 
 Keep TaiwanHub's existing bright visual language: pale mint canvas, white surfaces, dark green text, lime actions, restrained coral/yellow accents, rounded cards, authentic photography, and English/Traditional Chinese support. Change the information architecture and interaction model around that identity.

@@ -266,7 +266,12 @@ function fakeProvider(): PlacesProvider {
       box.className = "fake-provider";
       box.textContent = `Test business ${placeId} · test provider data`;
       container.appendChild(box);
-      const location = fakeLocations.get(placeId) ?? null;
+      // Test places imported from links were never selected here; place them deterministically.
+      const location =
+        fakeLocations.get(placeId) ??
+        (placeId.startsWith("fake-link-")
+          ? fakePlace(placeId, { lat: 29.7604, lng: -95.3698 }).location
+          : null);
       queueMicrotask(() =>
         placeId.startsWith("fake-")
           ? handlers.onLoad({ id: placeId, location })

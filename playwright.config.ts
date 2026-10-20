@@ -36,6 +36,8 @@ const membershipEnv: Record<string, string> = {
 Object.assign(process.env, membershipEnv);
 export default defineConfig({
   testDir: "./tests/e2e",
+  // Map MVP specs need FEATURE_MAP_MVP on: playwright.mvp.config.ts runs them.
+  testIgnore: "**/mvp/**",
   fullyParallel: false,
   workers: 1,
   timeout: 60000,

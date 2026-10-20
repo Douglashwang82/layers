@@ -1,7 +1,8 @@
 "use client";
 import { useEffect, useMemo, useRef, useState } from "react";
-import { withinBounds, type Bounds } from "@taiwanhub/shared";
-import { type Copy, format } from "@/lib/dictionary";
+import { withinBounds, type Bounds, type LayerEvent } from "@taiwanhub/shared";
+import { type Copy, type Locale, format } from "@/lib/dictionary";
+import { NextEvent } from "@/components/map/map-results";
 import type { LatLng, PlacesProvider } from "@/lib/places/provider";
 import type { ExternalReference } from "@/features/map/external";
 import type { ExtraPoint } from "@/components/map/map-canvas";
@@ -32,6 +33,10 @@ export function ExternalReferences({
   t,
   onPoints,
   onSelect,
+  events = {},
+  locale = "en",
+  timeZone = "America/Chicago",
+  autoLoad = false,
 }: {
   provider: PlacesProvider | null;
   queryKey: string;
@@ -40,6 +45,12 @@ export function ExternalReferences({
   t: Copy;
   onPoints: (points: ExtraPoint[]) => void;
   onSelect: (ref: ExternalReference, location: LatLng | null) => void;
+  /** Upcoming events attached to these places, by canonical key. */
+  events?: Record<string, LayerEvent[]>;
+  locale?: Locale;
+  timeZone?: string;
+  /** Load every page as soon as the previous one settles (map MVP: all pins, not a page). */
+  autoLoad?: boolean;
 }) {
   const [rows, setRows] = useState<Row[]>([]);
   const [next, setNext] = useState<string | null>(null);
@@ -80,6 +91,14 @@ export function ExternalReferences({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [queryKey, provider]);
   const settled = rows.filter((r) => r.state !== "loading").length;
+  const allSettled = rows.length > 0 && settled === rows.length;
+  const loadRef = useRef(load);
+  useEffect(() => {
+    loadRef.current = load;
+  });
+  useEffect(() => {
+    if (autoLoad && next && allSettled) loadRef.current(next);
+  }, [autoLoad, next, allSettled]);
   const visible = useMemo(
     () =>
       rows.filter(
@@ -166,6 +185,11 @@ export function ExternalReferences({
               <span className="chip">{t.awaitingLocation}</span>
             )}
             {row.isDailyPick && <span className="badge">{t.dailyPick}</span>}
+            <NextEvent
+              events={events[row.canonicalKey]}
+              locale={locale}
+              timeZone={timeZone}
+            />
             {row.localNote && <p className="muted">{row.localNote}</p>}
             <button
               type="button"
@@ -178,7 +202,7 @@ export function ExternalReferences({
           </li>
         ))}
       </ul>
-      {next && (
+      {next && !autoLoad && (
         <button
           type="button"
           className="button secondary small"

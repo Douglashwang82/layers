@@ -8,7 +8,9 @@ import {
   Globe,
   MapPinOff,
 } from "lucide-react";
+import type { LayerEvent } from "@taiwanhub/shared";
 import type { MapItem } from "@/features/map/query";
+import { eventRange, eventTitle } from "@/lib/event-time";
 import {
   type Copy,
   type Locale,
@@ -99,6 +101,28 @@ function LocationLabel({ item, t }: { item: MapItem; t: Copy }) {
     <span className="row-location">{item.neighborhood}</span>
   ) : null;
 }
+/** The next attached event at a place, as a one-line row note. */
+export function NextEvent({
+  events,
+  locale,
+  timeZone,
+}: {
+  events: LayerEvent[] | undefined;
+  locale: Locale;
+  timeZone: string;
+}) {
+  const next = events?.[0];
+  if (!next) return null;
+  return (
+    <span className="row-event">
+      <CalendarDays size={13} aria-hidden="true" />
+      <span>
+        {eventRange(next, locale, timeZone)} · {eventTitle(next, locale)}
+      </span>
+      {events.length > 1 && <span className="muted">+{events.length - 1}</span>}
+    </span>
+  );
+}
 export function ResultRow({
   item,
   t,
@@ -106,6 +130,8 @@ export function ResultRow({
   selected,
   onSelect,
   onHover,
+  events,
+  timeZone = "America/Chicago",
 }: {
   item: MapItem;
   t: Copy;
@@ -114,6 +140,9 @@ export function ResultRow({
   onSelect: (key: string) => void;
   /** Row hover/focus highlights its pin; it never changes the URL or camera. */
   onHover?: (key: string | null) => void;
+  /** Upcoming events attached to this place in the applied layers. */
+  events?: LayerEvent[];
+  timeZone?: string;
 }) {
   const Icon = icons[item.type];
   const kind = markerKind(item);
@@ -160,6 +189,7 @@ export function ResultRow({
           </span>
           <span className="row-title">{name}</span>
           <ItemMeta {...{ item, t, locale }} />
+          <NextEvent events={events} locale={locale} timeZone={timeZone} />
           <span className="row-foot">
             <LocationLabel item={item} t={t} />
             {item.layers.length > 1 && (
@@ -184,6 +214,8 @@ export function MapResults({
   limit,
   onMore,
   onHover,
+  events = {},
+  timeZone,
 }: {
   items: MapItem[];
   unmapped: MapItem[];
@@ -194,6 +226,8 @@ export function MapResults({
   limit: number;
   onMore: () => void;
   onHover?: (key: string | null) => void;
+  events?: Record<string, LayerEvent[]>;
+  timeZone?: string;
 }) {
   const visible = items.slice(0, limit);
   return (
@@ -202,7 +236,8 @@ export function MapResults({
         {visible.map((item) => (
           <ResultRow
             key={item.key}
-            {...{ item, t, locale, onSelect, onHover }}
+            {...{ item, t, locale, onSelect, onHover, timeZone }}
+            events={events[item.key]}
             selected={item.key === selectedKey}
           />
         ))}
@@ -224,7 +259,8 @@ export function MapResults({
             {unmapped.map((item) => (
               <ResultRow
                 key={item.key}
-                {...{ item, t, locale, onSelect }}
+                {...{ item, t, locale, onSelect, timeZone }}
+                events={events[item.key]}
                 selected={item.key === selectedKey}
               />
             ))}

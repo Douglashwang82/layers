@@ -1,5 +1,6 @@
 import { pool } from "@taiwanhub/database";
 import type { PoolClient } from "pg";
+import type { z } from "zod";
 import {
   AppError,
   layerInput,
@@ -70,66 +71,82 @@ export async function createLayer(actor: Actor | null, body: unknown) {
   writable();
   const a = requireActor(actor);
   const input = layerInput.parse(body);
-  return transaction(async (tx) => {
-    const city = await tx.query<{ id: string }>(
-      "SELECT id FROM city WHERE slug=$1",
-      [input.city],
-    );
-    if (!city.rows[0])
-      throw new AppError(400, "INVALID_CITY", "Choose a supported city.");
-    let groupId: string | null = null;
-    if (input.audience === "group") {
-      const role = (await getMemberships(a.id)).get(input.groupId!);
-      if (!role || role === "viewer")
-        throw new AppError(
-          403,
-          "FORBIDDEN",
-          "You need an editor role in this group.",
-        );
-      const group = await tx.query<{ city_id: string }>(
-        'SELECT city_id FROM "group" WHERE id=$1',
-        [input.groupId],
+  return transaction((tx) => insertLayer(tx, a, input)).then(({ id }) =>
+    getLayer(id, a).then((found) => found!),
+  );
+}
+/**
+ * Inserts a draft layer inside the caller's transaction after checking the
+ * city and, for a group layer, the actor's editor role. Returns the fields
+ * item placement needs.
+ */
+export async function insertLayer(
+  tx: PoolClient,
+  a: Actor,
+  input: z.infer<typeof layerInput>,
+) {
+  const city = await tx.query<{ id: string }>(
+    "SELECT id FROM city WHERE slug=$1",
+    [input.city],
+  );
+  if (!city.rows[0])
+    throw new AppError(400, "INVALID_CITY", "Choose a supported city.");
+  let groupId: string | null = null;
+  if (input.audience === "group") {
+    const role = (await getMemberships(a.id)).get(input.groupId!);
+    if (!role || role === "viewer")
+      throw new AppError(
+        403,
+        "FORBIDDEN",
+        "You need an editor role in this group.",
       );
-      if (group.rows[0]?.city_id !== city.rows[0].id)
-        throw new AppError(
-          400,
-          "CITY_MISMATCH",
-          "The group belongs to a different city.",
-        );
-      groupId = input.groupId!;
-    }
-    const id = crypto.randomUUID();
-    await tx.query(
-      `INSERT INTO layer(id,slug,title,title_chinese,description,description_chinese,city_id,owner_kind,owner_user_id,owner_group_id,audience,schedule,starts_on,ends_on,lifecycle,created_by,updated_by)
-       VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,'draft',$15,$15)`,
-      [
-        id,
-        slugify(input.title, id),
-        input.title,
-        input.titleChinese,
-        input.description,
-        input.descriptionChinese,
-        city.rows[0].id,
-        groupId ? "group" : "user",
-        groupId ? null : a.id,
-        groupId,
-        groupId ? "group" : "private",
-        input.schedule,
-        input.startsOn ?? null,
-        input.schedule === "range"
-          ? (input.endsOn ?? null)
-          : input.schedule === "day"
-            ? (input.startsOn ?? null)
-            : null,
-        a.id,
-      ],
+    const group = await tx.query<{ city_id: string }>(
+      'SELECT city_id FROM "group" WHERE id=$1',
+      [input.groupId],
     );
-    await record(tx, a.id, "layer_created", {
-      layerId: id,
-      owner: groupId ? "group" : "user",
-    });
-    return id;
-  }).then((id) => getLayer(id, a).then((found) => found!));
+    if (group.rows[0]?.city_id !== city.rows[0].id)
+      throw new AppError(
+        400,
+        "CITY_MISMATCH",
+        "The group belongs to a different city.",
+      );
+    groupId = input.groupId!;
+  }
+  const id = crypto.randomUUID();
+  await tx.query(
+    `INSERT INTO layer(id,slug,title,title_chinese,description,description_chinese,city_id,owner_kind,owner_user_id,owner_group_id,audience,schedule,starts_on,ends_on,lifecycle,created_by,updated_by)
+       VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,'draft',$15,$15)`,
+    [
+      id,
+      slugify(input.title, id),
+      input.title,
+      input.titleChinese,
+      input.description,
+      input.descriptionChinese,
+      city.rows[0].id,
+      groupId ? "group" : "user",
+      groupId ? null : a.id,
+      groupId,
+      groupId ? "group" : "private",
+      input.schedule,
+      input.startsOn ?? null,
+      input.schedule === "range"
+        ? (input.endsOn ?? null)
+        : input.schedule === "day"
+          ? (input.startsOn ?? null)
+          : null,
+      a.id,
+    ],
+  );
+  await record(tx, a.id, "layer_created", {
+    layerId: id,
+    owner: groupId ? "group" : "user",
+  });
+  return {
+    id,
+    cityId: city.rows[0].id,
+    audience: groupId ? ("group" as const) : ("private" as const),
+  };
 }
 /** Metadata and lifecycle changes are version-checked so a second editor never silently overwrites. */
 export async function updateLayer(
@@ -274,6 +291,10 @@ export type LayerItemTarget = {
   /** Not moderated on its own: adding it to a reviewed public layer re-queues review. */
   external: boolean;
 };
+/** The layer fields placement needs; a layer inserted in the same transaction qualifies. */
+export type PlacementLayer = {
+  layer: Pick<LayerWithAccess["layer"], "id" | "cityId" | "audience">;
+};
 /**
  * Appends an already-authorized target to the layer inside the caller's
  * transaction. Idempotent; returns whether a row was added.
@@ -281,7 +302,7 @@ export type LayerItemTarget = {
 export async function attachLayerItem(
   tx: PoolClient,
   actorId: string,
-  found: LayerWithAccess,
+  found: PlacementLayer,
   target: LayerItemTarget,
   note: string,
 ) {
@@ -355,6 +376,23 @@ async function subjectTarget(
     subjectId,
     selectionGrant,
   );
+  if (!subject.catalog_place_id && !flags.externalPlaceCollections)
+    throw new AppError(404, "DISABLED", "Adding this place is unavailable.");
+  return subjectPlacement(tx, found, subject);
+}
+/**
+ * Where an actionable subject goes in a layer: as its catalog place when
+ * linked (deduplicating it), otherwise as the external subject, which a
+ * public layer accepts only once a moderator has city-reviewed it.
+ * `anyCity` lifts the city match for a private or group layer's external
+ * places (Google-link imports, which have no geographic limit).
+ */
+export async function subjectPlacement(
+  tx: PoolClient,
+  found: PlacementLayer,
+  subject: { id: string; catalog_place_id: string | null },
+  { anyCity = false }: { anyCity?: boolean } = {},
+): Promise<LayerItemTarget> {
   if (subject.catalog_place_id) {
     const place = await tx.query<{ city_id: string }>(
       "SELECT city_id FROM place WHERE id=$1 AND status='approved'",
@@ -372,8 +410,6 @@ async function subjectTarget(
       external: false,
     };
   }
-  if (!flags.externalPlaceCollections)
-    throw new AppError(404, "DISABLED", "Adding this place is unavailable.");
   const city = await tx.query<{
     city_id: string | null;
     city_review_status: string;
@@ -393,7 +429,10 @@ async function subjectTarget(
       );
     return { column: "subject_id", id: subject.id, external: true };
   }
-  if (city.rows[0].city_id !== found.layer.cityId)
+  if (
+    city.rows[0].city_id !== found.layer.cityId &&
+    !(anyCity && found.layer.audience !== "public")
+  )
     throw new AppError(
       400,
       "CITY_MISMATCH",

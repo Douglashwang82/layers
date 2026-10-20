@@ -13,6 +13,7 @@ import { layerTitle, ownerLabel, scheduleLabel } from "@/lib/layer-labels";
 export function ActiveLayersPanel({
   layers,
   hidden,
+  library,
   t,
   locale,
   refreshing,
@@ -21,6 +22,11 @@ export function ActiveLayersPanel({
 }: {
   layers: LayerAvailability[];
   hidden: LayerAvailability[];
+  /**
+   * Map MVP: the member's own, group and followed layers, listed so any of
+   * them can be loaded here; null when the picker is the library page.
+   */
+  library?: LayerAvailability[] | null;
   t: Copy;
   locale: Locale;
   refreshing: boolean;
@@ -28,20 +34,26 @@ export function ActiveLayersPanel({
   onOnly: (slug: string) => void;
 }) {
   const applied = layers.length;
+  const listed = new Set([...layers, ...hidden].map((l) => l.slug));
   const rows = [
     ...layers.map((l) => ({ layer: l, applied: true })),
     ...hidden.map((l) => ({ layer: l, applied: false })),
+    ...(library ?? [])
+      .filter((l) => !listed.has(l.slug))
+      .map((l) => ({ layer: l, applied: false })),
   ];
   return (
     <section className="active-layers" aria-labelledby="active-layers-heading">
       <div className="panel-heading">
         <h2 id="active-layers-heading">
           <LayersIcon size={18} aria-hidden="true" />
-          {t.onYourMap}
+          {library ? t.yourLayers : t.onYourMap}
         </h2>
         <span className="count-pill">{applied}</span>
       </div>
-      {rows.length === 0 && <p className="muted">{t.chooseLayer}</p>}
+      {rows.length === 0 && (
+        <p className="muted">{library ? t.noLayersYet : t.chooseLayer}</p>
+      )}
       <ul className="layer-rows">
         {rows.map(({ layer, applied: isApplied }) => (
           <li key={layer.slug} className={`layer-row status-${layer.status}`}>
@@ -103,8 +115,14 @@ export function ActiveLayersPanel({
           {format(t.layerLimit, { max: maxAppliedLayers })}
         </p>
       )}
+      {library && (
+        <Link className="button small find-layers" href="/layers/new">
+          <Plus size={16} aria-hidden="true" />
+          {t.createFromGoogle}
+        </Link>
+      )}
       <Link className="button secondary small find-layers" href="/layers">
-        <Plus size={16} aria-hidden="true" />
+        {!library && <Plus size={16} aria-hidden="true" />}
         {t.findLayers}
       </Link>
     </section>
