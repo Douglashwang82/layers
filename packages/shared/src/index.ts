@@ -20,6 +20,7 @@ export * from "./categories";
 export * from "./marker-kind";
 export * from "./google-links";
 export * from "./layer-events";
+export * from "./cities";
 import { placeCategories } from "./categories";
 export const eventCategories = [
   "Food",

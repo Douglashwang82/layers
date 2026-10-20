@@ -1,34 +1,33 @@
 import { db, pool, schema as s } from "./index";
-import { placeCategorySeedOrder } from "../../shared/src";
+import { launchCities, placeCategorySeedOrder } from "../../shared/src";
 import { ensureSystemLayers } from "./system-layers";
 const uid = (group: number, n: number) =>
   `00000000-0000-4000-8000-${String(group * 1000 + n).padStart(12, "0")}`;
 async function main() {
-  await db
-    .insert(s.city)
-    .values({
-      id: uid(1, 1),
-      slug: "houston",
-      name: "Houston",
-      region: "TX",
-      country: "USA",
-      timezone: "America/Chicago",
-      latitude: 29.7604,
-      longitude: -95.3698,
-    })
-    .onConflictDoNothing();
+  // Migration 0024 already adds Taipei and Tokyo; this keeps a fresh
+  // database's launch cities complete either way (idempotent by slug).
+  for (const city of launchCities)
+    await db
+      .insert(s.city)
+      .values({
+        id: city.id,
+        slug: city.slug,
+        name: city.name,
+        region: city.region,
+        country: city.country,
+        timezone: city.timezone,
+        latitude: city.latitude,
+        longitude: city.longitude,
+      })
+      .onConflictDoNothing();
   for (const [i, name] of placeCategorySeedOrder.entries())
     await db
       .insert(s.placeCategory)
       .values({ id: uid(3, i), name })
       .onConflictDoNothing();
-  await ensureSystemLayers(pool, {
-    id: uid(1, 1),
-    slug: "houston",
-    name: "Houston",
-  });
+  for (const city of launchCities) await ensureSystemLayers(pool, city);
   console.log(
-    "Seeded reference data: 1 city, place categories, system layers.",
+    `Seeded reference data: ${launchCities.length} cities, place categories, system layers.`,
   );
 }
 main()

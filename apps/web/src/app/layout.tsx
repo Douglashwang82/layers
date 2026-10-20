@@ -12,11 +12,11 @@ export const dynamic = "force-dynamic";
 export const metadata: Metadata = {
   metadataBase: new URL(appUrl),
   title: {
-    default: `${brand.name} — Local places, events and communities in Houston`,
+    default: `${brand.name} — Local places, events and communities in Taipei, Houston and Tokyo`,
     template: `%s | ${brand.name}`,
   },
   description:
-    "Discover places, weekend events, local products and communities with your neighbors in Houston.",
+    "Map the places, events and communities you care about in Taipei, Houston and Tokyo, together with your neighbors.",
   openGraph: { siteName: brand.name, type: "website" },
   robots: { index: true, follow: true },
 };

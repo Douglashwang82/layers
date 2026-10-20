@@ -60,6 +60,8 @@ export default defineConfig({
       FEATURE_EXTERNAL_PLACE_COLLECTIONS: "true",
       FEATURE_LAYER_CUSTOM_PLACES: "true",
       NEXT_PUBLIC_GOOGLE_PLACES_UI_KIT_KEY: "fake",
+      // The flag-off map, whatever a local .env says; playwright.mvp.config.ts turns it on.
+      FEATURE_MAP_MVP: "false",
       ...membershipEnv,
     },
   },

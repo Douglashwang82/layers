@@ -1,5 +1,5 @@
 "use client";
-import { brand } from "@taiwanhub/shared";
+import { brand, localizedCityName } from "@taiwanhub/shared";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
@@ -139,7 +139,7 @@ export function Navigation({
       >
         {cities.map((c) => (
           <option key={c.id} value={c.slug}>
-            {c.name}
+            {localizedCityName(c, locale)}
           </option>
         ))}
       </select>

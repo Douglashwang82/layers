@@ -48,7 +48,7 @@ async function load(params: Props["params"]) {
 export async function generateMetadata({ params }: Props): Promise<Metadata> {
   const { kind, item } = await load(params);
   return {
-    title: `${item.name} — ${item.category} in Houston`,
+    title: `${item.name} — ${item.category}`,
     description: item.description,
     alternates: { canonical: `/${kind}/${item.slug}` },
     openGraph: {

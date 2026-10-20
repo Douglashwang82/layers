@@ -1,5 +1,6 @@
 import type { Pool, PoolClient } from "pg";
 import { brand } from "../../shared/src/brand";
+import { cityNameChinese } from "../../shared/src/cities";
 /**
  * System layers are public rule-backed collections owned by LocalLink. One set
  * exists per city; the rule kind is allowlisted and versioned. The migration
@@ -75,7 +76,7 @@ export async function ensureSystemLayers(
     await client.query(systemLayerSql, [
       def.slug(city.slug),
       def.title(city.name),
-      def.titleChinese(city.name),
+      def.titleChinese(cityNameChinese(city.slug) ?? city.name),
       def.description,
       def.descriptionChinese,
       city.id,

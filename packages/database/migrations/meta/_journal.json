@@ -169,6 +169,13 @@
       "when": 1792528842696,
       "tag": "0023_past_sebastian_shaw",
       "breakpoints": true
+    },
+    {
+      "idx": 24,
+      "version": "7",
+      "when": 1792534327637,
+      "tag": "0024_launch_cities",
+      "breakpoints": true
     }
   ]
 }

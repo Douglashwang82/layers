@@ -1,5 +1,6 @@
 "use client";
 import { useState } from "react";
+import { localizedCityName } from "@taiwanhub/shared";
 import { api, StatusMessage } from "./actions";
 import { Field } from "./ui/field";
 import type { Copy } from "@/lib/i18n";
@@ -14,7 +15,7 @@ export function ProfileForm({
     preferredLanguage: string;
     homeCityId: string | null;
   };
-  cities: { id: string; name: string }[];
+  cities: { id: string; slug: string; name: string }[];
   t: Copy;
 }) {
   const [feedback, setFeedback] = useState<{
@@ -79,7 +80,7 @@ export function ProfileForm({
           >
             {cities.map((c) => (
               <option key={c.id} value={c.id}>
-                {c.name}
+                {localizedCityName(c, user.preferredLanguage)}
               </option>
             ))}
           </select>

@@ -7,6 +7,7 @@ import {
   zonedParts,
 } from "./time";
 import { stableHash } from "./daily-pick";
+import { cityNameChinese } from "./cities";
 
 /* ---------------------------------------------------------------------------
    Daily restaurant recommendation (version 2): pure eligibility, ranking and
@@ -101,7 +102,6 @@ export function foodTypeFromProviderType(
 const foodTypeZh = new Map(
   Object.values(providerFoodTypes).map((t) => [t.label, t.zh]),
 );
-const cityNamesZh: Record<string, string> = { houston: "休士頓" };
 
 /**
  * Fixed bilingual copy for a pick with no approved facts. It states only
@@ -114,7 +114,7 @@ export function templateRestaurantCopy(input: {
   cityName: string;
 }): RestaurantCopyOutput {
   const zhFood = foodTypeZh.get(input.foodType) ?? input.foodType;
-  const zhCity = cityNamesZh[input.citySlug] ?? input.cityName;
+  const zhCity = cityNameChinese(input.citySlug) ?? input.cityName;
   const sentence = (text: string) => ({ text, factIds: [] as string[] });
   const article = /^[aeiou]/i.test(input.foodType) ? "an" : "a";
   return {

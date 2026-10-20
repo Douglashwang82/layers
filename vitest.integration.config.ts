@@ -19,6 +19,8 @@ export default defineConfig({
       RESEND_API_KEY: "",
       MAIL_CAPTURE_DIR: "",
       TRUSTED_CLIENT_IP_HEADER: "",
+      // Suites cover the flag-off map; map-mvp.test.ts turns the flag on itself.
+      FEATURE_MAP_MVP: "false",
     },
   },
 });
