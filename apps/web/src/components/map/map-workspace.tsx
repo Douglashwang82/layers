@@ -75,6 +75,8 @@ import {
 } from "@/lib/map-panel";
 /** Mobile sheet height; the sheet is closed when the panel is not open. */
 type Sheet = "half" | "expanded";
+/** Camera zoom showing a whole city, at start and after switching cities. */
+const cityZoom = 10.5;
 /** Wait for the panel and padding to settle before moving the camera. */
 const afterLayout = (run: () => void) => window.setTimeout(run, 80);
 /** Server-read flags and the browser-visible provider key (only when discovery or the MVP is on). */
@@ -680,6 +682,20 @@ export function MapWorkspace({
   useEffect(() => {
     autoFit.current = appliedKey;
   }, [appliedKey]);
+  /*
+   * Choosing another city moves the camera there. The workspace (and the
+   * Mapbox camera) survive the navigation, so the new city's center is
+   * applied here, once the map is ready; framing loaded places stops so it
+   * cannot pull the view back. Declared before the framing effect on purpose.
+   */
+  const cameraCity = useRef(city.slug);
+  useEffect(() => {
+    if (cameraCity.current === city.slug || canvasStatus !== "ready") return;
+    cameraCity.current = city.slug;
+    autoFit.current = null;
+    setPendingArea(null);
+    canvas.current?.flyTo([city.longitude, city.latitude], cityZoom);
+  }, [city.slug, city.longitude, city.latitude, canvasStatus]);
   useEffect(() => {
     if (!mvp || canvasStatus !== "ready" || autoFit.current !== appliedKey)
       return;
@@ -1121,7 +1137,7 @@ export function MapWorkspace({
               effects={places.mapEffects}
               onSelectExtra={onSelectExtra}
               center={[city.longitude, city.latitude]}
-              zoom={10.5}
+              zoom={cityZoom}
               locale={locale}
               theme={theme}
               t={t}

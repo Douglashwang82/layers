@@ -164,3 +164,25 @@ test("dark map follows the OS, honours a stored override and keeps the map usabl
   );
   await expect(page.locator(".mapboxgl-canvas")).toBeVisible();
 });
+test("choosing another city moves the map to it", async ({ page }) => {
+  await mockProvider(page);
+  await page.goto("/");
+  test.skip(
+    await page.getByText("Map preview needs a Mapbox token.").isVisible(),
+    "Requires NEXT_PUBLIC_MAPBOX_TOKEN (a fake test token is sufficient).",
+  );
+  await expect(page.locator(".mapboxgl-canvas")).toBeVisible();
+  const map = page.locator(".map-canvas");
+  // Tokyo, then Taipei: the camera settles on each city's center.
+  await page.getByLabel("Your city").selectOption("tokyo");
+  await expect(page).toHaveURL(/city=tokyo/);
+  await expect(map).toHaveAttribute(
+    "data-camera",
+    /^139\.6\d*,35\.6\d*,10\.5$/,
+  );
+  await page.getByLabel("Your city").selectOption("taipei");
+  await expect(map).toHaveAttribute(
+    "data-camera",
+    /^121\.5\d*,25\.0\d*,10\.5$/,
+  );
+});

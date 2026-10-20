@@ -705,6 +705,13 @@ export function MapCanvas({
           map.on("moveend", () => {
             const c = map.getCenter();
             cameraRef.current = { center: [c.lng, c.lat], zoom: map.getZoom() };
+            // The settled camera, readable from the page (e.g. by browser tests).
+            map
+              .getContainer()
+              .setAttribute(
+                "data-camera",
+                `${c.lng.toFixed(3)},${c.lat.toFixed(3)},${map.getZoom().toFixed(1)}`,
+              );
             if (!userMovedRef.current) return;
             userMovedRef.current = false;
             const b = map.getBounds();
