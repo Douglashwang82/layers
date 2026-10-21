@@ -11,27 +11,34 @@ import { LayerItemEvents } from "./layer-item-events";
 type Feedback = { tone: "success" | "error"; text: string } | null;
 type Page = { references: ExternalReference[]; nextCursor: string | null };
 /**
- * The Google places in one layer, for its editors: a provider preview per
- * place, its events and removal. The server knows only place IDs, so the
- * names and addresses shown come from the Places UI Kit.
+ * The Google places in one layer: for its editors a provider preview per
+ * place, its events and removal; read-only, just the previews. The server
+ * knows only place IDs, so the names and addresses shown come from the
+ * Places UI Kit.
  */
 export function LayerGooglePlaces({
   layer,
   city,
   providerKey,
-  events,
+  events = [],
   onEvents,
-  reload,
+  reload = 0,
+  readOnly = false,
+  onCount,
   t,
   locale,
 }: {
   layer: { id: string; slug: string };
   city: { slug: string; name: string; timezone: string };
   providerKey: string | null;
-  events: LayerEvent[];
-  onEvents: (key: string, events: LayerEvent[]) => void;
+  events?: LayerEvent[];
+  onEvents?: (key: string, events: LayerEvent[]) => void;
   /** Changes whenever places were added elsewhere on the page. */
-  reload: number;
+  reload?: number;
+  /** Viewers see the places without removal or event editing. */
+  readOnly?: boolean;
+  /** Reports how many Google places are listed, for the page's item count. */
+  onCount?: (count: number) => void;
   t: Copy;
   locale: Locale;
 }) {
@@ -69,6 +76,9 @@ export function LayerGooglePlaces({
       cancelled = true;
     };
   }, [layer.slug, city.slug, reload, t.error]);
+  useEffect(() => {
+    onCount?.(refs.length);
+  }, [onCount, refs.length]);
   async function remove(ref: ExternalReference) {
     setPending(ref.subjectId);
     setFeedback(null);
@@ -111,29 +121,33 @@ export function LayerGooglePlaces({
                   <p className="fine-print">{t.externalUnavailable}</p>
                 )}
                 {ref.localNote && <p className="muted">{ref.localNote}</p>}
-                <span className="editor-item-actions">
-                  <button
-                    type="button"
-                    className="icon-button"
-                    aria-label={`${t.removeGooglePlace} ${name}`}
-                    disabled={pending === ref.subjectId}
-                    aria-busy={pending === ref.subjectId || undefined}
-                    onClick={() => remove(ref)}
-                  >
-                    <Trash2 size={16} aria-hidden="true" />
-                  </button>
-                </span>
+                {!readOnly && (
+                  <span className="editor-item-actions">
+                    <button
+                      type="button"
+                      className="icon-button"
+                      aria-label={`${t.removeGooglePlace} ${name}`}
+                      disabled={pending === ref.subjectId}
+                      aria-busy={pending === ref.subjectId || undefined}
+                      onClick={() => remove(ref)}
+                    >
+                      <Trash2 size={16} aria-hidden="true" />
+                    </button>
+                  </span>
+                )}
               </div>
-              <LayerItemEvents
-                layerId={layer.id}
-                itemKey={ref.canonicalKey}
-                itemName={name}
-                events={events.filter((e) => e.key === ref.canonicalKey)}
-                city={city}
-                t={t}
-                locale={locale}
-                onChange={(next) => onEvents(ref.canonicalKey, next)}
-              />
+              {!readOnly && (
+                <LayerItemEvents
+                  layerId={layer.id}
+                  itemKey={ref.canonicalKey}
+                  itemName={name}
+                  events={events.filter((e) => e.key === ref.canonicalKey)}
+                  city={city}
+                  t={t}
+                  locale={locale}
+                  onChange={(next) => onEvents?.(ref.canonicalKey, next)}
+                />
+              )}
             </li>
           );
         })}

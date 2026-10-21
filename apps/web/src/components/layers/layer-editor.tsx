@@ -134,6 +134,9 @@ export function LayerEditor({
   const [events, setEvents] = useState<LayerEvent[]>([]);
   /** Bumped after Google places are added, so their list reloads. */
   const [googleReload, setGoogleReload] = useState(0);
+  /** Google places listed below; the contents count includes them. */
+  const [googleCount, setGoogleCount] = useState(0);
+  const itemCount = items.length + (mvp ? googleCount : 0);
   const layerId = layer?.id;
   useEffect(() => {
     if (!mvp || !layerId) return;
@@ -535,10 +538,8 @@ export function LayerEditor({
       {mode === "edit" && layer && (
         <section className="form-panel" aria-labelledby="contents-editor">
           <h2 id="contents-editor">{t.contents}</h2>
-          <p className="muted">
-            {format(t.itemsCount, { count: items.length })}
-          </p>
-          {layer.lifecycle === "draft" && items.length === 0 && (
+          <p className="muted">{format(t.itemsCount, { count: itemCount })}</p>
+          {layer.lifecycle === "draft" && itemCount === 0 && (
             <p className="notice">{t.draftSaved}</p>
           )}
           <ul className="layer-contents">
@@ -630,6 +631,7 @@ export function LayerEditor({
               events={events}
               onEvents={setKeyEvents}
               reload={googleReload}
+              onCount={setGoogleCount}
               t={t}
               locale={locale}
             />

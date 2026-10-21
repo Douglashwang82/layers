@@ -4,9 +4,11 @@ import { Lock } from "lucide-react";
 import { getCopy, getLocale, format, dateLabel } from "@/lib/i18n";
 import { getActiveCity } from "@/lib/city";
 import { currentActor } from "@/lib/session";
-import { flags } from "@/lib/config";
+import { flags, placesClientConfig } from "@/lib/config";
 import { getLayer } from "@/features/layers/repository";
 import { getLayerContents } from "@/features/layers/contents";
+import { countExternalReferences } from "@/features/map/external";
+import { LayerGooglePlaces } from "@/components/layers/layer-google-places";
 import { LayerBadges, audienceLabel } from "@/components/layers/layer-card";
 import {
   ApplyLayerButton,
@@ -68,6 +70,10 @@ export default async function LayerPage({ params }: Props) {
     timezone: layer.timezone,
   };
   const contents = await getLayerContents(layer, city, actor);
+  // MVP layers hold Google places, which the catalog contents never include.
+  const googlePlaces = flags.mapMvp
+    ? ((await countExternalReferences([found], actor)).get(layer.slug) ?? 0)
+    : 0;
   await trackEvent(
     "layer_previewed",
     { layer: layer.slug, owner: layer.ownerKind },
@@ -79,10 +85,12 @@ export default async function LayerPage({ params }: Props) {
       ? layer.descriptionChinese
       : layer.description;
   const counts = {
-    places: contents.items.filter((i) => i.type === "place").length,
+    places:
+      contents.items.filter((i) => i.type === "place").length + googlePlaces,
     events: contents.items.filter((i) => i.type === "event").length,
     content: contents.items.filter((i) => i.type === "content").length,
   };
+  const total = contents.items.length + googlePlaces;
   return (
     <div className="container page-bottom">
       <nav className="breadcrumbs" aria-label={t.back}>
@@ -120,7 +128,7 @@ export default async function LayerPage({ params }: Props) {
           )}
           {access.apply &&
             layer.lifecycle !== "archived" &&
-            contents.mapped > 0 && (
+            contents.mapped + googlePlaces > 0 && (
               <ApplyLayerButton slug={layer.slug} t={t} primary={false} only />
             )}
           {flags.layerWrites && layer.rule?.kind !== "saves" && !own && (
@@ -155,7 +163,7 @@ export default async function LayerPage({ params }: Props) {
                 ` · ${format(t.mappedSummary, { mapped: contents.mapped, unmapped: contents.unmapped })}`}
             </p>
           </div>
-          {access.edit && flags.layerWrites && contents.items.length > 0 && (
+          {access.edit && flags.layerWrites && total > 0 && (
             <Link
               className="button secondary small"
               href={`/layers/${layer.slug}/edit#add-items`}
@@ -164,7 +172,17 @@ export default async function LayerPage({ params }: Props) {
             </Link>
           )}
         </div>
-        {contents.items.length === 0 ? (
+        {googlePlaces > 0 && (
+          <LayerGooglePlaces
+            layer={layer}
+            city={city}
+            providerKey={placesClientConfig().providerKey}
+            readOnly
+            t={t}
+            locale={locale}
+          />
+        )}
+        {total === 0 ? (
           <div className="empty">
             <h3>{t.emptyLayer}</h3>
             {access.edit && (
@@ -177,12 +195,14 @@ export default async function LayerPage({ params }: Props) {
             )}
           </div>
         ) : (
-          <LayerContentsList
-            items={contents.items}
-            slug={layer.slug}
-            t={t}
-            locale={locale}
-          />
+          contents.items.length > 0 && (
+            <LayerContentsList
+              items={contents.items}
+              slug={layer.slug}
+              t={t}
+              locale={locale}
+            />
+          )
         )}
       </section>
     </div>
