@@ -568,6 +568,19 @@ export function MapWorkspace({
   const [tab, setTab] = useState<"layers" | "results">(() =>
     mvp && authenticated && appliedSlugs.length === 0 ? "layers" : "results",
   );
+  /**
+   * Google place cards locate their pins only while on screen, so when an
+   * MVP map has places still waiting, the Results tab opens once per query;
+   * located pins stay after the panel closes.
+   */
+  const [pendingExternal, setPendingExternal] = useState(0);
+  const revealedFor = useRef<string | null>(null);
+  useEffect(() => {
+    if (!mvp || !pendingExternal || revealedFor.current === queryKey) return;
+    revealedFor.current = queryKey;
+    setTab("results");
+    setPanelOpen(true);
+  }, [mvp, pendingExternal, queryKey]);
   const [limit, setLimit] = useState(20);
   const [panelHeight, setPanelHeight] = useState(0);
   const [panelRight, setPanelRight] = useState(0);
@@ -971,6 +984,7 @@ export function MapWorkspace({
       timeZone={city.timezone}
       events={result.events}
       autoLoad={mvp}
+      onPending={setPendingExternal}
       onPoints={setExternalPoints}
       onSelect={(ref, location) =>
         selectBusiness({

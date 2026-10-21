@@ -37,6 +37,7 @@ export function ExternalReferences({
   locale = "en",
   timeZone = "America/Chicago",
   autoLoad = false,
+  onPending,
 }: {
   provider: PlacesProvider | null;
   queryKey: string;
@@ -51,6 +52,11 @@ export function ExternalReferences({
   timeZone?: string;
   /** Load every page as soon as the previous one settles (map MVP: all pins, not a page). */
   autoLoad?: boolean;
+  /**
+   * Reports how many rows still wait for their provider component. Those
+   * components load only while on screen, so a hidden list never locates.
+   */
+  onPending?: (count: number) => void;
 }) {
   const [rows, setRows] = useState<Row[]>([]);
   const [next, setNext] = useState<string | null>(null);
@@ -91,6 +97,13 @@ export function ExternalReferences({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [queryKey, provider]);
   const settled = rows.filter((r) => r.state !== "loading").length;
+  const pendingRef = useRef(onPending);
+  useEffect(() => {
+    pendingRef.current = onPending;
+  });
+  useEffect(() => {
+    pendingRef.current?.(rows.length - settled);
+  }, [rows.length, settled]);
   const allSettled = rows.length > 0 && settled === rows.length;
   const loadRef = useRef(load);
   useEffect(() => {
