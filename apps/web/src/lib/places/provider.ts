@@ -100,6 +100,26 @@ function loadGoogle(key: string, language: string) {
   });
   return loading;
 }
+/**
+ * Details cards that already loaded in this page view, newest last. Reopening
+ * the same place (for example clicking its marker again) reattaches the
+ * rendered element instead of mounting a new one, which would repeat the
+ * billed place and photo requests. Memory only: a reload starts empty.
+ */
+const loadedDetails = new Map<
+  string,
+  { element: HTMLElement; place: ProviderPlace }
+>();
+const detailsOwner = new WeakMap<HTMLElement, symbol>();
+const keptDetailsLimit = 20;
+function keepDetails(key: string, element: HTMLElement, place: ProviderPlace) {
+  loadedDetails.delete(key);
+  loadedDetails.set(key, { element, place });
+  for (const old of loadedDetails.keys()) {
+    if (loadedDetails.size <= keptDetailsLimit) break;
+    loadedDetails.delete(old);
+  }
+}
 function googleProvider(key: string, language: string): PlacesProvider {
   const ready = async () => {
     await loadGoogle(key, language);
@@ -166,6 +186,24 @@ function googleProvider(key: string, language: string): PlacesProvider {
     },
     async mountDetails(container, { placeId, compact }, handlers) {
       await ready();
+      const key = `${placeId}:${compact ? "compact" : "full"}`;
+      const kept = loadedDetails.get(key);
+      // A card shown elsewhere stays there; one detached, or in this same
+      // container (a development double mount), is reattached without a new
+      // request. Only its latest mount removes it.
+      if (
+        kept &&
+        (!kept.element.isConnected || kept.element.parentElement === container)
+      ) {
+        const owner = Symbol();
+        detailsOwner.set(kept.element, owner);
+        keepDetails(key, kept.element, kept.place);
+        container.appendChild(kept.element);
+        handlers.onLoad(kept.place);
+        return () => {
+          if (detailsOwner.get(kept.element) === owner) kept.element.remove();
+        };
+      }
       const details = document.createElement(
         compact ? "gmp-place-details-compact" : "gmp-place-details",
       );
@@ -178,19 +216,23 @@ function googleProvider(key: string, language: string): PlacesProvider {
         ),
       );
       container.appendChild(details);
+      const owner = Symbol();
+      detailsOwner.set(details, owner);
       const offs = [
         listen(details, "gmp-load", () => {
           const place = toPlace(
             (details as unknown as { place?: unknown }).place,
           );
-          if (place) handlers.onLoad(place);
-          else handlers.onError();
+          if (place) {
+            keepDetails(key, details, place);
+            handlers.onLoad(place);
+          } else handlers.onError();
         }),
         listen(details, "gmp-error", () => handlers.onError()),
       ];
       return () => {
         offs.forEach((off) => off());
-        details.remove();
+        if (detailsOwner.get(details) === owner) details.remove();
       };
     },
   };
