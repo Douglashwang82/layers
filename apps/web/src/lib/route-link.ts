@@ -14,8 +14,8 @@ const stopsPerLink: Record<TravelMode, number> = {
   transit: 1,
 };
 export type RouteLink = {
-  /** 1-based stop number the link starts from; null is the user's location. */
-  from: number | null;
+  /** 1-based stop number the link starts from. */
+  from: number;
   /** 1-based stop number of the link's destination. */
   to: number;
   url: string;
@@ -23,15 +23,16 @@ export type RouteLink = {
 const coordinates = (stop: RouteStop) =>
   `${stop.lat.toFixed(6)},${stop.lng.toFixed(6)}`;
 function directionsUrl(
-  origin: RouteStop | null,
+  origin: RouteStop,
   stops: RouteStop[],
   mode: TravelMode,
 ) {
-  const params = new URLSearchParams({ api: "1" });
-  if (origin) {
-    params.set("origin", coordinates(origin));
-    if (origin.placeId) params.set("origin_place_id", origin.placeId);
-  }
+  // An explicit origin: without one Google starts at the user's location.
+  const params = new URLSearchParams({
+    api: "1",
+    origin: coordinates(origin),
+  });
+  if (origin.placeId) params.set("origin_place_id", origin.placeId);
   const destination = stops[stops.length - 1];
   params.set("destination", coordinates(destination));
   if (destination.placeId)
@@ -50,18 +51,19 @@ function directionsUrl(
   return `https://www.google.com/maps/dir/?${params}`;
 }
 /**
- * The links that open the route in order. The first starts at the user's
- * location; each later one starts at the previous link's last stop.
+ * The links that open the route in order. The first starts at stop 1, each
+ * later one at the previous link's last stop. A single stop is not a route,
+ * so it has no link.
  */
 export function routeLinks(stops: RouteStop[], mode: TravelMode): RouteLink[] {
   const size = stopsPerLink[mode];
   const links: RouteLink[] = [];
-  for (let i = 0; i < stops.length; i += size) {
+  for (let i = 1; i < stops.length; i += size) {
     const chunk = stops.slice(i, i + size);
     links.push({
-      from: i === 0 ? null : i,
+      from: i,
       to: i + chunk.length,
-      url: directionsUrl(i === 0 ? null : stops[i - 1], chunk, mode),
+      url: directionsUrl(stops[i - 1], chunk, mode),
     });
   }
   return links;

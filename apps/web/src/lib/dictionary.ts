@@ -512,7 +512,6 @@ export const en = {
     "Tap places on the map in the order you want to visit them, up to {max}. Tap a numbered place again to remove it.",
   routeEmpty: "No stops yet.",
   routeGooglePlace: "Google Maps place",
-  routeYourLocation: "Your location",
   routeStop: "Stop {n}",
   routeMoveUp: "Move stop {n}, {name}, earlier",
   routeMoveDown: "Move stop {n}, {name}, later",
@@ -523,9 +522,10 @@ export const en = {
   routeTransit: "Transit",
   routeOpen: "Open in Google Maps",
   routeOpenPart: "Part {n}: {from} → {to}",
-  routeStartNote: "Directions start from your current location.",
+  routeStartNote: "Directions start at stop 1.",
+  routeNeedTwo: "Add at least one more stop to get directions.",
   routeSplitNote:
-    "Google Maps opens at most 4 stops at a time on phones, so the route opens in parts.",
+    "Google Maps opens at most 5 stops at a time on phones, so the route opens in parts.",
   routeTransitNote:
     "Google Maps can’t combine transit trips with several stops, so each leg opens on its own.",
   routeFull: "A route can have up to {max} stops.",
@@ -1374,7 +1374,6 @@ export const zh: Copy = {
     "依造訪順序點選地圖上的地點，最多 {max} 個。再點一次已編號的地點即可移除。",
   routeEmpty: "尚未加入地點。",
   routeGooglePlace: "Google 地圖地點",
-  routeYourLocation: "你的位置",
   routeStop: "第 {n} 站",
   routeMoveUp: "將第 {n} 站「{name}」往前移",
   routeMoveDown: "將第 {n} 站「{name}」往後移",
@@ -1385,9 +1384,10 @@ export const zh: Copy = {
   routeTransit: "大眾運輸",
   routeOpen: "在 Google 地圖開啟",
   routeOpenPart: "第 {n} 段：{from} → {to}",
-  routeStartNote: "路線從你目前的位置出發。",
+  routeStartNote: "路線從第 1 站出發。",
+  routeNeedTwo: "再加入至少一個地點即可取得路線。",
   routeSplitNote:
-    "手機版 Google 地圖一次最多開啟 4 個地點，因此路線會分段開啟。",
+    "手機版 Google 地圖一次最多開啟 5 個地點，因此路線會分段開啟。",
   routeTransitNote:
     "Google 地圖的大眾運輸路線無法串接多個地點，因此每一段會分開開啟。",
   routeFull: "路線最多可有 {max} 個地點。",

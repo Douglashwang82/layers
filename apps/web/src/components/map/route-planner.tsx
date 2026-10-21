@@ -40,8 +40,7 @@ export function RoutePlanner({
     next.splice(to, 0, stop);
     onChange(next);
   };
-  const place = (n: number | null) =>
-    n == null ? t.routeYourLocation : format(t.routeStop, { n });
+  const place = (n: number) => format(t.routeStop, { n });
   const modeLabels: Record<TravelMode, string> = {
     walking: t.routeWalk,
     driving: t.routeDrive,
@@ -122,6 +121,7 @@ export function RoutePlanner({
           </button>
         ))}
       </div>
+      {stops.length === 1 && <p className="fine-print">{t.routeNeedTwo}</p>}
       {links.length > 0 && (
         <div className="route-links">
           {links.map((link, i) => (
