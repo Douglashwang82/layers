@@ -122,7 +122,9 @@ textarea {
   -webkit-tap-highlight-color: transparent;
 }
 button {
-  border: 0;
+  border: thick solid black;
+  color: black;
+  -webkit-text-stroke: 0.5px white;
   cursor: pointer;
 }
 button:disabled {
