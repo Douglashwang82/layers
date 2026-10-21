@@ -1290,7 +1290,8 @@ summary.map-float-button::-webkit-details-marker {
   gap: var(--th-space-3);
 }
 /* Visible overflow: the autocomplete's suggestion list extends below its box.
-   The site is light-only; UI Kit otherwise follows the OS dark mode. */
+   The site is light-only; UI Kit otherwise follows the OS dark mode. The map
+   themes its cards separately (see the map appearance rules below). */
 .provider-slot {
   min-height: 0;
   max-width: 100%;
@@ -1865,12 +1866,25 @@ body[data-map-theme="dark"] .map-panel .row-thumb {
   outline: 1px solid rgb(255 255 255 / 10%);
   outline-offset: -1px;
 }
-/* The Places UI Kit element cannot be themed reliably: keep it a light card. */
-body[data-map-theme="dark"] .provider-slot {
-  padding: 4px;
-  border-radius: var(--th-radius-input);
-  background: #ffffff;
-  color: #111111;
+/* On the map, Places UI Kit cards follow the map appearance and its tokens
+   through Google's documented styling properties (places-ui-kit/custom-styling).
+   Open/closed colors and the attribution keep Google's per-scheme defaults. */
+body:has(.map-workspace) .provider-slot > * {
+  --gmp-mat-color-surface: var(--th-surface);
+  --gmp-mat-color-on-surface: var(--th-text);
+  --gmp-mat-color-on-surface-variant: var(--th-muted);
+  --gmp-mat-color-primary: var(--th-brand-text);
+  --gmp-mat-color-secondary-container: var(--th-pill-bg);
+  --gmp-mat-color-on-secondary-container: var(--th-pill-text);
+  --gmp-mat-color-neutral-container: var(--th-surface-soft);
+  --gmp-mat-color-on-neutral-container: var(--th-muted);
+  --gmp-mat-color-outline-decorative: var(--th-divider);
+  --gmp-mat-font-family: var(--th-font);
+  border-radius: var(--th-float-control-radius);
+}
+body[data-map-theme="dark"]:has(.map-workspace) .provider-slot,
+body[data-map-theme="dark"]:has(.map-workspace) .provider-slot > * {
+  color-scheme: dark;
 }
 
 /* Map MVP: layers from Google Maps links and events attached to places. */
