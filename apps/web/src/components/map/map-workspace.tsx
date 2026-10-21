@@ -442,12 +442,13 @@ export function MapWorkspace({
       });
     return points;
   }, [externalPoints, searchPoints, business]);
-  const selectBusiness = (next: BusinessSelection) => {
+  /** A marker clicked on the map is already in view, so the camera stays put. */
+  const selectBusiness = (next: BusinessSelection, moveCamera = true) => {
     reveal();
     setBusiness(next);
     setSheet("half");
     const spot = next.location;
-    if (spot) afterLayout(() => canvas.current?.focusPoint(spot));
+    if (spot && moveCamera) afterLayout(() => canvas.current?.focusPoint(spot));
   };
   const selectSearchPlace = (place: ProviderPlace) =>
     selectBusiness({
@@ -464,13 +465,16 @@ export function MapWorkspace({
   const onSelectExtra = (key: string) => {
     const point = extraPoints.find((p) => p.key === key);
     if (!point) return;
-    selectBusiness({
-      key,
-      placeId: point.placeId ?? null,
-      subjectId: key.startsWith("subject:") ? key.slice(8) : null,
-      location: { lat: point.lat, lng: point.lng },
-      temporary: point.kind === "search",
-    });
+    selectBusiness(
+      {
+        key,
+        placeId: point.placeId ?? null,
+        subjectId: key.startsWith("subject:") ? key.slice(8) : null,
+        location: { lat: point.lat, lng: point.lng },
+        temporary: point.kind === "search",
+      },
+      false,
+    );
   };
   /* Camera and area */
   const [pendingArea, setPendingArea] = useState<Bounds | null>(null);
@@ -642,12 +646,16 @@ export function MapWorkspace({
   useEffect(() => {
     canvas.current?.resize();
   }, [state.view, sheet, visible, mobile]);
-  // A selected pin hidden behind the panel or an edge is brought into view, not zoomed.
+  // A selected pin hidden behind the panel or an edge is brought into view,
+  // not zoomed, unless it was picked on the map: the camera then stays put.
   const selectedLat = selected?.latitude ?? null;
   const selectedLng = selected?.longitude ?? null;
+  const pickedOnMap = useRef<string | null>(null);
   useEffect(() => {
     if (canvasStatus !== "ready" || selectedLat == null || selectedLng == null)
       return;
+    if (pickedOnMap.current === selectedKey) return;
+    pickedOnMap.current = null;
     const timer = afterLayout(() =>
       canvas.current?.revealPoint({ lat: selectedLat, lng: selectedLng }),
     );
@@ -1164,7 +1172,11 @@ export function MapWorkspace({
               padding={padding}
               highlightKey={listHoverKey}
               onItemHover={onItemHover}
-              onSelect={(key) => key && select(key)}
+              onSelect={(key) => {
+                if (!key) return;
+                pickedOnMap.current = key;
+                select(key);
+              }}
               onUserMove={onUserMove}
               onStatus={onStatus}
               onLocationDenied={() => setLocationNote(t.locationDenied)}
