@@ -20,6 +20,8 @@ export const clientEventNames = [
   "daily_pick_directions",
   "daily_pick_show_on_map",
   "daily_pick_history_opened",
+  // Map MVP route links (stop and link counts and travel mode only).
+  "route_opened",
 ] as const;
 export type ClientEventName = (typeof clientEventNames)[number];
 export function track(

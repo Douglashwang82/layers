@@ -87,9 +87,13 @@ export function applyJadeAtlas(
   for (const layer of map.getStyle()?.layers ?? []) {
     if (
       "source" in layer &&
-      ["items", "places-extra", "selected-item", "hover-item"].includes(
-        String(layer.source),
-      )
+      [
+        "items",
+        "places-extra",
+        "selected-item",
+        "hover-item",
+        "route",
+      ].includes(String(layer.source))
     )
       continue;
     const floor = minZoomByLayer.find(([pattern]) => pattern.test(layer.id));

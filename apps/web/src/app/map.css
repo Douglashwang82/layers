@@ -1970,3 +1970,73 @@ body[data-map-theme="dark"]:has(.map-workspace) .provider-slot > * {
 .mvp-places:empty {
   display: none;
 }
+
+/* Map MVP route planner (docs/plans/map-route-links-plan.md). */
+.route-planner {
+  display: grid;
+  gap: var(--th-space-3);
+}
+.route-planner h2 {
+  margin: 0;
+  font-size: 17px;
+}
+.route-planner p {
+  margin: 0;
+}
+.route-planner .fine-print:empty {
+  display: none;
+}
+.route-stops {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+  display: grid;
+  gap: 4px;
+}
+.route-stops li {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) repeat(3, auto);
+  align-items: center;
+  gap: 4px;
+}
+.route-number {
+  display: inline-grid;
+  place-items: center;
+  width: 24px;
+  height: 24px;
+  border-radius: 50%;
+  background: var(--th-text);
+  color: var(--th-surface);
+  font-size: 12px;
+  font-weight: 700;
+}
+.route-label {
+  padding-left: 6px;
+  overflow-wrap: anywhere;
+}
+.route-modes {
+  margin: 0;
+  justify-self: start;
+}
+.route-links {
+  display: grid;
+  gap: var(--th-space-2);
+}
+.route-links .button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+}
+.route-action {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--th-space-2);
+  padding: var(--th-space-3) var(--th-space-3) 0;
+}
+.route-action .button {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}

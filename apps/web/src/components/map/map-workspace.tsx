@@ -19,6 +19,7 @@ import {
   Layers as LayersIcon,
   Crosshair,
   Info,
+  Route,
   X,
 } from "lucide-react";
 import {
@@ -62,6 +63,8 @@ import { useMapTheme } from "@/lib/map-theme";
 import { ActiveLayersPanel } from "./active-layers-panel";
 import { MapResults } from "./map-results";
 import { ItemPreview } from "./item-preview";
+import { RoutePlanner, type PlannedStop } from "./route-planner";
+import { maxRouteStops, type TravelMode } from "@/lib/route-link";
 import { DailyPickCard } from "@/components/daily-pick/daily-pick-card";
 import { track } from "@/lib/track";
 import { eventRange, eventTitle } from "@/lib/event-time";
@@ -462,9 +465,54 @@ export function MapWorkspace({
     setBusiness(null);
     panelRef.current?.focus();
   };
+  /*
+   * Route planning (map MVP, docs/plans/map-route-links-plan.md): in route
+   * mode a marker click adds or removes a stop instead of opening the place.
+   * Stops stay in memory for this page view.
+   */
+  const [routeMode, setRouteMode] = useState(false);
+  const [routeStops, setRouteStops] = useState<PlannedStop[]>([]);
+  const [travelMode, setTravelMode] = useState<TravelMode>("walking");
+  const [routeNotice, setRouteNotice] = useState("");
+  const routeLine = useMemo(
+    () => routeStops.map(({ lat, lng }) => ({ lat, lng })),
+    [routeStops],
+  );
+  const toggleStop = (stop: PlannedStop) => {
+    if (routeStops.some((s) => s.key === stop.key)) {
+      setRouteStops(routeStops.filter((s) => s.key !== stop.key));
+      setRouteNotice(t.routeStopRemoved);
+    } else if (routeStops.length >= maxRouteStops)
+      setRouteNotice(format(t.routeFull, { max: maxRouteStops }));
+    else {
+      setRouteStops([...routeStops, stop]);
+      setRouteNotice(format(t.routeStopAdded, { n: routeStops.length + 1 }));
+    }
+  };
+  const itemStop = (key: string): PlannedStop | null => {
+    const item = result.items.find((i) => i.key === key);
+    if (!item || item.latitude == null || item.longitude == null) return null;
+    return {
+      key,
+      lat: item.latitude,
+      lng: item.longitude,
+      label: localizedName(item, locale),
+    };
+  };
+  const pointStop = (point: ExtraPoint): PlannedStop => ({
+    key: point.key,
+    lat: point.lat,
+    lng: point.lng,
+    placeId: point.placeId ?? null,
+    label: point.label || t.routeGooglePlace,
+  });
   const onSelectExtra = (key: string) => {
     const point = extraPoints.find((p) => p.key === key);
     if (!point) return;
+    if (routeMode) {
+      toggleStop(pointStop(point));
+      return;
+    }
     selectBusiness(
       {
         key,
@@ -672,6 +720,14 @@ export function MapWorkspace({
     setPanelOpen(true);
     window.requestAnimationFrame(() => panelRef.current?.focus());
   };
+  const planRoute = () => {
+    setRouteMode(true);
+    setRouteNotice("");
+    setPanelOpen(true);
+    setSheet("half");
+    setTip(null);
+    window.requestAnimationFrame(() => panelRef.current?.focus());
+  };
   const setView = (view: MapState["view"]) => {
     commit({ view }, "replace");
     try {
@@ -772,6 +828,45 @@ export function MapWorkspace({
   );
   // Details share the one floating panel with results and layers (business wins when both exist).
   const detailInPanel = (!!selected || !!business) && !detailHidden;
+  const routeInPanel = mvp && routeMode;
+  // The open place as a route stop: the keyboard and list path into a route.
+  const openStop: PlannedStop | null = business
+    ? business.location && !business.temporary
+      ? {
+          key: business.key,
+          lat: business.location.lat,
+          lng: business.location.lng,
+          placeId: business.placeId,
+          label:
+            extraPoints.find((p) => p.key === business.key)?.label ||
+            t.routeGooglePlace,
+        }
+      : null
+    : selected
+      ? itemStop(selected.key)
+      : null;
+  const inRoute = !!openStop && routeStops.some((s) => s.key === openStop.key);
+  const routeAction = mvp && openStop && (
+    <div className="route-action">
+      <button
+        type="button"
+        className="button secondary small"
+        aria-pressed={inRoute}
+        onClick={() => toggleStop(openStop)}
+      >
+        <Route size={16} aria-hidden="true" />
+        {inRoute ? t.routeRemoveThis : t.routeAdd}
+      </button>
+      {routeStops.length > 0 && (
+        <button type="button" className="text-button" onClick={planRoute}>
+          {t.planRoute} ({routeStops.length})
+        </button>
+      )}
+      <span className="sr-only" role="status">
+        {routeNotice}
+      </span>
+    </div>
+  );
   // Escape closes a pin tooltip. Menus, fields and an open detail keep the key.
   useEffect(() => {
     const onKey = (event: KeyboardEvent) => {
@@ -1161,6 +1256,7 @@ export function MapWorkspace({
               items={result.items}
               selectedKey={business ? null : selectedKey}
               extraPoints={extraPoints}
+              route={routeLine}
               extraSelectedKey={business?.key ?? null}
               effects={places.mapEffects}
               onSelectExtra={onSelectExtra}
@@ -1174,6 +1270,11 @@ export function MapWorkspace({
               onItemHover={onItemHover}
               onSelect={(key) => {
                 if (!key) return;
+                if (routeMode) {
+                  const stop = itemStop(key);
+                  if (stop) toggleStop(stop);
+                  return;
+                }
                 pickedOnMap.current = key;
                 select(key);
               }}
@@ -1310,6 +1411,21 @@ export function MapWorkspace({
               <span>{t.fitResults}</span>
             </button>
           )}
+          {mvp && !listView && canvasStatus === "ready" && (
+            <button
+              type="button"
+              className="map-float-button"
+              aria-pressed={routeMode}
+              aria-controls="map-panel"
+              onClick={() => (routeMode ? setRouteMode(false) : planRoute())}
+            >
+              <Route size={16} aria-hidden="true" />
+              <span>{t.planRoute}</span>
+              {routeStops.length > 0 && (
+                <span className="count-pill">{routeStops.length}</span>
+              )}
+            </button>
+          )}
           {state.area && !listView && (
             <button
               type="button"
@@ -1441,8 +1557,21 @@ export function MapWorkspace({
               {format(t.layerOtherCity, { city: l.cityName ?? "" })}
             </p>
           ))}
-          {detailInPanel ? (
+          {routeInPanel ? (
+            <div className="panel-body">
+              <RoutePlanner
+                stops={routeStops}
+                mode={travelMode}
+                notice={routeNotice}
+                t={t}
+                onMode={setTravelMode}
+                onChange={setRouteStops}
+                onDone={() => setRouteMode(false)}
+              />
+            </div>
+          ) : detailInPanel ? (
             <>
+              {routeAction}
               {attachedEvents}
               {businessPanel ?? preview}
             </>
@@ -1479,7 +1608,7 @@ export function MapWorkspace({
             // (hidden) whichever view the panel shows.
             <div
               className="panel-body mvp-places"
-              hidden={detailInPanel || tab !== "results"}
+              hidden={routeInPanel || detailInPanel || tab !== "results"}
             >
               {externalReferences}
             </div>

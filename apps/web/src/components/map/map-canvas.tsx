@@ -59,7 +59,32 @@ export type ExtraPoint = {
   lng: number;
   /** Provider ID for reopening the selection; never rendered or stored. */
   placeId?: string;
+  /** LocalLink-authored label (a layer note), never provider content. */
+  label?: string;
 };
+/** Route stops in order: numbered badges joined by a dashed line (order only, not roads). */
+function routeGeoJSON(stops: { lat: number; lng: number }[]) {
+  const coordinates = stops.map((s) => [s.lng, s.lat]);
+  return {
+    type: "FeatureCollection" as const,
+    features: [
+      ...(stops.length > 1
+        ? [
+            {
+              type: "Feature" as const,
+              properties: {},
+              geometry: { type: "LineString" as const, coordinates },
+            },
+          ]
+        : []),
+      ...coordinates.map((point, i) => ({
+        type: "Feature" as const,
+        properties: { n: i + 1 },
+        geometry: { type: "Point" as const, coordinates: point },
+      })),
+    ],
+  };
+}
 function extraGeoJSON(points: ExtraPoint[]) {
   return {
     type: "FeatureCollection" as const,
@@ -106,12 +131,14 @@ function toGeoJSON(items: MapItem[], locale: Locale) {
   };
 }
 const noPoints: ExtraPoint[] = [];
+const noStops: { lat: number; lng: number }[] = [];
 export function MapCanvas({
   ref,
   token,
   items,
   selectedKey,
   extraPoints = noPoints,
+  route = noStops,
   extraSelectedKey = null,
   effects = false,
   center,
@@ -133,6 +160,8 @@ export function MapCanvas({
   items: MapItem[];
   selectedKey: string | null;
   extraPoints?: ExtraPoint[];
+  /** Planned route stops, in order. */
+  route?: { lat: number; lng: number }[];
   extraSelectedKey?: string | null;
   /** Presentation-only selection effects (FEATURE_MAP_EFFECTS). */
   effects?: boolean;
@@ -171,6 +200,7 @@ export function MapCanvas({
     locale,
     items: catalogItems,
     extraPoints,
+    route,
     extraSelectedKey,
     effects,
     onSelectExtra,
@@ -190,6 +220,7 @@ export function MapCanvas({
       locale,
       items: catalogItems,
       extraPoints,
+      route,
       extraSelectedKey,
       effects,
       onSelectExtra,
@@ -625,6 +656,54 @@ export function MapCanvas({
               "circle-stroke-width": 2.5,
             },
           });
+          // The route line runs under the pins; numbered badges sit on top.
+          // Clicks fall through to the pin layers, which toggle the stop.
+          map.addSource("route", {
+            type: "geojson",
+            data: routeGeoJSON(latest.current.route),
+          });
+          map.addLayer(
+            {
+              id: "route-line",
+              type: "line",
+              source: "route",
+              filter: ["==", ["geometry-type"], "LineString"],
+              layout: { "line-join": "round", "line-cap": "round" },
+              paint: {
+                "line-color": text,
+                "line-width": 2.5,
+                "line-opacity": 0.8,
+                "line-dasharray": [2, 1.5],
+              },
+            },
+            "points-edge",
+          );
+          map.addLayer({
+            id: "route-stop",
+            type: "circle",
+            source: "route",
+            filter: ["==", ["geometry-type"], "Point"],
+            paint: {
+              "circle-radius": 11,
+              "circle-color": text,
+              "circle-stroke-color": palette.surface,
+              "circle-stroke-width": 2,
+            },
+          });
+          map.addLayer({
+            id: "route-stop-number",
+            type: "symbol",
+            source: "route",
+            filter: ["==", ["geometry-type"], "Point"],
+            layout: {
+              "text-field": ["to-string", ["get", "n"]],
+              "text-size": 12,
+              "text-font": ["DIN Pro Bold", "Arial Unicode MS Bold"],
+              "text-allow-overlap": true,
+              "text-ignore-placement": true,
+            },
+            paint: { "text-color": palette.surface },
+          });
           map.on("click", "extra-points", (e) => {
             const key = (e.features?.[0] as Feature | undefined)?.properties
               ?.key;
@@ -752,6 +831,13 @@ export function MapCanvas({
       extraGeoJSON(extraPoints),
     );
   }, [extraPoints]);
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!map || !loadedRef.current) return;
+    (map.getSource("route") as GeoJSONSource | undefined)?.setData(
+      routeGeoJSON(route),
+    );
+  }, [route, readyMap]);
   useEffect(() => {
     const map = mapRef.current;
     if (!map || !loadedRef.current) return;

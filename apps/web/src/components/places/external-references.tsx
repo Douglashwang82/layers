@@ -134,6 +134,8 @@ export function ExternalReferences({
           kind: "external" as const,
           lat: r.location!.lat,
           lng: r.location!.lng,
+          placeId: r.providerPlaceId ?? undefined,
+          label: r.localNote ?? undefined,
         })),
     [visible],
   );
