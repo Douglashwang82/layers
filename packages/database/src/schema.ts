@@ -1167,9 +1167,26 @@ export const placeProviderReference = pgTable(
     displayNameUpdatedAt: timestamp("display_name_updated_at", {
       withTimezone: true,
     }),
+    /**
+     * Provider coordinates for map pins, by owner decision (2026-10-21). A
+     * cache only: Google permits keeping them for at most 30 days, after
+     * which they are cleared and fetched again.
+     */
+    latitude: doublePrecision("latitude"),
+    longitude: doublePrecision("longitude"),
+    locationFetchedAt: timestamp("location_fetched_at", {
+      withTimezone: true,
+    }),
     ...timestamps(),
   },
   (t) => [
+    check(
+      "place_provider_reference_location_check",
+      sql`(${t.latitude} IS NULL AND ${t.longitude} IS NULL AND ${t.locationFetchedAt} IS NULL) OR (${t.latitude} BETWEEN -90 AND 90 AND ${t.longitude} BETWEEN -180 AND 180 AND ${t.locationFetchedAt} IS NOT NULL)`,
+    ),
+    index("place_provider_reference_location_fetched_idx")
+      .on(t.locationFetchedAt)
+      .where(sql`${t.locationFetchedAt} IS NOT NULL`),
     uniqueIndex("place_provider_reference_identity").on(
       t.provider,
       t.providerPlaceId,

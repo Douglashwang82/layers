@@ -75,12 +75,15 @@ export function ExternalReferences({
         const page = json.data;
         setRows((current) => [
           ...(cursor ? current : []),
+          // A cached location pins the place at once; the card still loads when shown.
           ...page.references.map((ref) => ({
             ...ref,
-            state: (provider && ref.providerPlaceId
-              ? "loading"
-              : "unavailable") as Row["state"],
-            location: null,
+            state: (ref.location
+              ? "resolved"
+              : provider && ref.providerPlaceId
+                ? "loading"
+                : "unavailable") as Row["state"],
+            location: ref.location ?? null,
           })),
         ]);
         setNext(page.nextCursor);

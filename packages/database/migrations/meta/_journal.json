@@ -176,6 +176,13 @@
       "when": 1792534327637,
       "tag": "0024_launch_cities",
       "breakpoints": true
+    },
+    {
+      "idx": 25,
+      "version": "7",
+      "when": 1792561348110,
+      "tag": "0025_jazzy_the_anarchist",
+      "breakpoints": true
     }
   ]
 }

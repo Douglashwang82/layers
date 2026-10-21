@@ -113,19 +113,25 @@ describe("place subject identity and resolution", () => {
     aliceGrant = results[0].selectionGrant;
   });
   it("stores no provider display data", async () => {
-    const columns = await pool.query<{ column_name: string }>(
-      "SELECT column_name FROM information_schema.columns WHERE table_name IN ('place_subject','place_provider_reference')",
+    const columns = await pool.query<{
+      table_name: string;
+      column_name: string;
+    }>(
+      "SELECT table_name, column_name FROM information_schema.columns WHERE table_name IN ('place_subject','place_provider_reference')",
     );
     const names = columns.rows.map((r) => r.column_name);
-    for (const forbidden of [
-      "name",
-      "address",
-      "latitude",
-      "longitude",
-      "rating",
-      "photo",
-    ])
+    for (const forbidden of ["name", "address", "rating", "photo"])
       expect(names).not.toContain(forbidden);
+    // Coordinates exist only as the time-limited pin cache (map MVP, 30 days).
+    expect(
+      columns.rows
+        .filter((r) => ["latitude", "longitude"].includes(r.column_name))
+        .map((r) => r.table_name),
+    ).toEqual(["place_provider_reference", "place_provider_reference"]);
+    const cache = await pool.query(
+      "SELECT pg_get_constraintdef(oid) AS def FROM pg_constraint WHERE conname='place_provider_reference_location_check'",
+    );
+    expect(cache.rows[0].def).toContain("location_fetched_at IS NOT NULL");
   });
   it("refuses provider resolution while discovery is disabled", async () => {
     flags.googlePlacesDiscovery = false;

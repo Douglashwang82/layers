@@ -1,0 +1,5 @@
+ALTER TABLE "place_provider_reference" ADD COLUMN "latitude" double precision;--> statement-breakpoint
+ALTER TABLE "place_provider_reference" ADD COLUMN "longitude" double precision;--> statement-breakpoint
+ALTER TABLE "place_provider_reference" ADD COLUMN "location_fetched_at" timestamp with time zone;--> statement-breakpoint
+CREATE INDEX "place_provider_reference_location_fetched_idx" ON "place_provider_reference" USING btree ("location_fetched_at") WHERE "place_provider_reference"."location_fetched_at" IS NOT NULL;--> statement-breakpoint
+ALTER TABLE "place_provider_reference" ADD CONSTRAINT "place_provider_reference_location_check" CHECK (("place_provider_reference"."latitude" IS NULL AND "place_provider_reference"."longitude" IS NULL AND "place_provider_reference"."location_fetched_at" IS NULL) OR ("place_provider_reference"."latitude" BETWEEN -90 AND 90 AND "place_provider_reference"."longitude" BETWEEN -180 AND 180 AND "place_provider_reference"."location_fetched_at" IS NOT NULL));

@@ -7,6 +7,7 @@ import {
 } from "@taiwanhub/shared";
 import { flags } from "@/lib/config";
 import { resolveLayers, type LayerWithAccess } from "../layers/repository";
+import { placeLocations } from "../google-links/locations";
 import type { MapCity } from "./query";
 /**
  * Every MVP layer place is external, so a whole layer resolves in one page
@@ -21,13 +22,16 @@ export type ExternalReference = {
   layers: string[];
   cityReviewStatus: "unreviewed" | "approved";
   isDailyPick?: boolean;
+  /** Cached Google coordinates (map MVP, at most 30 days old), for the pin. */
+  location?: { lat: number; lng: number } | null;
 };
 /**
  * Authorized external (provider-referenced) places for the same layer/type/
  * date context as the map query, or the actor's own saves. The server stores
- * no provider names or coordinates, so it cannot search, sort or spatially
- * filter these by business fields: text search covers LocalLink-authored notes
- * only, and location is resolved client-side through the provider component.
+ * no provider business fields, so it cannot search or sort these by them:
+ * text search covers LocalLink-authored notes only. Location is resolved
+ * client-side through the provider component, except that the map MVP adds
+ * cached coordinates (at most 30 days old) so pins need no component load.
  */
 export async function listExternalReferences(
   state: MapState,
@@ -148,6 +152,11 @@ export async function listExternalReferences(
     );
     const picked = new Set(picks.rows.map((r) => r.subject_id));
     for (const ref of page) ref.isDailyPick = picked.has(ref.subjectId);
+    if (flags.mapMvp) {
+      const locations = await placeLocations(page.map((r) => r.subjectId));
+      for (const ref of page)
+        ref.location = locations.get(ref.subjectId) ?? null;
+    }
   }
   return {
     ...empty,

@@ -22,6 +22,11 @@ import {
 } from "../../apps/web/src/features/layers/repository";
 import { createGroup } from "../../apps/web/src/features/groups/service";
 import { listExternalReferences } from "../../apps/web/src/features/map/external";
+import { placeLocations } from "../../apps/web/src/features/google-links/locations";
+import {
+  fakeResolverFetch,
+  fetchPlaceLocation,
+} from "../../apps/web/src/features/google-links/resolver";
 import { runMapQuery } from "../../apps/web/src/features/map/query";
 import { mvpMapState } from "../../apps/web/src/features/map/request";
 import { flags } from "../../apps/web/src/lib/config";
@@ -97,8 +102,8 @@ afterAll(async () => {
     [ids, groupId],
   );
   const subjects = await pool.query<{ subject_id: string }>(
-    "SELECT subject_id FROM place_provider_reference WHERE provider_place_id LIKE $1",
-    [`mvp-${run}-%`],
+    "SELECT subject_id FROM place_provider_reference WHERE provider_place_id LIKE ANY($1::text[])",
+    [[`mvp-${run}-%`, `fake-link-${run}%`]],
   );
   const subjectIds = subjects.rows.map((r) => r.subject_id);
   await pool.query(
@@ -312,6 +317,69 @@ describe("the MVP map", () => {
       expect(scoped.layers).toMatchObject([
         { slug: trip, status: "other-city" },
       ]);
+    } finally {
+      flags.mapMvp = true;
+    }
+  });
+  it("caches Google coordinates for pins for at most 30 days", async () => {
+    // The fake server key locates `fake-link-` IDs and finds no other place.
+    const located = `fake-link-${run}a`;
+    const layer = (
+      await createLayerFromGoogle(alice, {
+        title: "Pinned",
+        city: "houston",
+        providerPlaceIds: [located, placeId(40)],
+      })
+    ).layer.slug;
+    const expected = (await fetchPlaceLocation(located, {
+      fetch: fakeResolverFetch,
+      apiKey: "fake",
+    }))!;
+    expect(expected).toEqual({
+      lat: expect.any(Number),
+      lng: expect.any(Number),
+    });
+    const list = () =>
+      listExternalReferences(state([layer]), city, alice, 0).then((r) =>
+        Object.fromEntries(
+          r.references.map((ref) => [ref.providerPlaceId, ref.location]),
+        ),
+      );
+    expect(await list()).toEqual({
+      [located]: expected,
+      [placeId(40)]: null,
+    });
+    const stored = await pool.query(
+      "SELECT latitude,longitude,location_fetched_at FROM place_provider_reference WHERE provider_place_id=$1",
+      [located],
+    );
+    expect(stored.rows[0]).toMatchObject({
+      latitude: expected.lat,
+      longitude: expected.lng,
+    });
+    expect(stored.rows[0].location_fetched_at).toBeInstanceOf(Date);
+    // Past 30 days the value is cleared, even with lookups unavailable...
+    await pool.query(
+      "UPDATE place_provider_reference SET location_fetched_at=now()-interval '31 days' WHERE provider_place_id=$1",
+      [located],
+    );
+    const subject = await subjectOf(located);
+    expect((await placeLocations([subject], null)).size).toBe(0);
+    const cleared = await pool.query(
+      "SELECT latitude,location_fetched_at FROM place_provider_reference WHERE provider_place_id=$1",
+      [located],
+    );
+    expect(cleared.rows[0]).toEqual({
+      latitude: null,
+      location_fetched_at: null,
+    });
+    // ...and looked up again the next time the place is listed.
+    expect((await list())[located]).toEqual(expected);
+    // With the flag off, references carry no cached location.
+    flags.mapMvp = false;
+    try {
+      const refs = await listExternalReferences(state([layer]), city, alice, 0);
+      expect(refs.references.every((r) => r.location === undefined)).toBe(true);
     } finally {
       flags.mapMvp = true;
     }

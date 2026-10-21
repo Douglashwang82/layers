@@ -14,7 +14,8 @@ import {
  * only while every hop stays on an allowlisted HTTPS Google Maps host (the
  * body is never read), and one IDs-only Places Text Search per link. No model
  * is involved, coordinates read from a URL are only a search bias, and
- * nothing here is stored.
+ * nothing here is stored. Separately, `fetchPlaceLocation` looks up a place's
+ * coordinates for the 30-day pin cache (./locations.ts).
  */
 export type ResolverDeps = {
   fetch: typeof fetch;
@@ -142,6 +143,41 @@ export async function resolveLink(
     return { input, status: "failed", reason: "provider_error" };
   }
 }
+const detailsResponse = z.object({
+  location: z.object({
+    latitude: z.number().min(-90).max(90),
+    longitude: z.number().min(-180).max(180),
+  }),
+});
+/**
+ * One Places API (New) Place Details request with the `location` field mask
+ * only. Null when Google has no such place or answers without a location;
+ * throws on network or provider errors so callers can retry later.
+ */
+export async function fetchPlaceLocation(placeId: string, deps: ResolverDeps) {
+  if (!providerPlaceIdPattern.test(placeId)) return null;
+  const response = await deps.fetch(
+    `https://places.googleapis.com/v1/places/${encodeURIComponent(placeId)}`,
+    {
+      method: "GET",
+      redirect: "error",
+      signal: AbortSignal.timeout(deps.timeoutMs ?? 5000),
+      headers: {
+        "X-Goog-Api-Key": deps.apiKey,
+        "X-Goog-FieldMask": "location",
+      },
+    },
+  );
+  if (response.status === 404) return null;
+  if (!response.ok) throw new Error("provider_error");
+  const parsed = detailsResponse.safeParse(
+    await response.json().catch(() => null),
+  );
+  if (!parsed.success) return null;
+  const { latitude: lat, longitude: lng } = parsed.data.location;
+  // A literal (0,0) is a provider failure, never a real business.
+  return lat === 0 && lng === 0 ? null : { lat, lng };
+}
 /** Resolves a batch with bounded concurrency; one bad link never fails the rest. */
 export async function resolveLinks(
   inputs: string[],
@@ -170,10 +206,24 @@ function hash(text: string) {
  * Test double for the network (key "fake", non-production only): short links
  * cannot be expanded, and Text Search answers a deterministic `fake-link-`
  * place ID that the fake Places UI Kit provider renders and locates near
- * downtown Houston. Never real business data.
+ * downtown Houston. Place Details answers the same location the fake UI Kit
+ * provider gives that ID (lib/places/provider.ts). Never real business data.
  */
 export const fakeResolverFetch: typeof fetch = async (input, init) => {
   const url = String(input instanceof Request ? input.url : input);
+  const details =
+    /^https:\/\/places\.googleapis\.com\/v1\/places\/(fake-link-[a-z0-9]+)$/.exec(
+      url,
+    );
+  if (details) {
+    const h = hash(details[1]);
+    return Response.json({
+      location: {
+        latitude: 29.7604 + ((h % 200) - 100) / 4000,
+        longitude: -95.3698 + (((h >> 8) % 200) - 100) / 4000,
+      },
+    });
+  }
   if (url !== "https://places.googleapis.com/v1/places:searchText")
     return new Response(null, { status: 404 });
   const body = JSON.parse(String(init?.body ?? "{}")) as { textQuery?: string };

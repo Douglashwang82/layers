@@ -9,6 +9,7 @@ import {
 import {
   expandShortLink,
   fakeResolverFetch,
+  fetchPlaceLocation,
   findPlaceId,
   resolveLink,
   resolveLinks,
@@ -314,5 +315,73 @@ describe("zonedDateTime", () => {
     expect(
       localDateTimeOf(new Date("2026-11-08T00:00:00Z"), "America/Chicago"),
     ).toBe("2026-11-07T18:00");
+  });
+});
+describe("fetchPlaceLocation", () => {
+  const deps = (respond: () => Response) => {
+    const fetch = vi.fn(async () => respond());
+    return {
+      fetch: fetch as unknown as typeof globalThis.fetch,
+      apiKey: "k",
+      fetchMock: fetch,
+    };
+  };
+  it("asks Place Details for the location field only", async () => {
+    const d = deps(() =>
+      Response.json({ location: { latitude: 35.64, longitude: 139.71 } }),
+    );
+    expect(await fetchPlaceLocation("ChIJabc", d)).toEqual({
+      lat: 35.64,
+      lng: 139.71,
+    });
+    const [url, init] = d.fetchMock.mock.calls[0] as unknown as [
+      string,
+      RequestInit,
+    ];
+    expect(url).toBe("https://places.googleapis.com/v1/places/ChIJabc");
+    expect(init.headers).toMatchObject({
+      "X-Goog-Api-Key": "k",
+      "X-Goog-FieldMask": "location",
+    });
+  });
+  it("returns null for unknown places, bad payloads, (0,0) and invalid IDs", async () => {
+    expect(
+      await fetchPlaceLocation(
+        "ChIJabc",
+        deps(() => new Response(null, { status: 404 })),
+      ),
+    ).toBeNull();
+    expect(
+      await fetchPlaceLocation(
+        "ChIJabc",
+        deps(() =>
+          Response.json({ location: { latitude: 120, longitude: 0 } }),
+        ),
+      ),
+    ).toBeNull();
+    expect(
+      await fetchPlaceLocation(
+        "ChIJabc",
+        deps(() => Response.json({ location: { latitude: 0, longitude: 0 } })),
+      ),
+    ).toBeNull();
+    const d = deps(() => Response.json({}));
+    expect(await fetchPlaceLocation("../places:searchText", d)).toBeNull();
+    expect(d.fetchMock).not.toHaveBeenCalled();
+  });
+  it("throws on provider errors so the lookup is retried later", async () => {
+    await expect(
+      fetchPlaceLocation(
+        "ChIJabc",
+        deps(() => new Response(null, { status: 500 })),
+      ),
+    ).rejects.toThrow();
+  });
+  it("answers fake link IDs with a deterministic location", async () => {
+    const d = { fetch: fakeResolverFetch, apiKey: "fake" };
+    const first = await fetchPlaceLocation("fake-link-abc123", d);
+    expect(first).toEqual(await fetchPlaceLocation("fake-link-abc123", d));
+    expect(first!.lat).toBeCloseTo(29.76, 1);
+    expect(await fetchPlaceLocation("ChIJreal", d)).toBeNull();
   });
 });

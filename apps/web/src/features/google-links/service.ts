@@ -22,7 +22,9 @@ import {
   isBlocked,
   type SubjectRow,
 } from "@/features/place-subjects/repository";
-import { fakeResolverFetch, resolveLinks, type ResolverDeps } from "./resolver";
+import { resolveLinks } from "./resolver";
+import { resolverDeps } from "./deps";
+export { resolverDeps };
 /*
  * Layers from Google Maps links (docs/plans/layer-mvp-google-links-plan.md
  * §2–§3). Resolving publishes nothing; importing stores only Google place IDs
@@ -37,19 +39,6 @@ function enabled() {
       "DISABLED",
       "Adding places from Google Maps is unavailable.",
     );
-}
-/** Server-only key; "fake" selects the deterministic test double outside production. */
-export function resolverDeps(): ResolverDeps {
-  const key = process.env.GOOGLE_MAPS_LINK_API_KEY;
-  if (key === "fake" && process.env.NODE_ENV !== "production")
-    return { fetch: fakeResolverFetch, apiKey: "fake" };
-  if (!key || key === "fake")
-    throw new AppError(
-      503,
-      "UNAVAILABLE",
-      "Google Maps links are not configured on this server.",
-    );
-  return { fetch, apiKey: key };
 }
 async function spendLinkBudget(actor: Actor, count: number) {
   const result = await pool.query<{ count: number }>(
