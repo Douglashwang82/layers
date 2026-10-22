@@ -139,7 +139,7 @@ Owner request, for the Tabelog search link and readable route stops. Migration `
 
 A Google place with a link name, food types (`isGoogleFoodPlace`) and a location in Japan gets the "Search on Tabelog" link on its hover card and in the results list. The route stop label uses the link name before the layer note.
 
-Pin colors (owner, 2026-10-22: at most five types): `googleMarkerKind` in shared maps a Google place's types to one of five existing marker kinds, checked in this order: Food & drink, Parks & outdoors, Arts & sights, Shopping & grocery, otherwise Local info & other. The pin takes that kind's color, its glyph shows from zoom 14, and the MVP map key lists only these five. A place whose types aren't fetched yet keeps the plain place color.
+Pin colors (owner, 2026-10-22: at most five types): `googleMarkerKind` in shared maps a Google place's types to one of five existing marker kinds, checked in this order: Food & drink, Parks & outdoors, Arts & sights, Shopping & grocery, otherwise Local info & other. The pin takes that kind's color, its glyph shows from zoom 14. The map has no key (removed the same day by owner request). A place whose types aren't fetched yet keeps the plain place color.
 
 **Open risk (owner accepted):** Google's 30-day caching allowance is documented, but whether showing those coordinates as pins on a non-Google (Mapbox) map, apart from the UI Kit card, is permitted has not been confirmed against the current Google Maps Platform terms. Confirm before or during P0.
 

@@ -24,7 +24,6 @@ import {
   X,
 } from "lucide-react";
 import {
-  googleMarkerKinds,
   itemTypes,
   localDate,
   parseMapQuery,
@@ -56,7 +55,6 @@ import { BusinessPanel } from "@/components/places/business-panel";
 import { ExternalReferences } from "@/components/places/external-references";
 import { ProviderDetails } from "@/components/places/provider-slot";
 import { MapToolbar } from "./map-toolbar";
-import { MarkerLegend } from "./marker-legend";
 import {
   markerCssVars,
   markerKind,
@@ -1425,11 +1423,6 @@ export function MapWorkspace({
           {canvasStatus === "loading" && token && (
             <div className="map-skeleton" aria-hidden="true">
               <span>{t.mapLoading}</span>
-            </div>
-          )}
-          {canvasStatus === "ready" && (
-            <div className="map-side-stack">
-              <MarkerLegend t={t} kinds={mvp ? googleMarkerKinds : undefined} />
             </div>
           )}
           {tip &&

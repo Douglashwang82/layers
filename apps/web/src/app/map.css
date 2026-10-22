@@ -1731,47 +1731,7 @@ summary.map-float-button::-webkit-details-marker {
     margin-top: 8px;
   }
 }
-/* Legend and pin tooltip (grayscale surfaces; pin hues only for markers). */
-.map-side-stack {
-  position: absolute;
-  top: var(--th-map-top, 160px);
-  right: var(--th-map-edge);
-  z-index: 6;
-  display: grid;
-  gap: var(--th-space-2);
-  width: min(280px, calc(100% - var(--th-map-edge) * 2));
-  justify-items: stretch;
-  pointer-events: none;
-}
-.map-side-stack > * {
-  pointer-events: auto;
-}
-.map-key {
-  background: var(--th-surface);
-  border: 1px solid var(--th-divider);
-  border-radius: var(--th-float-control-radius);
-  box-shadow: var(--th-float-shadow);
-  padding: 10px 12px;
-  font-size: 14px;
-}
-.map-key summary {
-  cursor: pointer;
-  font-weight: 600;
-  min-height: 24px;
-}
-.map-key ul {
-  list-style: none;
-  margin: 8px 0 0;
-  padding: 0;
-  display: grid;
-  gap: 6px;
-}
-.map-key li {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-}
-.key-dot,
+/* Pin tooltip (grayscale surfaces; pin hues only for markers). */
 .kind-dot {
   display: inline-block;
   flex: none;
@@ -1815,11 +1775,6 @@ summary.map-float-button::-webkit-details-marker {
   box-shadow: none;
 }
 @media (max-width: 800px) {
-  .map-side-stack {
-    left: var(--th-map-edge);
-    right: var(--th-map-edge);
-    width: auto;
-  }
   .map-tooltip {
     display: none;
   }

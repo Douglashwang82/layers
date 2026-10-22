@@ -79,7 +79,7 @@ All pass the 3:1 non-text threshold with room to spare. Ratios are computed
 against the dark land color. Implement as `markerColors.light/dark` and make
 `markerGlyphImage(kind, theme)` choose its stroke color; the glyph images must be
 re-registered on a theme change (`map.hasImage` / `removeImage` then `addImage`).
-The map key (`marker-legend.tsx`) reads the same table so legend and map match.
+The map has no key (removed 2026-10-22, owner: pins are clear without one); list rows show the same colors as kind dots.
 
 Unchanged semantics: search results stay hollow, saved/layer external places stay
 filled, clusters keep a ring, and kind is still repeated by icon and list label,
@@ -146,7 +146,7 @@ light`. In dark mode set `color-scheme: dark` on the slot so the third-party
 
 1. `map-appearance.ts`: `atlasPalettes`, `applyAtlas(map, locale, theme)`;
    unit-test palette contrast with the same ratios as above.
-2. `marker-presentation.ts` and `marker-legend.tsx`: per-theme colors and glyphs.
+2. `marker-presentation.ts`: per-theme colors and glyphs.
 3. `map-canvas.tsx`: extract `installAppLayers`, choose style by theme,
    re-install on `style.load`, preserve selection/hover/camera.
 4. `map.css`: dark token block, tokenized hard-coded colors, control icon invert.
