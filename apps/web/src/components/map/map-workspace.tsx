@@ -14,6 +14,7 @@ import {
   CalendarDays,
   ChevronDown,
   ChevronUp,
+  ExternalLink,
   List,
   Map as MapIcon,
   Layers as LayersIcon,
@@ -65,7 +66,12 @@ import { ActiveLayersPanel } from "./active-layers-panel";
 import { MapResults } from "./map-results";
 import { ItemPreview } from "./item-preview";
 import { RoutePlanner, type PlannedStop } from "./route-planner";
-import { maxRouteStops, type TravelMode } from "@/lib/route-link";
+import {
+  maxRouteStops,
+  routeLinks,
+  shortOrder,
+  type TravelMode,
+} from "@/lib/route-link";
 import { DailyPickCard } from "@/components/daily-pick/daily-pick-card";
 import { track } from "@/lib/track";
 import { eventRange, eventTitle } from "@/lib/event-time";
@@ -85,7 +91,7 @@ const cityZoom = 10.5;
 const afterLayout = (run: () => void) => window.setTimeout(run, 80);
 /** The Google place hover card's size (height approximate), for keeping it inside the map. */
 const placeTipWidth = 280;
-const placeTipHeight = 320;
+const placeTipHeight = 360;
 /** Server-read flags and the browser-visible provider key (only when discovery or the MVP is on). */
 export type PlacesConfig = {
   providerKey: string | null;
@@ -482,11 +488,13 @@ export function MapWorkspace({
     panelRef.current?.focus();
   };
   /*
-   * Route planning (map MVP, docs/plans/map-route-links-plan.md): in route
-   * mode a marker click adds or removes a stop instead of opening the place.
-   * Stops stay in memory for this page view.
+   * Route planning (map MVP, docs/plans/map-route-links-plan.md): stops are
+   * added from a place's hover card or details, or all at once from the
+   * results; markers always open the place. A route bar shows while there
+   * are stops, and the planner opens from it. Stops stay in memory for this
+   * page view.
    */
-  const [routeMode, setRouteMode] = useState(false);
+  const [routeOpen, setRouteOpen] = useState(false);
   const [routeStops, setRouteStops] = useState<PlannedStop[]>([]);
   const [travelMode, setTravelMode] = useState<TravelMode>("walking");
   const [routeNotice, setRouteNotice] = useState("");
@@ -522,13 +530,15 @@ export function MapWorkspace({
     placeId: point.placeId ?? null,
     label: point.label || t.routeGooglePlace,
   });
+  /** A map pin as a stop; temporary search results never join a route. */
+  const stopFor = (key: string): PlannedStop | null => {
+    const point = extraPoints.find((p) => p.key === key);
+    if (point) return point.kind === "external" ? pointStop(point) : null;
+    return itemStop(key);
+  };
   const onSelectExtra = (key: string) => {
     const point = extraPoints.find((p) => p.key === key);
     if (!point) return;
-    if (routeMode) {
-      toggleStop(pointStop(point));
-      return;
-    }
     selectBusiness(
       {
         key,
@@ -736,9 +746,8 @@ export function MapWorkspace({
     setPanelOpen(true);
     window.requestAnimationFrame(() => panelRef.current?.focus());
   };
-  const planRoute = () => {
-    setRouteMode(true);
-    setRouteNotice("");
+  const editRoute = () => {
+    setRouteOpen(true);
     setPanelOpen(true);
     setSheet("half");
     setTip(null);
@@ -844,7 +853,7 @@ export function MapWorkspace({
   );
   // Details share the one floating panel with results and layers (business wins when both exist).
   const detailInPanel = (!!selected || !!business) && !detailHidden;
-  const routeInPanel = mvp && routeMode;
+  const routeInPanel = mvp && routeOpen;
   // The open place as a route stop: the keyboard and list path into a route.
   const openStop: PlannedStop | null = business
     ? business.location && !business.temporary
@@ -874,15 +883,109 @@ export function MapWorkspace({
         {inRoute ? t.routeRemoveThis : t.routeAdd}
       </button>
       {routeStops.length > 0 && (
-        <button type="button" className="text-button" onClick={planRoute}>
-          {t.planRoute} ({routeStops.length})
+        <button type="button" className="text-button" onClick={editRoute}>
+          {t.routeEdit} ({routeStops.length})
         </button>
       )}
-      <span className="sr-only" role="status">
-        {routeNotice}
-      </span>
     </div>
   );
+  // Every located place on the map, for "Route through these places".
+  const routablePlaces = [
+    ...mapped.map((i) => itemStop(i.key)),
+    ...externalPoints.map(pointStop),
+  ].filter((s): s is PlannedStop => !!s);
+  const routeThrough = () => {
+    const ordered = shortOrder(routablePlaces).slice(0, maxRouteStops);
+    setRouteStops(ordered);
+    setRouteNotice(
+      routablePlaces.length > maxRouteStops
+        ? format(t.routeThroughCapped, {
+            max: maxRouteStops,
+            total: routablePlaces.length,
+          })
+        : format(t.routeThroughDone, { count: ordered.length }),
+    );
+    editRoute();
+  };
+  const routeThroughButton = mvp && routablePlaces.length > 1 && (
+    <button
+      type="button"
+      className="button secondary small route-through"
+      onClick={routeThrough}
+    >
+      <Route size={16} aria-hidden="true" />
+      {routeStops.length ? t.routeThroughReplace : t.routeThrough}
+    </button>
+  );
+  // The route bar: present while there are stops, so no mode is needed.
+  const barLinks = routeLinks(routeStops, travelMode);
+  const routeBar = mvp && routeStops.length > 0 && (
+    <div className="route-bar" role="group" aria-label={t.routeTitle}>
+      <button
+        type="button"
+        className="route-bar-edit"
+        aria-expanded={routeInPanel}
+        aria-controls="map-panel"
+        onClick={() => (routeInPanel ? setRouteOpen(false) : editRoute())}
+      >
+        <Route size={16} aria-hidden="true" />
+        <span>
+          {routeStops.length === 1
+            ? t.routeBarOne
+            : format(t.routeBar, { count: routeStops.length })}
+        </span>
+        <span className="route-bar-action">{t.routeEdit}</span>
+      </button>
+      {barLinks.length === 1 && (
+        <a
+          className="route-bar-open"
+          aria-label={t.routeOpen}
+          href={barLinks[0].url}
+          target="_blank"
+          rel="noopener noreferrer"
+          onClick={() =>
+            track("route_opened", {
+              stops: routeStops.length,
+              links: 1,
+              mode: travelMode,
+            })
+          }
+        >
+          <ExternalLink size={16} aria-hidden="true" />
+          <span>{t.routeOpen}</span>
+        </a>
+      )}
+      <button
+        type="button"
+        className="icon-button"
+        aria-label={t.routeClear}
+        title={t.routeClear}
+        onClick={() => {
+          setRouteStops([]);
+          setRouteOpen(false);
+        }}
+      >
+        <X size={16} aria-hidden="true" />
+      </button>
+    </div>
+  );
+  /** Add or remove a hovered pin from the route, right on its hover card. */
+  const tipRouteButton = (key: string) => {
+    const stop = mvp ? stopFor(key) : null;
+    if (!stop) return null;
+    const added = routeStops.some((s) => s.key === key);
+    return (
+      <button
+        type="button"
+        className="button secondary small tip-route"
+        aria-pressed={added}
+        onClick={() => toggleStop(stop)}
+      >
+        <Route size={16} aria-hidden="true" />
+        {added ? t.routeRemoveThis : t.routeAdd}
+      </button>
+    );
+  };
   // Escape closes a pin tooltip. Menus, fields and an open detail keep the key.
   useEffect(() => {
     const onKey = (event: KeyboardEvent) => {
@@ -1140,6 +1243,7 @@ export function MapWorkspace({
     <>
       {dailyPick}
       {summary}
+      {routeThroughButton}
       {emptyState ?? (
         <MapResults
           items={mapped}
@@ -1286,11 +1390,6 @@ export function MapWorkspace({
               onItemHover={onItemHover}
               onSelect={(key) => {
                 if (!key) return;
-                if (routeMode) {
-                  const stop = itemStop(key);
-                  if (stop) toggleStop(stop);
-                  return;
-                }
                 pickedOnMap.current = key;
                 select(key);
               }}
@@ -1335,13 +1434,16 @@ export function MapWorkspace({
           )}
           {tip &&
             (() => {
+              // A card with a button is no longer a plain tooltip.
+              const routeButton = tipRouteButton(tip.key);
+              const role = routeButton ? undefined : "tooltip";
               // A Google place shows its own card: name, photo, rating, type.
               const point = extraPoints.find((p) => p.key === tip.key);
               if (point?.placeId && provider)
                 return (
                   <div
                     className="map-tooltip map-place-tip"
-                    role="tooltip"
+                    role={role}
                     style={{
                       left: tip.x,
                       top: tip.y,
@@ -1360,6 +1462,7 @@ export function MapWorkspace({
                       onLoad={() => {}}
                       onError={() => setTip(null)}
                     />
+                    {routeButton}
                   </div>
                 );
               const item = result.items.find((i) => i.key === tip.key);
@@ -1368,7 +1471,7 @@ export function MapWorkspace({
               return (
                 <div
                   className="map-tooltip"
-                  role="tooltip"
+                  role={role}
                   style={{
                     left: tip.x,
                     top: tip.y,
@@ -1386,6 +1489,7 @@ export function MapWorkspace({
                     {markerLabel(kind, t)}
                     {item.category ? ` · ${item.category}` : ""}
                   </span>
+                  {routeButton}
                 </div>
               );
             })()}
@@ -1454,20 +1558,11 @@ export function MapWorkspace({
               <span>{t.fitResults}</span>
             </button>
           )}
-          {mvp && !listView && canvasStatus === "ready" && (
-            <button
-              type="button"
-              className="map-float-button"
-              aria-pressed={routeMode}
-              aria-controls="map-panel"
-              onClick={() => (routeMode ? setRouteMode(false) : planRoute())}
-            >
-              <Route size={16} aria-hidden="true" />
-              <span>{t.planRoute}</span>
-              {routeStops.length > 0 && (
-                <span className="count-pill">{routeStops.length}</span>
-              )}
-            </button>
+          {!listView && canvasStatus === "ready" && routeBar}
+          {mvp && !routeInPanel && (
+            <span className="sr-only" role="status">
+              {routeNotice}
+            </span>
           )}
           {state.area && !listView && (
             <button
@@ -1609,7 +1704,7 @@ export function MapWorkspace({
                 t={t}
                 onMode={setTravelMode}
                 onChange={setRouteStops}
-                onDone={() => setRouteMode(false)}
+                onDone={() => setRouteOpen(false)}
               />
             </div>
           ) : detailInPanel ? (

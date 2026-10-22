@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { routeLinks, type RouteStop } from "@/lib/route-link";
+import { routeLinks, shortOrder, type RouteStop } from "@/lib/route-link";
 const stop = (n: number, placeId?: string): RouteStop => ({
   lat: 35 + n / 100,
   lng: 139 + n / 100,
@@ -75,5 +75,38 @@ describe("routeLinks", () => {
   it("needs at least two stops", () => {
     expect(routeLinks([], "walking")).toEqual([]);
     expect(routeLinks([stop(1, "A")], "walking")).toEqual([]);
+  });
+});
+describe("shortOrder", () => {
+  const at = (placeId: string, lng: number): RouteStop => ({
+    lat: 35,
+    lng,
+    placeId,
+  });
+  it("visits places along a line from one end, whatever the input order", () => {
+    const order = shortOrder([
+      at("C", 139.03),
+      at("A", 139.01),
+      at("E", 139.05),
+      at("B", 139.02),
+      at("D", 139.04),
+    ]).map((s) => s.placeId);
+    expect([order, [...order].reverse()]).toContainEqual([
+      "A",
+      "B",
+      "C",
+      "D",
+      "E",
+    ]);
+  });
+  it("keeps every stop exactly once", () => {
+    const stops = [at("A", 139.1), at("B", 139.0), at("C", 139.3)];
+    const order = shortOrder(stops);
+    expect(order).toHaveLength(3);
+    expect(new Set(order)).toEqual(new Set(stops));
+  });
+  it("handles zero and one stop", () => {
+    expect(shortOrder([])).toEqual([]);
+    expect(shortOrder([at("A", 139)])).toEqual([at("A", 139)]);
   });
 });

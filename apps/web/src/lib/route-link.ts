@@ -50,6 +50,39 @@ function directionsUrl(
   params.set("travelmode", mode);
   return `https://www.google.com/maps/dir/?${params}`;
 }
+/** Relative ground distance; enough to compare stops within a city. */
+function distance(a: RouteStop, b: RouteStop) {
+  const x = (b.lng - a.lng) * Math.cos(((a.lat + b.lat) * Math.PI) / 360);
+  const y = b.lat - a.lat;
+  return Math.hypot(x, y);
+}
+/**
+ * A short visiting order for "Route through these places": from each
+ * possible start, always go to the nearest unvisited stop, and keep the
+ * shortest of those paths. Not optimal, but sensible for a city layer.
+ */
+export function shortOrder<T extends RouteStop>(stops: T[]): T[] {
+  let best: T[] = stops;
+  let bestLength = Infinity;
+  for (let start = 0; start < stops.length; start++) {
+    const rest = stops.filter((_, i) => i !== start);
+    const path = [stops[start]];
+    let length = 0;
+    while (rest.length) {
+      const here = path[path.length - 1];
+      let next = 0;
+      for (let i = 1; i < rest.length; i++)
+        if (distance(here, rest[i]) < distance(here, rest[next])) next = i;
+      length += distance(here, rest[next]);
+      path.push(...rest.splice(next, 1));
+    }
+    if (length < bestLength) {
+      best = path;
+      bestLength = length;
+    }
+  }
+  return best;
+}
 /**
  * The links that open the route in order. The first starts at stop 1, each
  * later one at the previous link's last stop. A single stop is not a route,

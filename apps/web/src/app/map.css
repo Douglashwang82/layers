@@ -2046,8 +2046,65 @@ body[data-map-theme="dark"]:has(.map-workspace) .provider-slot > * {
   gap: var(--th-space-2);
   padding: var(--th-space-3) var(--th-space-3) 0;
 }
-.route-action .button {
+.route-action .button,
+.route-through,
+.tip-route {
   display: inline-flex;
   align-items: center;
   gap: 6px;
+}
+.route-through {
+  margin: 0 0 var(--th-space-3);
+}
+.tip-route {
+  justify-self: start;
+}
+/* The route bar: a dock control while the route has stops. */
+.route-bar {
+  display: inline-flex;
+  align-items: center;
+  min-height: 44px;
+  border: 1px solid var(--th-brand-text);
+  border-radius: var(--th-float-control-radius);
+  background: var(--th-surface);
+  color: var(--th-text);
+  box-shadow: var(--th-float-shadow);
+  overflow: hidden;
+}
+.route-bar-edit,
+.route-bar-open {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 44px;
+  padding: 0 12px;
+  border: 0;
+  background: none;
+  color: inherit;
+  font-size: 14px;
+  font-weight: 600;
+  white-space: nowrap;
+  text-decoration: none;
+  cursor: pointer;
+}
+.route-bar-action {
+  color: var(--th-brand-text);
+  font-weight: 500;
+}
+.route-bar-open {
+  border-left: 1px solid var(--th-divider);
+  color: var(--th-brand-text);
+}
+.route-bar-edit:hover,
+.route-bar-open:hover {
+  background: var(--th-surface-soft);
+}
+.route-bar .icon-button {
+  margin-right: 4px;
+}
+@media (max-width: 800px) {
+  .route-bar-action,
+  .route-bar-open span {
+    display: none;
+  }
 }

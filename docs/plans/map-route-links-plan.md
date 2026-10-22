@@ -12,10 +12,11 @@ Google's terms forbid showing Google directions on a non-Google map, and Mapbox 
 
 ## Behavior
 
-- **Plan route** (map dock) turns on route mode and opens the route planner in the panel.
-- In route mode, tapping a marker adds it as the next stop; tapping a stop again removes it. Stops get numbered badges and a dashed straight line in order. The line shows the order only, not roads.
-- The planner lists the stops (reorder, remove), a travel mode (Walk, Drive, Transit; default Walk) and the Google Maps link(s). **Done** leaves route mode and keeps the stops; **Clear route** empties them.
-- Keyboard and list path: an open place (from a marker or the list) shows **Add to route** / **Remove from route**.
+- No route mode (owner, 2026-10-22): a marker click always opens the place. Stops are added with **Add to route** / **Remove from route** on a pin's hover card or on an open place's details (the keyboard, list and phone path).
+- **Route through these places** (Results tab) replaces the route with every located place on the map, in a short order: from each possible start, go to the nearest unvisited place, and keep the shortest path. More than 10 places keeps the first 10 of that order.
+- Stops get numbered badges and a dashed straight line in order. The line shows the order only, not roads.
+- While there are stops, a route bar sits in the map dock: stop count, **Edit** (opens the planner), **Open in Google Maps** when the route fits one link, and clear.
+- The planner lists the stops (reorder, remove), a travel mode (Walk, Drive, Transit; default Walk) and the Google Maps link(s). **Done** closes it and keeps the stops; **Clear route** empties them.
 - Directions start at stop 1, never at the user's location (owner, 2026-10-21): every link sets `origin`, because Google uses the device location when it is missing. A single stop is not a route and gets no link.
 - Stops live in memory for the page view; nothing is stored or shared.
 
