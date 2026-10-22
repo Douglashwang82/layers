@@ -45,12 +45,15 @@ export function ProviderDetails({
   provider,
   placeId,
   compact,
+  preview = false,
   onLoad,
   onError,
 }: {
   provider: PlacesProvider;
   placeId: string;
   compact: boolean;
+  /** The map hover card: name, photo, rating and type only. */
+  preview?: boolean;
   onLoad: (place: ProviderPlace) => void;
   onError: () => void;
 }) {
@@ -62,13 +65,13 @@ export function ProviderDetails({
     (node) =>
       provider.mountDetails(
         node,
-        { placeId, compact },
+        { placeId, compact, preview },
         {
           onLoad: (p) => handlers.current.onLoad(p),
           onError: () => handlers.current.onError(),
         },
       ),
-    [provider, placeId, compact],
+    [provider, placeId, compact, preview],
     () => handlers.current.onError(),
   );
   return <div ref={container} className="provider-slot" />;

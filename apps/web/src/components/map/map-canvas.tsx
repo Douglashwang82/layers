@@ -750,30 +750,33 @@ export function MapCanvas({
             );
           }
           // Pin hover: immediate highlight, tooltip after a 250ms dwell.
-          map.on("mousemove", "points-hit", (e) => {
-            const key = (e.features?.[0] as Feature | undefined)?.properties
-              ?.key;
-            if (!key || String(key) === mapHoverKey.current) return;
-            mapHoverKey.current = String(key);
-            window.clearTimeout(hoverTimer.current);
-            latest.current.onItemHover?.(null);
-            syncHover(map);
-            const spot = { x: e.point.x, y: e.point.y };
-            hoverTimer.current = window.setTimeout(
-              () =>
-                latest.current.onItemHover?.({
-                  key: String(key),
-                  ...spot,
-                }),
-              250,
-            );
-          });
-          map.on("mouseleave", "points-hit", () => {
-            mapHoverKey.current = null;
-            window.clearTimeout(hoverTimer.current);
-            latest.current.onItemHover?.(null);
-            syncHover(map);
-          });
+          // Google places (extra points) share it; their keys match no catalog pin.
+          for (const layer of ["points-hit", "extra-points"]) {
+            map.on("mousemove", layer, (e) => {
+              const key = (e.features?.[0] as Feature | undefined)?.properties
+                ?.key;
+              if (!key || String(key) === mapHoverKey.current) return;
+              mapHoverKey.current = String(key);
+              window.clearTimeout(hoverTimer.current);
+              latest.current.onItemHover?.(null);
+              syncHover(map);
+              const spot = { x: e.point.x, y: e.point.y };
+              hoverTimer.current = window.setTimeout(
+                () =>
+                  latest.current.onItemHover?.({
+                    key: String(key),
+                    ...spot,
+                  }),
+                250,
+              );
+            });
+            map.on("mouseleave", layer, () => {
+              mapHoverKey.current = null;
+              window.clearTimeout(hoverTimer.current);
+              latest.current.onItemHover?.(null);
+              syncHover(map);
+            });
+          }
           const markUser = (e: unknown) => {
             if ((e as { originalEvent?: unknown }).originalEvent)
               userMovedRef.current = true;
@@ -880,7 +883,20 @@ export function MapCanvas({
   useEffect(() => {
     const map = mapRef.current;
     if (!map || !loadedRef.current) return;
-    map.setPadding(padding);
+    // New padding moves the camera center to the middle of the new open area,
+    // which would slide the map when the list opens or closes. Recenter on the
+    // point already there so the view stays still. A running animation (a fit
+    // or a reveal) keeps its target instead.
+    if (map.isMoving()) {
+      map.setPadding(padding);
+      return;
+    }
+    const view = map.getContainer();
+    const x =
+      padding.left + (view.clientWidth - padding.left - padding.right) / 2;
+    const y =
+      padding.top + (view.clientHeight - padding.top - padding.bottom) / 2;
+    map.jumpTo({ center: map.unproject([x, y]), padding });
   }, [padding]);
   // Base map labels follow the interface language; item titles are localized in the panel.
   useEffect(() => {

@@ -1806,6 +1806,17 @@ summary.map-float-button::-webkit-details-marker {
   gap: 6px;
   color: var(--th-muted);
 }
+/* A Google place hover card: the provider's compact card fills the tooltip. */
+.map-tooltip.map-place-tip {
+  max-width: none;
+  gap: 6px;
+  padding: 6px;
+}
+.map-place-tip .provider-slot > * {
+  width: 100%;
+  border: 0;
+  box-shadow: none;
+}
 @media (max-width: 800px) {
   .map-side-stack {
     left: var(--th-map-edge);

@@ -30,7 +30,8 @@ export type PlacesProvider = {
   ): Promise<Cleanup>;
   mountDetails(
     container: HTMLElement,
-    options: { placeId: string; compact: boolean },
+    /** `preview`: a compact card limited to photo, rating and type (map hover). */
+    options: { placeId: string; compact: boolean; preview?: boolean },
     handlers: {
       onLoad: (place: ProviderPlace) => void;
       onError: () => void;
@@ -184,9 +185,9 @@ function googleProvider(key: string, language: string): PlacesProvider {
         search.remove();
       };
     },
-    async mountDetails(container, { placeId, compact }, handlers) {
+    async mountDetails(container, { placeId, compact, preview }, handlers) {
       await ready();
-      const key = `${placeId}:${compact ? "compact" : "full"}`;
+      const key = `${placeId}:${preview ? "preview" : compact ? "compact" : "full"}`;
       const kept = loadedDetails.get(key);
       // A card shown elsewhere stays there; one detached, or in this same
       // container (a development double mount), is reattached without a new
@@ -205,16 +206,29 @@ function googleProvider(key: string, language: string): PlacesProvider {
         };
       }
       const details = document.createElement(
-        compact ? "gmp-place-details-compact" : "gmp-place-details",
+        compact || preview ? "gmp-place-details-compact" : "gmp-place-details",
       );
       const request = document.createElement("gmp-place-details-place-request");
       request.setAttribute("place", placeId);
       details.appendChild(request);
-      details.appendChild(
-        document.createElement(
-          compact ? "gmp-place-standard-content" : "gmp-place-all-content",
-        ),
-      );
+      if (preview) {
+        // The compact card always shows the name; these add photo, rating and type.
+        details.setAttribute("truncation-preferred", "");
+        const config = document.createElement("gmp-place-content-config");
+        for (const name of [
+          "gmp-place-media",
+          "gmp-place-rating",
+          "gmp-place-type",
+          "gmp-place-attribution",
+        ])
+          config.appendChild(document.createElement(name));
+        details.appendChild(config);
+      } else
+        details.appendChild(
+          document.createElement(
+            compact ? "gmp-place-standard-content" : "gmp-place-all-content",
+          ),
+        );
       container.appendChild(details);
       const owner = Symbol();
       detailsOwner.set(details, owner);

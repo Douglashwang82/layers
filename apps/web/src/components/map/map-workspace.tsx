@@ -52,6 +52,7 @@ import { getPlacesProvider, type ProviderPlace } from "@/lib/places/provider";
 import { BusinessDiscovery } from "@/components/places/business-discovery";
 import { BusinessPanel } from "@/components/places/business-panel";
 import { ExternalReferences } from "@/components/places/external-references";
+import { ProviderDetails } from "@/components/places/provider-slot";
 import { MapToolbar } from "./map-toolbar";
 import { MarkerLegend } from "./marker-legend";
 import {
@@ -82,6 +83,9 @@ type Sheet = "half" | "expanded";
 const cityZoom = 10.5;
 /** Wait for the panel and padding to settle before moving the camera. */
 const afterLayout = (run: () => void) => window.setTimeout(run, 80);
+/** The Google place hover card's size (height approximate), for keeping it inside the map. */
+const placeTipWidth = 280;
+const placeTipHeight = 320;
 /** Server-read flags and the browser-visible provider key (only when discovery or the MVP is on). */
 export type PlacesConfig = {
   providerKey: string | null;
@@ -404,24 +408,13 @@ export function MapWorkspace({
   };
   /* Pin hover: list rows highlight pins; pins show a tooltip after a dwell. */
   const [listHoverKey, setListHoverKey] = useState<string | null>(null);
-  const [tip, setTip] = useState<{ key: string; x: number; y: number } | null>(
-    null,
-  );
+  const [tip, setTip] = useState<{
+    key: string;
+    x: number;
+    y: number;
+    above?: boolean;
+  } | null>(null);
   const tipTimer = useRef<number | undefined>(undefined);
-  const onItemHover = (hover: { key: string; x: number; y: number } | null) => {
-    window.clearTimeout(tipTimer.current);
-    if (hover) {
-      // Keep the tooltip inside the map: clamp against the stage width at event time.
-      const width = stageBody.current?.clientWidth ?? 1024;
-      setTip({
-        key: hover.key,
-        x: Math.max(8, Math.min(hover.x + 14, width - 248)),
-        y: Math.max(8, hover.y + 14),
-      });
-    }
-    // A short grace lets the pointer move onto the tooltip to read it.
-    else tipTimer.current = window.setTimeout(() => setTip(null), 160);
-  };
   useEffect(() => () => window.clearTimeout(tipTimer.current), []);
   const stageBody = useRef<HTMLDivElement>(null);
   /* Business discovery: a separate mode and in-memory selection, lazily loading the provider. */
@@ -445,6 +438,29 @@ export function MapWorkspace({
       });
     return points;
   }, [externalPoints, searchPoints, business]);
+  const onItemHover = (hover: { key: string; x: number; y: number } | null) => {
+    window.clearTimeout(tipTimer.current);
+    if (hover) {
+      // Keep the tooltip inside the map: clamp against the stage size at event
+      // time. A Google place card is wider and taller, and flips above the
+      // pointer near the bottom edge.
+      const stage = stageBody.current;
+      const width = stage?.clientWidth ?? 1024;
+      const height = stage?.clientHeight ?? 768;
+      const card = extraPoints.some((p) => p.key === hover.key && p.placeId);
+      const [w, h] = card ? [placeTipWidth, placeTipHeight] : [234, 0];
+      const above = hover.y + 14 + h > height && hover.y - 14 - h > 0;
+      setTip({
+        key: hover.key,
+        x: Math.max(8, Math.min(hover.x + 14, width - w - 14)),
+        // Above the pointer, `y` is the card's bottom edge.
+        y: above ? hover.y - 14 : Math.max(8, hover.y + 14),
+        above,
+      });
+    }
+    // A short grace lets the pointer move onto the tooltip to read it.
+    else tipTimer.current = window.setTimeout(() => setTip(null), 160);
+  };
   /** A marker clicked on the map is already in view, so the camera stays put. */
   const selectBusiness = (next: BusinessSelection, moveCamera = true) => {
     reveal();
@@ -1319,6 +1335,33 @@ export function MapWorkspace({
           )}
           {tip &&
             (() => {
+              // A Google place shows its own card: name, photo, rating, type.
+              const point = extraPoints.find((p) => p.key === tip.key);
+              if (point?.placeId && provider)
+                return (
+                  <div
+                    className="map-tooltip map-place-tip"
+                    role="tooltip"
+                    style={{
+                      left: tip.x,
+                      top: tip.y,
+                      width: placeTipWidth,
+                      transform: tip.above ? "translateY(-100%)" : undefined,
+                    }}
+                    onMouseEnter={() => window.clearTimeout(tipTimer.current)}
+                    onMouseLeave={() => setTip(null)}
+                  >
+                    <ProviderDetails
+                      key={point.placeId}
+                      provider={provider}
+                      placeId={point.placeId}
+                      compact
+                      preview
+                      onLoad={() => {}}
+                      onError={() => setTip(null)}
+                    />
+                  </div>
+                );
               const item = result.items.find((i) => i.key === tip.key);
               if (!item) return null;
               const kind = markerKind(item);
