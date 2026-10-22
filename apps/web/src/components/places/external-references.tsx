@@ -2,7 +2,8 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { withinBounds, type Bounds, type LayerEvent } from "@taiwanhub/shared";
 import { type Copy, type Locale, format } from "@/lib/dictionary";
-import { NextEvent } from "@/components/map/map-results";
+import { NextEvent, TabelogLink } from "@/components/map/map-results";
+import { googleTabelogLink } from "@/lib/tabelog";
 import type { LatLng, PlacesProvider } from "@/lib/places/provider";
 import type { ExternalReference } from "@/features/map/external";
 import type { ExtraPoint } from "@/components/map/map-canvas";
@@ -129,14 +130,18 @@ export function ExternalReferences({
     () =>
       visible
         .filter((r) => r.state === "resolved" && r.location)
-        .map((r) => ({
-          key: r.canonicalKey,
-          kind: "external" as const,
-          lat: r.location!.lat,
-          lng: r.location!.lng,
-          placeId: r.providerPlaceId ?? undefined,
-          label: r.localNote ?? undefined,
-        })),
+        .map((r) => {
+          const url = googleTabelogLink(r);
+          return {
+            key: r.canonicalKey,
+            kind: "external" as const,
+            lat: r.location!.lat,
+            lng: r.location!.lng,
+            placeId: r.providerPlaceId ?? undefined,
+            label: r.name ?? r.localNote ?? undefined,
+            tabelog: url && r.name ? { name: r.name, url } : undefined,
+          };
+        }),
     [visible],
   );
   const pointsRef = useRef(onPoints);
@@ -209,6 +214,14 @@ export function ExternalReferences({
               timeZone={timeZone}
             />
             {row.localNote && <p className="muted">{row.localNote}</p>}
+            {row.name && (
+              <TabelogLink
+                name={row.name}
+                href={googleTabelogLink(row)}
+                t={t}
+                className="row-tabelog external-tabelog"
+              />
+            )}
             <button
               type="button"
               className="text-button"

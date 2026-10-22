@@ -777,6 +777,12 @@ export const layerItem = pgTable(
     }),
     restaurantManaged: boolean("restaurant_managed").notNull().default(false),
     note: text("note").default("").notNull(),
+    /**
+     * External places only: the place name read from the Google Maps link
+     * the layer's editor pasted. Scoped to this layer, so one editor's text
+     * never relabels the place elsewhere.
+     */
+    linkName: text("link_name"),
     position: integer("position").default(0).notNull(),
     validFrom: timestamp("valid_from", { withTimezone: true }),
     validUntil: timestamp("valid_until", { withTimezone: true }),
@@ -1177,6 +1183,8 @@ export const placeProviderReference = pgTable(
     locationFetchedAt: timestamp("location_fetched_at", {
       withTimezone: true,
     }),
+    /** Provider place types (e.g. "restaurant"), fetched and expired with the coordinates. */
+    types: text("types").array(),
     ...timestamps(),
   },
   (t) => [

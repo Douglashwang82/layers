@@ -38,7 +38,7 @@ function reasonText(reason: GoogleLinkReason | undefined, t: Copy) {
  * Paste Google Maps share links, check them, confirm the places they point
  * at, then either create a new layer with them (`create`) or add them to an
  * existing one (`add`). The previews come from the Places UI Kit; only place
- * IDs are sent back to the server.
+ * IDs and the names read from the links are sent back to the server.
  */
 export function GoogleLinksForm({
   mode,
@@ -93,6 +93,12 @@ export function GoogleLinksForm({
         !removed.has(i),
     )
     .map(({ r }) => r.providerPlaceId!);
+  // Names read from the links label the places in this layer.
+  const linkNames = Object.fromEntries(
+    (results ?? [])
+      .filter((r) => r.name && chosen.includes(r.providerPlaceId!))
+      .map((r) => [r.providerPlaceId!, r.name!]),
+  );
   async function check(e: FormEvent) {
     e.preventDefault();
     setFeedback(null);
@@ -134,12 +140,14 @@ export function GoogleLinksForm({
           audience,
           groupId: audience === "group" ? groupId : undefined,
           providerPlaceIds: chosen,
+          linkNames,
         })) as { layer: { slug: string } };
         router.push(`/?layers=${encodeURIComponent(created.layer.slug)}`);
         return;
       }
       const outcome = (await api(`layers/${layerId}/google-places`, "POST", {
         providerPlaceIds: chosen,
+        linkNames,
       })) as ImportOutcome;
       setText("");
       setResults(null);

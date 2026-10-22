@@ -29,7 +29,7 @@ Google's terms forbid showing Google directions on a non-Google map, and Mapbox 
 
 ## Labels
 
-Google place names are not stored (only the UI Kit card shows them), so a Google stop is labeled by its layer note when there is one, otherwise "Google Maps place". Catalog places use their name.
+A Google stop is labeled by the name read from its pasted link (stored on the layer item since 2026-10-22), else its layer note, otherwise "Google Maps place". Google's own names are not stored. Catalog places use their name.
 
 ## Analytics
 

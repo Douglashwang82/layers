@@ -1,4 +1,4 @@
-import { isFoodCategory } from "@taiwanhub/shared";
+import { isFoodCategory, isGoogleFoodPlace } from "@taiwanhub/shared";
 /*
  * Tabelog search links for food places in Japan. Tabelog has no public API
  * and its terms forbid scraping, so this only builds a search URL for the
@@ -23,7 +23,17 @@ export function isInJapan(lat: number, lng: number) {
 export function tabelogSearchUrl(name: string) {
   return `https://tabelog.com/rstLst/?vs=1&sw=${encodeURIComponent(name)}`;
 }
-/** A Tabelog search link for a named food place in Japan, otherwise null. */
+function searchFor(
+  name: string | null | undefined,
+  food: boolean,
+  lat: number | null | undefined,
+  lng: number | null | undefined,
+) {
+  const trimmed = name?.trim();
+  if (!trimmed || !food || lat == null || lng == null) return null;
+  return isInJapan(lat, lng) ? tabelogSearchUrl(trimmed) : null;
+}
+/** A Tabelog search link for a named catalog or custom food place in Japan, otherwise null. */
 export function tabelogLink(item: {
   type: string;
   name: string;
@@ -31,10 +41,24 @@ export function tabelogLink(item: {
   latitude: number | null;
   longitude: number | null;
 }) {
-  const name = item.name.trim();
-  if (item.type !== "place" || !name || !isFoodCategory(item.category))
-    return null;
-  if (item.latitude == null || item.longitude == null) return null;
-  if (!isInJapan(item.latitude, item.longitude)) return null;
-  return tabelogSearchUrl(name);
+  if (item.type !== "place") return null;
+  return searchFor(
+    item.name,
+    isFoodCategory(item.category),
+    item.latitude,
+    item.longitude,
+  );
+}
+/** The same for a Google place: its pasted-link name, cached types and location. */
+export function googleTabelogLink(ref: {
+  name: string | null;
+  types?: string[] | null;
+  location?: { lat: number; lng: number } | null;
+}) {
+  return searchFor(
+    ref.name,
+    isGoogleFoodPlace(ref.types ?? []),
+    ref.location?.lat,
+    ref.location?.lng,
+  );
 }

@@ -68,7 +68,7 @@ Rules:
 New step on `/layers/new` (and "Add from Google Maps" in the layer editor):
 
 1. Textarea: paste one link per line. Title field. Audience (private default, or a group the user edits).
-2. "Check links" → resolver → preview list. Each resolved row renders through the Places UI Kit compact component (name/address shown to the user for confirmation, not stored); failed rows show the reason and can be removed or retried.
+2. "Check links" → resolver → preview list. Each resolved row renders through the Places UI Kit compact component (name/address shown to the user for confirmation, not stored; the name read from the link itself is kept on the layer item since 2026-10-22); failed rows show the reason and can be removed or retried.
 3. "Create layer" → one transaction in the layer service: create the layer, `resolveProviderPlace()` for each confirmed `place_id`, insert `layer_item(subject_id)` rows (unique per layer, so duplicates collapse), set positions in paste order. The existing layer revision/audit rules apply.
 4. Redirect to the map with the new layer loaded (`/?layers=<slug>`), camera fitted to its POIs.
 
@@ -128,8 +128,17 @@ Launch cities (2026-10-20): Taipei, Houston and Tokyo (migration 0024). Google-l
 
 ### Location cache (2026-10-21)
 
-Owner decision, to move fast: Google place cards (UI Kit) only fetch while on screen and were the only source of pin coordinates, so every page view loaded each place's card, and the map had to open its list for pins to appear. Migration `0025` adds `latitude`, `longitude` and `location_fetched_at` to `place_provider_reference`. With the flag on, `GET /api/v1/map/external-references` returns each place's cached `location`. A place without fresh coordinates is looked up with the server key (Place Details (New), `location` field mask only; at most 60 per request, failed IDs retried after an hour). Values older than 30 days are cleared on each lookup pass, and the place is looked up again when it is next listed. Names, photos and other details still come only from the UI Kit card. Without a server key, locations stay `null` and the old client-side path applies.
+Owner decision, to move fast: Google place cards (UI Kit) only fetch while on screen and were the only source of pin coordinates, so every page view loaded each place's card, and the map had to open its list for pins to appear. Migration `0025` adds `latitude`, `longitude` and `location_fetched_at` to `place_provider_reference`. With the flag on, `GET /api/v1/map/external-references` returns each place's cached `location`. A place without fresh coordinates is looked up with the server key (Place Details (New), `location` field mask only; at most 60 per request, failed IDs retried after an hour). Values older than 30 days (and, since 0026, the place types) are cleared on each lookup pass, and the place is looked up again when it is next listed. Names, photos and other details still come only from the UI Kit card. Without a server key, locations stay `null` and the old client-side path applies.
+
+### Link names and place types (2026-10-22)
+
+Owner request, for the Tabelog search link and readable route stops. Migration `0026`:
+
+- `layer_item.link_name`: the place name read from the pasted link (`/maps/place/<name>/`), sent back with the import (`linkNames`, by place ID, plain text up to 200 characters). It is the editor's own link text, not Places API content. It is kept per layer item, so one editor's text never labels the place in another layer. Pasting a place's link again refreshes it, which is how places added earlier get a name. Links that carry only a place ID have no name.
+- `place_provider_reference.types`: Google place types from the same Place Details lookup (field mask `location,types`, both Essentials fields). They are cleared and fetched again with the coordinates, and coordinates cached before types existed are looked up once more.
+
+A Google place with a link name, food types (`isGoogleFoodPlace`) and a location in Japan gets the "Search on Tabelog" link on its hover card and in the results list. The route stop label uses the link name before the layer note.
 
 **Open risk (owner accepted):** Google's 30-day caching allowance is documented, but whether showing those coordinates as pins on a non-Google (Mapbox) map, apart from the UI Kit card, is permitted has not been confirmed against the current Google Maps Platform terms. Confirm before or during P0.
 
-Rollout (P6), once the owner authorizes it: apply migrations `0023`, `0024` and `0025` to production, create the restricted `GOOGLE_MAPS_LINK_API_KEY` with a daily quota and budget alert, confirm `NEXT_PUBLIC_GOOGLE_PLACES_UI_KIT_KEY` is set, set `FEATURE_MAP_MVP=true` in Vercel, then run the P0 live checks on production links.
+Rollout (P6), once the owner authorizes it: apply migrations `0023` through `0026` to production, create the restricted `GOOGLE_MAPS_LINK_API_KEY` with a daily quota and budget alert, confirm `NEXT_PUBLIC_GOOGLE_PLACES_UI_KIT_KEY` is set, set `FEATURE_MAP_MVP=true` in Vercel, then run the P0 live checks on production links.

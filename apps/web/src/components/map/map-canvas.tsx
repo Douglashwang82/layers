@@ -59,8 +59,10 @@ export type ExtraPoint = {
   lng: number;
   /** Provider ID for reopening the selection; never rendered or stored. */
   placeId?: string;
-  /** LocalLink-authored label (a layer note), never provider content. */
+  /** LocalLink-authored label (the pasted link's name, else a layer note). */
   label?: string;
+  /** Tabelog search for a Google food place in Japan that has a link name. */
+  tabelog?: { name: string; url: string };
 };
 /** Route stops in order: numbered badges joined by a dashed line (order only, not roads). */
 function routeGeoJSON(stops: { lat: number; lng: number }[]) {

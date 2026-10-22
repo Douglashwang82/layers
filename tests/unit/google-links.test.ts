@@ -1,5 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 import {
+  googlePlacesImportInput,
   layerEventInput,
   layerFromGoogleInput,
   localDateTimeOf,
@@ -283,6 +284,20 @@ describe("layer inputs", () => {
         .success,
     ).toBe(false);
   });
+  it("takes plain-text link names keyed by place ID", () => {
+    const parse = (linkNames: unknown) =>
+      googlePlacesImportInput.safeParse({
+        providerPlaceIds: ["ChIJ1"],
+        linkNames,
+      });
+    expect(parse({ ChIJ1: " Jibun Doki " }).data?.linkNames).toEqual({
+      ChIJ1: "Jibun Doki",
+    });
+    expect(parse(undefined).success).toBe(true);
+    expect(parse({ ChIJ1: "<b>x</b>" }).success).toBe(false);
+    expect(parse({ ChIJ1: "x".repeat(201) }).success).toBe(false);
+    expect(parse({ "a b": "x" }).success).toBe(false);
+  });
   it("accepts wall-clock event times in order on a place key only", () => {
     const event = {
       key: "subject:00000000-0000-4000-8000-000000000001",
@@ -326,13 +341,17 @@ describe("fetchPlaceLocation", () => {
       fetchMock: fetch,
     };
   };
-  it("asks Place Details for the location field only", async () => {
+  it("asks Place Details for the location and types fields only", async () => {
     const d = deps(() =>
-      Response.json({ location: { latitude: 35.64, longitude: 139.71 } }),
+      Response.json({
+        location: { latitude: 35.64, longitude: 139.71 },
+        types: ["cafe", "food"],
+      }),
     );
     expect(await fetchPlaceLocation("ChIJabc", d)).toEqual({
       lat: 35.64,
       lng: 139.71,
+      types: ["cafe", "food"],
     });
     const [url, init] = d.fetchMock.mock.calls[0] as unknown as [
       string,
@@ -341,7 +360,16 @@ describe("fetchPlaceLocation", () => {
     expect(url).toBe("https://places.googleapis.com/v1/places/ChIJabc");
     expect(init.headers).toMatchObject({
       "X-Goog-Api-Key": "k",
-      "X-Goog-FieldMask": "location",
+      "X-Goog-FieldMask": "location,types",
+    });
+    // A place without types still gets a pin.
+    const bare = deps(() =>
+      Response.json({ location: { latitude: 35.64, longitude: 139.71 } }),
+    );
+    expect(await fetchPlaceLocation("ChIJabc", bare)).toEqual({
+      lat: 35.64,
+      lng: 139.71,
+      types: [],
     });
   });
   it("returns null for unknown places, bad payloads, (0,0) and invalid IDs", async () => {

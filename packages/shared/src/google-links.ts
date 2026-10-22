@@ -144,7 +144,19 @@ const providerPlaceIds = z
   .array(z.string().regex(providerPlaceIdPattern))
   .min(1)
   .max(maxGoogleLinks);
-export const googlePlacesImportInput = z.object({ providerPlaceIds });
+/** Same limit the link parser applies to a name. */
+const linkName = plainText(200);
+/**
+ * Place names read from the pasted links, by place ID. Stored on the layer
+ * item only, so they label the place in that layer and nowhere else.
+ */
+const linkNames = z
+  .record(z.string().regex(providerPlaceIdPattern), linkName)
+  .optional();
+export const googlePlacesImportInput = z.object({
+  providerPlaceIds,
+  linkNames,
+});
 /** A new private or group layer filled from resolved Google places in one transaction. */
 export const layerFromGoogleInput = z
   .object({
@@ -155,6 +167,7 @@ export const layerFromGoogleInput = z
     audience: z.enum(["private", "group"]).default("private"),
     groupId: z.uuid().optional(),
     providerPlaceIds,
+    linkNames,
   })
   .refine((v) => v.audience !== "group" || !!v.groupId, {
     message: "Choose a group.",
@@ -164,7 +177,7 @@ export type GoogleLinkResult = {
   input: string;
   status: "resolved" | "unsupported" | "not_found" | "failed";
   providerPlaceId?: string;
-  /** The place name read from the link, for the confirmation preview only; never stored. */
+  /** The place name read from the link: shown in the preview, and kept on the layer item when added. */
   name?: string;
   reason?: GoogleLinkReason;
 };

@@ -105,15 +105,16 @@ function LocationLabel({ item, t }: { item: MapItem; t: Copy }) {
 }
 /** Opens a Tabelog search for a food place in Japan, in a new tab. */
 export function TabelogLink({
-  item,
+  name,
+  href,
   t,
   className,
 }: {
-  item: MapItem;
+  name: string;
+  href: string | null;
   t: Copy;
   className: string;
 }) {
-  const href = tabelogLink(item);
   if (!href) return null;
   return (
     <a
@@ -121,7 +122,7 @@ export function TabelogLink({
       href={href}
       target="_blank"
       rel="noopener noreferrer"
-      aria-label={format(t.tabelogSearchFor, { name: item.name })}
+      aria-label={format(t.tabelogSearchFor, { name })}
     >
       <ExternalLink size={13} aria-hidden="true" />
       {t.tabelogSearch}
@@ -228,7 +229,12 @@ export function ResultRow({
           </span>
         </span>
       </a>
-      <TabelogLink item={item} t={t} className="row-tabelog" />
+      <TabelogLink
+        name={item.name}
+        href={tabelogLink(item)}
+        t={t}
+        className="row-tabelog"
+      />
     </li>
   );
 }

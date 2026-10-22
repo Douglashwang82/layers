@@ -19,17 +19,22 @@ export type ExternalReference = {
   canonicalKey: `subject:${string}`;
   providerPlaceId: string | null;
   localNote: string | null;
+  /** The name read from the Google Maps link a layer editor pasted, if any. */
+  name: string | null;
   layers: string[];
   cityReviewStatus: "unreviewed" | "approved";
   isDailyPick?: boolean;
   /** Cached Google coordinates (map MVP, at most 30 days old), for the pin. */
   location?: { lat: number; lng: number } | null;
+  /** Cached Google place types, fetched and expired with the coordinates. */
+  types?: string[] | null;
 };
 /**
  * Authorized external (provider-referenced) places for the same layer/type/
  * date context as the map query, or the actor's own saves. The server stores
  * no provider business fields, so it cannot search or sort these by them:
- * text search covers LocalLink-authored notes only. Location is resolved
+ * text search covers LocalLink-authored notes and pasted-link names only.
+ * Location is resolved
  * client-side through the provider component, except that the map MVP adds
  * cached coordinates (at most 30 days old) so pins need no component load.
  */
@@ -58,6 +63,7 @@ export async function listExternalReferences(
     subject_id: string;
     provider_place_id: string | null;
     note: string | null;
+    link_name: string | null;
     city_review_status: "unreviewed" | "approved";
     slug: string;
   }) => {
@@ -65,6 +71,7 @@ export async function listExternalReferences(
     if (existing) {
       if (!existing.layers.includes(row.slug)) existing.layers.push(row.slug);
       existing.localNote ??= row.note || null;
+      existing.name ??= row.link_name || null;
       return;
     }
     const ref: ExternalReference = {
@@ -72,6 +79,7 @@ export async function listExternalReferences(
       canonicalKey: subjectKey(row.subject_id),
       providerPlaceId: row.provider_place_id,
       localNote: row.note || null,
+      name: row.link_name || null,
       layers: [row.slug],
       cityReviewStatus: row.city_review_status,
     };
@@ -83,7 +91,7 @@ export async function listExternalReferences(
     if (layer.rule?.kind === "saves") {
       if (!actor) continue;
       const saves = await pool.query(
-        `SELECT s.id AS subject_id,${provider},NULL AS note,s.city_review_status
+        `SELECT s.id AS subject_id,${provider},NULL AS note,NULL AS link_name,s.city_review_status
          FROM saved_place_subject x JOIN place_subject s ON s.id=x.subject_id
          WHERE x.user_id=$1 AND s.status='active' AND s.catalog_place_id IS NULL
          ORDER BY x.created_at DESC, s.id`,
@@ -104,7 +112,7 @@ export async function listExternalReferences(
       if (layer.rule?.kind !== "discover" && layer.rule?.kind !== "daily_pick")
         continue;
       const rows = await pool.query(
-        `SELECT s.id AS subject_id,${provider},i.note,s.city_review_status
+        `SELECT s.id AS subject_id,${provider},i.note,i.link_name,s.city_review_status
          FROM layer_item i JOIN place_subject s ON s.id=i.subject_id
          WHERE i.layer_id=$1 AND s.status='active' AND s.catalog_place_id IS NULL
            AND s.city_review_status='approved'
@@ -130,7 +138,7 @@ export async function listExternalReferences(
     // Public viewers see only city-reviewed external places; owners and members see their own curation.
     const member = access.role !== "public";
     const rows = await pool.query(
-      `SELECT s.id AS subject_id,${provider},i.note,s.city_review_status
+      `SELECT s.id AS subject_id,${provider},i.note,i.link_name,s.city_review_status
        FROM layer_item i JOIN place_subject s ON s.id=i.subject_id
        WHERE i.layer_id=$1 AND s.status='active' AND s.catalog_place_id IS NULL
          AND ($2::boolean OR s.city_review_status='approved')
@@ -142,7 +150,9 @@ export async function listExternalReferences(
   }
   const q = state.q.toLowerCase();
   const matching = q
-    ? ordered.filter((r) => (r.localNote ?? "").toLowerCase().includes(q))
+    ? ordered.filter((r) =>
+        `${r.localNote ?? ""} ${r.name ?? ""}`.toLowerCase().includes(q),
+      )
     : ordered;
   const page = matching.slice(cursor, cursor + externalPageSize);
   if (page.length) {
@@ -154,8 +164,11 @@ export async function listExternalReferences(
     for (const ref of page) ref.isDailyPick = picked.has(ref.subjectId);
     if (flags.mapMvp) {
       const locations = await placeLocations(page.map((r) => r.subjectId));
-      for (const ref of page)
-        ref.location = locations.get(ref.subjectId) ?? null;
+      for (const ref of page) {
+        const cached = locations.get(ref.subjectId);
+        ref.location = cached ? { lat: cached.lat, lng: cached.lng } : null;
+        ref.types = cached?.types ?? null;
+      }
     }
   }
   return {

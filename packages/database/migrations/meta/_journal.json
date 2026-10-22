@@ -183,6 +183,13 @@
       "when": 1792561348110,
       "tag": "0025_jazzy_the_anarchist",
       "breakpoints": true
+    },
+    {
+      "idx": 26,
+      "version": "7",
+      "when": 1792706129055,
+      "tag": "0026_empty_purple_man",
+      "breakpoints": true
     }
   ]
 }

@@ -28,7 +28,8 @@ export { resolverDeps };
 /*
  * Layers from Google Maps links (docs/plans/layer-mvp-google-links-plan.md
  * §2–§3). Resolving publishes nothing; importing stores only Google place IDs
- * (as place subjects) and layer memberships.
+ * (as place subjects) and layer memberships, with the name each pasted link
+ * carried kept on its layer item.
  */
 /** Pasted links a member may resolve per window; bounds the paid lookups behind them. */
 export const linkBudget = { links: 150, minutes: 10 };
@@ -87,6 +88,7 @@ async function attachAll(
   actor: Actor,
   layer: PlacementLayer,
   subjects: Resolved[],
+  linkNames: Record<string, string> = {},
 ): Promise<ImportOutcome> {
   const outcome: ImportOutcome = { added: 0, skipped: [] };
   for (const { providerPlaceId, row } of subjects) {
@@ -114,6 +116,13 @@ async function attachAll(
     if (await attachLayerItem(tx, actor.id, layer, target, ""))
       outcome.added += 1;
     else outcome.skipped.push({ providerPlaceId, reason: "DUPLICATE" });
+    // Pasting a place's link again refreshes its name in this layer.
+    const name = linkNames[providerPlaceId];
+    if (name && target.column === "subject_id")
+      await tx.query(
+        "UPDATE layer_item SET link_name=$3, updated_at=now() WHERE layer_id=$1 AND subject_id=$2",
+        [layer.layer.id, target.id, name],
+      );
   }
   if (outcome.added)
     await tx.query(
@@ -151,7 +160,9 @@ export async function importGooglePlaces(
   const found = await requireEditableLayer(layerId, a);
   notProjected(found);
   const subjects = await resolveSubjects(input.providerPlaceIds);
-  return transaction((tx) => attachAll(tx, a, found, subjects));
+  return transaction((tx) =>
+    attachAll(tx, a, found, subjects, input.linkNames),
+  );
 }
 /**
  * Create a private or group layer and fill it with the resolved places in
@@ -187,6 +198,7 @@ export async function createLayerFromGoogle(
         layer: { id: layer.id, cityId: layer.cityId, audience: layer.audience },
       },
       subjects,
+      input.linkNames,
     );
     return { id: layer.id, outcome };
   });

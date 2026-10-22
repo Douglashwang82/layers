@@ -148,11 +148,13 @@ const detailsResponse = z.object({
     latitude: z.number().min(-90).max(90),
     longitude: z.number().min(-180).max(180),
   }),
+  types: z.array(z.string().max(100)).max(50).optional(),
 });
 /**
- * One Places API (New) Place Details request with the `location` field mask
- * only. Null when Google has no such place or answers without a location;
- * throws on network or provider errors so callers can retry later.
+ * One Places API (New) Place Details request with the `location,types` field
+ * mask (both Essentials fields). Null when Google has no such place or
+ * answers without a location; throws on network or provider errors so
+ * callers can retry later.
  */
 export async function fetchPlaceLocation(placeId: string, deps: ResolverDeps) {
   if (!providerPlaceIdPattern.test(placeId)) return null;
@@ -164,7 +166,7 @@ export async function fetchPlaceLocation(placeId: string, deps: ResolverDeps) {
       signal: AbortSignal.timeout(deps.timeoutMs ?? 5000),
       headers: {
         "X-Goog-Api-Key": deps.apiKey,
-        "X-Goog-FieldMask": "location",
+        "X-Goog-FieldMask": "location,types",
       },
     },
   );
@@ -176,7 +178,8 @@ export async function fetchPlaceLocation(placeId: string, deps: ResolverDeps) {
   if (!parsed.success) return null;
   const { latitude: lat, longitude: lng } = parsed.data.location;
   // A literal (0,0) is a provider failure, never a real business.
-  return lat === 0 && lng === 0 ? null : { lat, lng };
+  if (lat === 0 && lng === 0) return null;
+  return { lat, lng, types: parsed.data.types ?? [] };
 }
 /** Resolves a batch with bounded concurrency; one bad link never fails the rest. */
 export async function resolveLinks(
@@ -222,6 +225,7 @@ export const fakeResolverFetch: typeof fetch = async (input, init) => {
         latitude: 29.7604 + ((h % 200) - 100) / 4000,
         longitude: -95.3698 + (((h >> 8) % 200) - 100) / 4000,
       },
+      types: ["restaurant", "food", "point_of_interest", "establishment"],
     });
   }
   if (url !== "https://places.googleapis.com/v1/places:searchText")

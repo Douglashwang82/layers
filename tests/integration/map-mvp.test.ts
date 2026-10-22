@@ -159,6 +159,43 @@ describe("layers from Google places", () => {
     );
     expect(bobs.references).toEqual([]);
   });
+  it("keeps each link's name on its layer item, refreshed by pasting again", async () => {
+    const created = await createLayerFromGoogle(alice, {
+      title: "Named eats",
+      city: "houston",
+      providerPlaceIds: [placeId(50), placeId(51)],
+      linkNames: { [placeId(50)]: "Jibun Doki" },
+    });
+    const names = async (slug: string) =>
+      (
+        await listExternalReferences(state([slug]), city, alice, 0)
+      ).references.map((r) => r.name);
+    expect(await names(created.layer.slug)).toEqual(["Jibun Doki", null]);
+    // Pasting both again fills the missing name and replaces the old one.
+    const again = await importGooglePlaces(alice, created.layer.id, {
+      providerPlaceIds: [placeId(50), placeId(51)],
+      linkNames: {
+        [placeId(50)]: "Jibun Doki Marunouchi",
+        [placeId(51)]: "Cafe",
+      },
+    });
+    expect(again.added).toBe(0);
+    expect(await names(created.layer.slug)).toEqual([
+      "Jibun Doki Marunouchi",
+      "Cafe",
+    ]);
+    // The name belongs to that layer: another layer with the place has none.
+    const other = (
+      await createLayer(alice, { title: "Other", city: "houston" })
+    ).layer;
+    await importGooglePlaces(alice, other.id, {
+      providerPlaceIds: [placeId(50)],
+    });
+    await pool.query("UPDATE layer SET lifecycle='active' WHERE id=$1", [
+      other.id,
+    ]);
+    expect(await names(other.slug)).toEqual([null]);
+  });
   it("adds places to an existing layer idempotently and only for its editors", async () => {
     const layer = (await createLayer(alice, { title: "List", city: "houston" }))
       .layer;
@@ -338,7 +375,9 @@ describe("the MVP map", () => {
     expect(expected).toEqual({
       lat: expect.any(Number),
       lng: expect.any(Number),
+      types: expect.arrayContaining(["restaurant"]),
     });
+    const { types, ...pin } = expected;
     const list = () =>
       listExternalReferences(state([layer]), city, alice, 0).then((r) =>
         Object.fromEntries(
@@ -346,16 +385,17 @@ describe("the MVP map", () => {
         ),
       );
     expect(await list()).toEqual({
-      [located]: expected,
+      [located]: pin,
       [placeId(40)]: null,
     });
     const stored = await pool.query(
-      "SELECT latitude,longitude,location_fetched_at FROM place_provider_reference WHERE provider_place_id=$1",
+      "SELECT latitude,longitude,types,location_fetched_at FROM place_provider_reference WHERE provider_place_id=$1",
       [located],
     );
     expect(stored.rows[0]).toMatchObject({
       latitude: expected.lat,
       longitude: expected.lng,
+      types,
     });
     expect(stored.rows[0].location_fetched_at).toBeInstanceOf(Date);
     // Past 30 days the value is cleared, even with lookups unavailable...
@@ -366,15 +406,27 @@ describe("the MVP map", () => {
     const subject = await subjectOf(located);
     expect((await placeLocations([subject], null)).size).toBe(0);
     const cleared = await pool.query(
-      "SELECT latitude,location_fetched_at FROM place_provider_reference WHERE provider_place_id=$1",
+      "SELECT latitude,types,location_fetched_at FROM place_provider_reference WHERE provider_place_id=$1",
       [located],
     );
     expect(cleared.rows[0]).toEqual({
       latitude: null,
+      types: null,
       location_fetched_at: null,
     });
     // ...and looked up again the next time the place is listed.
-    expect((await list())[located]).toEqual(expected);
+    expect((await list())[located]).toEqual(pin);
+    // A pin cached before types were fetched is looked up once more for them.
+    await pool.query(
+      "UPDATE place_provider_reference SET types=NULL WHERE provider_place_id=$1",
+      [located],
+    );
+    await list();
+    const refetched = await pool.query(
+      "SELECT types FROM place_provider_reference WHERE provider_place_id=$1",
+      [located],
+    );
+    expect(refetched.rows[0].types).toEqual(types);
     // With the flag off, references carry no cached location.
     flags.mapMvp = false;
     try {

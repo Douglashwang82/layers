@@ -1444,7 +1444,7 @@ export function MapWorkspace({
                 return (
                   <div
                     className="map-tooltip map-place-tip"
-                    role={role}
+                    role={point.tabelog ? undefined : role}
                     style={{
                       left: tip.x,
                       top: tip.y,
@@ -1463,6 +1463,14 @@ export function MapWorkspace({
                       onLoad={() => {}}
                       onError={() => setTip(null)}
                     />
+                    {point.tabelog && (
+                      <TabelogLink
+                        name={point.tabelog.name}
+                        href={point.tabelog.url}
+                        t={t}
+                        className="tip-tabelog"
+                      />
+                    )}
                     {routeButton}
                   </div>
                 );
@@ -1490,7 +1498,12 @@ export function MapWorkspace({
                     {markerLabel(kind, t)}
                     {item.category ? ` · ${item.category}` : ""}
                   </span>
-                  <TabelogLink item={item} t={t} className="tip-tabelog" />
+                  <TabelogLink
+                    name={item.name}
+                    href={tabelogLink(item)}
+                    t={t}
+                    className="tip-tabelog"
+                  />
                   {routeButton}
                 </div>
               );

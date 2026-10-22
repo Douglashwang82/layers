@@ -88,6 +88,35 @@ export const isFoodCategory = (category: string) =>
   foodCategories.includes(category);
 export const isRetailCategory = (category: string) =>
   retailCategories.includes(category);
+/** Google place types (Places API) for eating and drinking places, besides any "*_restaurant". */
+const googleFoodTypes = new Set([
+  "restaurant",
+  "cafe",
+  "coffee_shop",
+  "bakery",
+  "bar",
+  "pub",
+  "wine_bar",
+  "bar_and_grill",
+  "meal_takeaway",
+  "meal_delivery",
+  "food_court",
+  "cafeteria",
+  "diner",
+  "steak_house",
+  "tea_house",
+  "ice_cream_shop",
+  "dessert_shop",
+  "donut_shop",
+  "bagel_shop",
+  "sandwich_shop",
+  "juice_shop",
+  "chocolate_shop",
+  "confectionery",
+]);
+/** Whether a Google place's types mark it as an eating or drinking place. */
+export const isGoogleFoodPlace = (types: readonly string[]) =>
+  types.some((t) => googleFoodTypes.has(t) || t.endsWith("_restaurant"));
 
 export const placeCategoryChinese: Record<string, string> = {
   Restaurant: "餐廳",

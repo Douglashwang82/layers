@@ -2081,6 +2081,9 @@ body[data-map-theme="dark"]:has(.map-workspace) .provider-slot > * {
 .layer-contents .row-tabelog {
   margin-left: 86px;
 }
+.row-tabelog.external-tabelog {
+  margin: 0;
+}
 .tip-tabelog {
   justify-self: start;
 }
