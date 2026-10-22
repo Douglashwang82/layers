@@ -69,7 +69,7 @@ export default async function HomePage({
     getLocale(),
     currentActor(),
   ]);
-  const { city, state, restored } = await resolveMapRequest(params, actor);
+  const { city, state } = await resolveMapRequest(params, actor);
   if (flags.mapMvp) {
     // The URL is the client's source of truth: drop what the MVP ignores
     // (search, filters, area, disabled system layers) instead of showing it.
@@ -94,7 +94,6 @@ export default async function HomePage({
       authenticated={!!actor}
       token={process.env.NEXT_PUBLIC_MAPBOX_TOKEN || undefined}
       hasDemo={result.items.some((item) => item.isDemo)}
-      restored={restored}
       contentEnabled={flags.content}
       layerWrites={flags.layerWrites}
       places={placesClientConfig()}

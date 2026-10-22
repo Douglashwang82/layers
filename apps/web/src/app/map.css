@@ -459,9 +459,6 @@ summary.map-float-button::-webkit-details-marker {
 .view-list .sheet-handle {
   display: none;
 }
-.restored {
-  padding: var(--th-space-2) var(--th-space-4) 0;
-}
 .panel-tabs {
   display: flex;
   border-bottom: 1px solid var(--th-divider);

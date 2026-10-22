@@ -153,7 +153,6 @@ export function MapWorkspace({
   authenticated,
   token,
   hasDemo,
-  restored,
   contentEnabled,
   layerWrites,
   places,
@@ -167,7 +166,6 @@ export function MapWorkspace({
   authenticated: boolean;
   token: string | undefined;
   hasDemo: boolean;
-  restored: boolean;
   contentEnabled: boolean;
   layerWrites: boolean;
   places: PlacesConfig;
@@ -1702,9 +1700,6 @@ export function MapWorkspace({
                 </button>
               ))}
             </div>
-          )}
-          {restored && (
-            <p className="fine-print restored">{t.restoredLayers}</p>
           )}
           {otherCity.map((l) => (
             <p key={l.slug} className="fine-print">

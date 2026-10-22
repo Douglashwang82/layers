@@ -30,20 +30,16 @@ export async function resolveMapRequest(
   const parsed = parseMapQuery(params);
   const { city, cities } = await getActiveCity(params.city);
   let layers: MapState["layers"];
-  let restored = false;
   if (parsed.layers !== undefined) layers = parsed.layers;
   else {
     const preference = await getMapPreference(actor?.id);
-    if (preference?.layers.length) {
-      layers = preference.layers;
-      restored = true;
-    } else layers = flags.mapMvp ? "none" : [`discover-${city.slug}`];
+    if (preference?.layers.length) layers = preference.layers;
+    else layers = flags.mapMvp ? "none" : [`discover-${city.slug}`];
   }
   const state: MapState = { ...parsed, city: city.slug, layers };
   return {
     city,
     cities,
     state: flags.mapMvp ? mvpMapState(state) : state,
-    restored,
   };
 }
