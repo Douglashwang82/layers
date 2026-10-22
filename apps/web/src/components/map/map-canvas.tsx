@@ -9,9 +9,11 @@ import {
 } from "react";
 import type { Map as MapboxMap, GeoJSONSource } from "mapbox-gl";
 import {
+  googleMarkerKinds,
   markerKinds,
   maxMapPoints,
   type Bounds,
+  type GoogleMarkerKind,
   type ItemType,
 } from "@taiwanhub/shared";
 import type { MapItem } from "@/features/map/query";
@@ -30,6 +32,7 @@ import {
   markerGlyphImage,
   markerImageId,
   markerKind,
+  markerPalettes,
 } from "@/lib/marker-presentation";
 export type MapCanvasHandle = {
   fitTo: (items: MapItem[]) => void;
@@ -63,6 +66,8 @@ export type ExtraPoint = {
   label?: string;
   /** Tabelog search for a Google food place in Japan that has a link name. */
   tabelog?: { name: string; url: string };
+  /** Pin color from the place's Google types; uncolored until they are known. */
+  marker?: GoogleMarkerKind;
 };
 /** Route stops in order: numbered badges joined by a dashed line (order only, not roads). */
 function routeGeoJSON(stops: { lat: number; lng: number }[]) {
@@ -95,6 +100,7 @@ function extraGeoJSON(points: ExtraPoint[]) {
       properties: {
         key: p.key,
         kind: p.kind,
+        ...(p.marker ? { marker: p.marker } : {}),
       },
       geometry: { type: "Point" as const, coordinates: [p.lng, p.lat] },
     })),
@@ -261,9 +267,14 @@ export function MapCanvas({
     const { effects: on, selectedKey: a, extraSelectedKey: b } = latest.current;
     const opacity = on && (a || b) ? 0.55 : 1;
     const duration = on && !prefersReducedMotion() ? 200 : 0;
-    for (const layer of ["points", "extra-points", "point-icons"]) {
+    for (const layer of [
+      "points",
+      "extra-points",
+      "point-icons",
+      "extra-icons",
+    ]) {
       if (!map.getLayer(layer)) continue;
-      const prop = layer === "point-icons" ? "icon-opacity" : "circle-opacity";
+      const prop = layer.endsWith("-icons") ? "icon-opacity" : "circle-opacity";
       map.setPaintProperty(layer, `${prop}-transition`, { duration, delay: 0 });
       map.setPaintProperty(layer, prop, opacity);
     }
@@ -645,17 +656,40 @@ export function MapCanvas({
             source: "places-extra",
             paint: {
               // Larger than catalog dots; search results are hollow, saved/layer
-              // external places are filled.
+              // external places are filled with their type's marker color.
               "circle-radius": 10,
               "circle-color": [
-                "match",
-                ["get", "kind"],
-                "search",
+                "case",
+                ["==", ["get", "kind"], "search"],
                 palette.surface,
+                ["has", "marker"],
+                [
+                  "match",
+                  ["get", "marker"],
+                  ...googleMarkerKinds.flatMap((k) => [
+                    k,
+                    markerPalettes[theme][k],
+                  ]),
+                  colors.place,
+                ],
                 colors.place,
-              ],
+              ] as never,
               "circle-stroke-color": text,
               "circle-stroke-width": 2.5,
+            },
+          });
+          // Close in, a typed place also shows its kind's glyph, as catalog pins do.
+          map.addLayer({
+            id: "extra-icons",
+            type: "symbol",
+            source: "places-extra",
+            minzoom: 14,
+            filter: ["has", "marker"],
+            layout: {
+              "icon-image": ["concat", "marker-", ["get", "marker"]],
+              "icon-size": 0.55,
+              "icon-allow-overlap": true,
+              "icon-ignore-placement": true,
             },
           });
           // The route line runs under the pins; numbered badges sit on top.

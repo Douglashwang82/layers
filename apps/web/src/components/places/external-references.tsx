@@ -1,6 +1,11 @@
 "use client";
 import { useEffect, useMemo, useRef, useState } from "react";
-import { withinBounds, type Bounds, type LayerEvent } from "@taiwanhub/shared";
+import {
+  googleMarkerKind,
+  withinBounds,
+  type Bounds,
+  type LayerEvent,
+} from "@taiwanhub/shared";
 import { type Copy, type Locale, format } from "@/lib/dictionary";
 import { NextEvent, TabelogLink } from "@/components/map/map-results";
 import { googleTabelogLink } from "@/lib/tabelog";
@@ -140,6 +145,7 @@ export function ExternalReferences({
             placeId: r.providerPlaceId ?? undefined,
             label: r.name ?? r.localNote ?? undefined,
             tabelog: url && r.name ? { name: r.name, url } : undefined,
+            marker: r.types ? googleMarkerKind(r.types) : undefined,
           };
         }),
     [visible],

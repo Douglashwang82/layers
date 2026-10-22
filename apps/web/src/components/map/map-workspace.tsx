@@ -24,6 +24,7 @@ import {
   X,
 } from "lucide-react";
 import {
+  googleMarkerKinds,
   itemTypes,
   localDate,
   parseMapQuery,
@@ -1430,7 +1431,7 @@ export function MapWorkspace({
           )}
           {canvasStatus === "ready" && (
             <div className="map-side-stack">
-              <MarkerLegend t={t} />
+              <MarkerLegend t={t} kinds={mvp ? googleMarkerKinds : undefined} />
             </div>
           )}
           {tip &&
