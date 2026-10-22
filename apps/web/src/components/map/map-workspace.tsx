@@ -63,7 +63,8 @@ import {
 } from "@/lib/marker-presentation";
 import { useMapTheme } from "@/lib/map-theme";
 import { ActiveLayersPanel } from "./active-layers-panel";
-import { MapResults } from "./map-results";
+import { MapResults, TabelogLink } from "./map-results";
+import { tabelogLink } from "@/lib/tabelog";
 import { ItemPreview } from "./item-preview";
 import { RoutePlanner, type PlannedStop } from "./route-planner";
 import {
@@ -1471,7 +1472,7 @@ export function MapWorkspace({
               return (
                 <div
                   className="map-tooltip"
-                  role={role}
+                  role={tabelogLink(item) ? undefined : role}
                   style={{
                     left: tip.x,
                     top: tip.y,
@@ -1489,6 +1490,7 @@ export function MapWorkspace({
                     {markerLabel(kind, t)}
                     {item.category ? ` · ${item.category}` : ""}
                   </span>
+                  <TabelogLink item={item} t={t} className="tip-tabelog" />
                   {routeButton}
                 </div>
               );

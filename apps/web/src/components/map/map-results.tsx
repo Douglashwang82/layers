@@ -7,6 +7,7 @@ import {
   Layers,
   Globe,
   MapPinOff,
+  ExternalLink,
 } from "lucide-react";
 import type { LayerEvent } from "@taiwanhub/shared";
 import type { MapItem } from "@/features/map/query";
@@ -20,6 +21,7 @@ import {
 } from "@/lib/dictionary";
 import { Photo as Image } from "@/components/photo";
 import { markerKind, markerLabel } from "@/lib/marker-presentation";
+import { tabelogLink } from "@/lib/tabelog";
 const icons = {
   place: Utensils,
   event: CalendarDays,
@@ -100,6 +102,31 @@ function LocationLabel({ item, t }: { item: MapItem; t: Copy }) {
   return item.neighborhood ? (
     <span className="row-location">{item.neighborhood}</span>
   ) : null;
+}
+/** Opens a Tabelog search for a food place in Japan, in a new tab. */
+export function TabelogLink({
+  item,
+  t,
+  className,
+}: {
+  item: MapItem;
+  t: Copy;
+  className: string;
+}) {
+  const href = tabelogLink(item);
+  if (!href) return null;
+  return (
+    <a
+      className={className}
+      href={href}
+      target="_blank"
+      rel="noopener noreferrer"
+      aria-label={format(t.tabelogSearchFor, { name: item.name })}
+    >
+      <ExternalLink size={13} aria-hidden="true" />
+      {t.tabelogSearch}
+    </a>
+  );
 }
 /** The next attached event at a place, as a one-line row note. */
 export function NextEvent({
@@ -201,6 +228,7 @@ export function ResultRow({
           </span>
         </span>
       </a>
+      <TabelogLink item={item} t={t} className="row-tabelog" />
     </li>
   );
 }

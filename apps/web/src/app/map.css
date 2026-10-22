@@ -2059,6 +2059,31 @@ body[data-map-theme="dark"]:has(.map-workspace) .provider-slot > * {
 .tip-route {
   justify-self: start;
 }
+/* Tabelog search links (food places in Japan): a row's second line, aligned
+   with its text, and a line on the pin's hover card. */
+.row-tabelog,
+.tip-tabelog {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 13px;
+  color: var(--th-brand-text);
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+.row-tabelog {
+  min-height: 32px;
+  margin: -6px 0 4px 94px;
+}
+.map-panel .row-tabelog {
+  margin-left: 52px;
+}
+.layer-contents .row-tabelog {
+  margin-left: 86px;
+}
+.tip-tabelog {
+  justify-self: start;
+}
 /* The route bar: a dock control while the route has stops. */
 .route-bar {
   display: inline-flex;
