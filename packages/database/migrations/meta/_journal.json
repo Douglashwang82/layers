@@ -190,6 +190,13 @@
       "when": 1792706129055,
       "tag": "0026_empty_purple_man",
       "breakpoints": true
+    },
+    {
+      "idx": 27,
+      "version": "7",
+      "when": 1792706253917,
+      "tag": "0027_noisy_the_anarchist",
+      "breakpoints": true
     }
   ]
 }

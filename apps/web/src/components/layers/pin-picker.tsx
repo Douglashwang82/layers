@@ -2,6 +2,7 @@
 import { useEffect, useRef, useState } from "react";
 import type { Map as MapboxMap, Marker } from "mapbox-gl";
 import "mapbox-gl/dist/mapbox-gl.css";
+import { mapboxTransformRequest } from "@/lib/browser-api-log";
 import { Crosshair, MapPinned } from "lucide-react";
 import type { Copy } from "@/lib/dictionary";
 type Pin = { latitude: number; longitude: number };
@@ -53,6 +54,7 @@ export function PinPicker({
       const map = new mapboxgl.Map({
         container: container.current,
         accessToken: token,
+        transformRequest: mapboxTransformRequest,
         style: "mapbox://styles/mapbox/light-v11",
         center: [start.longitude, start.latitude],
         zoom: latest.current.value ? 15 : 11,

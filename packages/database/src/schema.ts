@@ -1785,3 +1785,33 @@ export const restaurantJob = pgTable(
       .where(sql`${t.status} IN ('queued','running')`),
   ],
 );
+/**
+ * Append-only metadata log of requests to third-party APIs. No bodies,
+ * headers, keys or query strings (see ./external-api-log.ts).
+ */
+export const externalApiCall = pgTable(
+  "external_api_call",
+  {
+    id: id(),
+    provider: text("provider").notNull(),
+    operation: text("operation").notNull(),
+    method: text("method").notNull(),
+    host: text("host").notNull(),
+    path: text("path").default("").notNull(),
+    status: integer("status"),
+    ok: boolean("ok").notNull(),
+    durationMs: integer("duration_ms").notNull(),
+    error: text("error"),
+    metadata: jsonb("metadata")
+      .$type<Record<string, string | number | boolean>>()
+      .default({})
+      .notNull(),
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .defaultNow()
+      .notNull(),
+  },
+  (t) => [
+    index("external_api_call_created_idx").on(t.createdAt),
+    index("external_api_call_provider_idx").on(t.provider, t.createdAt),
+  ],
+);

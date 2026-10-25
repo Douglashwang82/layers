@@ -2,6 +2,7 @@ import { createHash } from "node:crypto";
 import Anthropic from "@anthropic-ai/sdk";
 import { z } from "zod";
 import { db, pool } from "./index";
+import { loggedFetch, withExternalApiLog } from "./external-api-log";
 import { generatedFeed } from "./schema";
 import { validateFields } from "./ingestion";
 import { geocodeAddress } from "./geocoder";
@@ -59,11 +60,27 @@ function jsonFrom(text: string) {
 }
 
 async function ask(client: Anthropic, prompt: string) {
-  const message = await client.messages.create({
-    model,
-    max_tokens: 1024,
-    messages: [{ role: "user", content: prompt }],
-  });
+  const message = await withExternalApiLog(
+    {
+      provider: "anthropic",
+      operation: "feed-extraction",
+      host: "api.anthropic.com",
+      path: "/v1/messages",
+    },
+    () =>
+      client.messages.create({
+        model,
+        max_tokens: 1024,
+        messages: [{ role: "user", content: prompt }],
+      }),
+    (r) => ({
+      metadata: {
+        model,
+        inputTokens: r.usage.input_tokens,
+        outputTokens: r.usage.output_tokens,
+      },
+    }),
+  );
   return message.content.find((b) => b.type === "text")?.text ?? "";
 }
 
@@ -113,7 +130,7 @@ async function geocode(address: string) {
 }
 
 async function fetchPage(url: string) {
-  const response = await fetch(url, {
+  const response = await loggedFetch("source-page", "fetch-page")(url, {
     signal: AbortSignal.timeout(15000),
     headers: { "user-agent": "TaiwanHubContentCollector/1.0" },
   });

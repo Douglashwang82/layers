@@ -59,6 +59,13 @@ export {
   type GeocodeResult,
 } from "./geocoder";
 export {
+  describeUrl,
+  loggedFetch,
+  recordExternalApiCall,
+  withExternalApiLog,
+  type ExternalApiCall,
+} from "./external-api-log";
+export {
   createAnthropicCopyAdapter,
   createFakeCopyAdapter,
   createFakeDiscoveryAdapter,

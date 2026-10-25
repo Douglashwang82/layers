@@ -30,7 +30,7 @@ export type PlacesProvider = {
   ): Promise<Cleanup>;
   mountDetails(
     container: HTMLElement,
-    /** `preview`: a compact card limited to photo, rating and type (map hover). */
+    /** `preview`: a compact card limited to rating and type, without photos (map hover). */
     options: { placeId: string; compact: boolean; preview?: boolean },
     handlers: {
       onLoad: (place: ProviderPlace) => void;
@@ -212,11 +212,12 @@ function googleProvider(key: string, language: string): PlacesProvider {
       request.setAttribute("place", placeId);
       details.appendChild(request);
       if (preview) {
-        // The compact card always shows the name; these add photo, rating and type.
+        // The compact card always shows the name; these add rating and type.
+        // No gmp-place-media: the widget has no photo-count setting and loads
+        // the whole set (about 10 billed photo requests per hover).
         details.setAttribute("truncation-preferred", "");
         const config = document.createElement("gmp-place-content-config");
         for (const name of [
-          "gmp-place-media",
           "gmp-place-rating",
           "gmp-place-type",
           "gmp-place-attribution",

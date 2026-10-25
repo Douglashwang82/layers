@@ -235,15 +235,16 @@ img {
   gap: 8px;
   min-height: var(--th-control-height);
   padding: 12px 24px;
-  border: 1px solid transparent;
+  border: 1px solid black;
   border-radius: var(--th-radius-pill);
   background: var(--th-primary);
-  color: var(--th-text);
+  color: black;
   font-size: 15px;
   line-height: 1.4;
   font-weight: 600;
   text-align: center;
   white-space: nowrap;
+  -webkit-text-stroke: 0.2px #004D40;
   transition:
     background-color var(--th-fast) var(--th-ease),
     border-color var(--th-fast) var(--th-ease),

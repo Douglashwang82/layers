@@ -1,5 +1,6 @@
 import { randomUUID } from "node:crypto";
 import { pool } from "./index";
+import { withExternalApiLog } from "./external-api-log";
 import {
   resolveMailer,
   decryptOutboxPayload,
@@ -183,10 +184,14 @@ async function processRow(
   const attempts = started.rows[0].attempts;
   let providerMessageId: string | null;
   try {
-    const result = await mailer.send(message, {
-      idempotencyKey: row.dedupe_key,
-      from: sender,
-    });
+    const result = await withExternalApiLog(
+      { provider: "mail", operation: "send", host: "mail-provider" },
+      () =>
+        mailer.send(message, {
+          idempotencyKey: row.dedupe_key,
+          from: sender,
+        }),
+    );
     providerMessageId = result.providerMessageId ?? null;
   } catch (error) {
     return recordFailure(row, owner, attempts, error);

@@ -4,6 +4,7 @@ import { isIP } from "node:net";
 import type { PoolClient } from "pg";
 import { z } from "zod";
 import { pool } from "./index";
+import { loggedFetch } from "./external-api-log";
 
 export const ingestionKinds = [
   "places",
@@ -299,7 +300,7 @@ type Source = {
 type Match = { id: string; updated_at: Date } | "ambiguous" | null;
 async function fetchSource(source: Source) {
   await validateSourceUrl(source.url);
-  const response = await fetch(source.url, {
+  const response = await loggedFetch("source-feed", "fetch-feed")(source.url, {
     redirect: "error",
     signal: AbortSignal.timeout(15000),
     headers: {

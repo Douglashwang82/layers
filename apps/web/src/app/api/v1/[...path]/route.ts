@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
 import {
   pool,
+  recordExternalApiCall,
   decideCandidate,
   revertRevision,
   addExtractionPage,
@@ -338,6 +339,48 @@ async function handler(
       const origin = request.headers.get("origin");
       if (origin && origin !== new URL(appUrl).origin)
         throw new AppError(403, "BAD_ORIGIN", "Request origin is not allowed.");
+      // Browser-side provider requests (billed to our keys): billed hosts only, bounded, metadata only.
+      if (resource === "client-api-calls" && method === "POST") {
+        const raw = await request.text();
+        if (raw.length > 16_384)
+          throw new AppError(413, "TOO_LARGE", "Request is too large.");
+        const { calls } = z
+          .object({
+            calls: z
+              .array(
+                z.object({
+                  host: z.string().max(100),
+                  path: z.string().max(200),
+                  resourceType: z.string().max(30),
+                  status: z.number().int().min(100).max(599).nullable(),
+                  durationMs: z.number().min(0).max(600_000),
+                }),
+              )
+              .max(50),
+          })
+          .parse(JSON.parse(raw));
+        for (const call of calls) {
+          const mapbox = call.host.endsWith(".mapbox.com");
+          if (
+            !mapbox &&
+            call.host !== "maps.googleapis.com" &&
+            call.host !== "places.googleapis.com"
+          )
+            continue;
+          void recordExternalApiCall({
+            provider: mapbox ? "mapbox-browser" : "google-browser",
+            operation: call.resourceType,
+            method: "GET",
+            host: call.host,
+            path: call.path.split("?")[0],
+            status: call.status,
+            ok: call.status === null || call.status < 400,
+            durationMs: call.durationMs,
+            metadata: { source: "browser" },
+          });
+        }
+        return ok({ recorded: calls.length }, 202);
+      }
       // Guest outcome events: allowlisted names, coarse string values, bounded size.
       if (resource === "analytics" && method === "POST") {
         const raw = await request.text();

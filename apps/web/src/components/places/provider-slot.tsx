@@ -52,7 +52,7 @@ export function ProviderDetails({
   provider: PlacesProvider;
   placeId: string;
   compact: boolean;
-  /** The map hover card: name, photo, rating and type only. */
+  /** The map hover card: name, rating and type only (no photos; the widget loads the whole set). */
   preview?: boolean;
   onLoad: (place: ProviderPlace) => void;
   onError: () => void;

@@ -1,5 +1,6 @@
 import { mkdir, writeFile } from "node:fs/promises";
 import path from "node:path";
+import { withExternalApiLog } from "@taiwanhub/database";
 import { AppError } from "@taiwanhub/shared";
 import { S3Client, PutObjectCommand } from "@aws-sdk/client-s3";
 export interface ImageStorage {
@@ -44,14 +45,26 @@ const s3: ImageStorage = {
             }
           : undefined,
     });
-    await client.send(
-      new PutObjectCommand({
-        Bucket: bucket,
-        Key: key,
-        Body: bytes,
-        ContentType: mime,
-        CacheControl: "public, max-age=31536000, immutable",
-      }),
+    await withExternalApiLog(
+      {
+        provider: "s3-storage",
+        operation: "put-object",
+        method: "PUT",
+        host: process.env.IMAGE_STORAGE_ENDPOINT
+          ? new URL(process.env.IMAGE_STORAGE_ENDPOINT).host
+          : "s3.amazonaws.com",
+      },
+      () =>
+        client.send(
+          new PutObjectCommand({
+            Bucket: bucket,
+            Key: key,
+            Body: bytes,
+            ContentType: mime,
+            CacheControl: "public, max-age=31536000, immutable",
+          }),
+        ),
+      () => ({ metadata: { bytes: bytes.byteLength } }),
     );
     return publicUrl.replace(/\/$/, "") + "/" + key;
   },

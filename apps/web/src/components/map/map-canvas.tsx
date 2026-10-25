@@ -19,6 +19,7 @@ import {
 import type { MapItem } from "@/features/map/query";
 import type { Copy, Locale } from "@/lib/dictionary";
 import "mapbox-gl/dist/mapbox-gl.css";
+import { mapboxTransformRequest } from "@/lib/browser-api-log";
 import {
   applyJadeAtlas,
   atlasPalettes,
@@ -396,6 +397,7 @@ export function MapCanvas({
           ...flatMapOptions,
           container: container.current,
           accessToken: token,
+          transformRequest: mapboxTransformRequest,
           style: atlasStyles[theme],
           center: cameraRef.current?.center ?? center,
           zoom: cameraRef.current?.zoom ?? zoom,

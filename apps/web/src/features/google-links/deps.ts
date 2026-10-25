@@ -1,3 +1,4 @@
+import { loggedFetch } from "@taiwanhub/database";
 import { AppError } from "@taiwanhub/shared";
 import { fakeResolverFetch, type ResolverDeps } from "./resolver";
 /** Server-only key; "fake" selects the deterministic test double outside production. */
@@ -11,5 +12,5 @@ export function resolverDeps(): ResolverDeps {
       "UNAVAILABLE",
       "Google Maps links are not configured on this server.",
     );
-  return { fetch, apiKey: key };
+  return { fetch: loggedFetch("google-places", "link-resolver"), apiKey: key };
 }

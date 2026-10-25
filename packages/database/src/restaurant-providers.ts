@@ -1,5 +1,6 @@
 import Anthropic from "@anthropic-ai/sdk";
 import { z } from "zod";
+import { loggedFetch, withExternalApiLog } from "./external-api-log";
 import {
   restaurantCopyOutput,
   localDate,
@@ -386,7 +387,8 @@ export function createGooglePlacesQualificationAdapter(
     now?: () => Date;
   },
 ): RestaurantQualificationAdapter {
-  const fetchImpl = options.fetchImpl ?? fetch;
+  const fetchImpl =
+    options.fetchImpl ?? loggedFetch("google-places", "place-details");
   const timeoutMs = options.timeoutMs ?? 5000;
   return {
     async fetchQuality({ providerPlaceId, dates }) {
@@ -464,7 +466,8 @@ export function createGooglePlacesDiscoveryAdapter(
     };
   },
 ): RestaurantDiscoveryAdapter {
-  const fetchImpl = options.fetchImpl ?? fetch;
+  const fetchImpl =
+    options.fetchImpl ?? loggedFetch("google-places", "text-search");
   const timeoutMs = options.timeoutMs ?? 8000;
   const maxPages = options.maxPages ?? 3;
   return {
@@ -582,17 +585,33 @@ export function createAnthropicCopyAdapter(
   const createMessage =
     options.createMessage ??
     (async ({ model: m, system, userContent, timeoutMs: t }) => {
-      const message = await client.messages.create(
+      const message = await withExternalApiLog(
         {
-          model: m,
-          // Current models think by default and thinking counts toward
-          // max_tokens; leave headroom so the JSON is never truncated.
-          max_tokens: 4000,
-          output_config: { effort: "low" },
-          system,
-          messages: [{ role: "user", content: userContent }],
+          provider: "anthropic",
+          operation: "restaurant-copy",
+          host: "api.anthropic.com",
+          path: "/v1/messages",
         },
-        { timeout: t },
+        () =>
+          client.messages.create(
+            {
+              model: m,
+              // Current models think by default and thinking counts toward
+              // max_tokens; leave headroom so the JSON is never truncated.
+              max_tokens: 4000,
+              output_config: { effort: "low" },
+              system,
+              messages: [{ role: "user", content: userContent }],
+            },
+            { timeout: t },
+          ),
+        (r) => ({
+          metadata: {
+            model: m,
+            inputTokens: r.usage.input_tokens,
+            outputTokens: r.usage.output_tokens,
+          },
+        }),
       );
       return message.content.find((b) => b.type === "text")?.text ?? "";
     });

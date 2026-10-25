@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { loggedFetch } from "./external-api-log";
 /**
  * US Census one-line address geocoder: free, keyless, public domain, US
  * addresses, and no restriction on storing what it returns. Mapbox needs the
@@ -45,7 +46,8 @@ export async function geocodeAddress(
   if (!query) return null;
   if (query.length > maxGeocodeAddressLength)
     throw new GeocoderError("Address is too long to geocode.");
-  const { fetchImpl = fetch, timeoutMs = 8000 } = options;
+  const { fetchImpl = loggedFetch("us-census", "geocode"), timeoutMs = 8000 } =
+    options;
   const url =
     "https://geocoding.geo.census.gov/geocoder/locations/onelineaddress" +
     `?address=${encodeURIComponent(query)}` +
