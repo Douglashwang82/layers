@@ -28,7 +28,8 @@
     "daily-pick:restaurant:tune": "tsx packages/database/src/daily-pick-restaurant-tune.ts",
     "ingest": "tsx packages/database/src/ingestion-cli.ts",
     "db:sync-demo-flags": "tsx packages/database/src/sync-demo-flags.ts",
-    "agent:run": "tsx packages/database/src/feed-agent.ts"
+    "agent:run": "tsx packages/database/src/feed-agent.ts",
+    "instagram:extract": "tsx packages/database/src/instagram-caption-cli.ts"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.127.0",
