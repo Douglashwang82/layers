@@ -50,7 +50,7 @@ test("a member builds a layer from Google Maps links and attaches an event", asy
   const title = `Weekend eats ${Date.now()}`;
   await page.getByLabel("Title", { exact: true }).fill(title);
   await page
-    .getByLabel("Google Maps links")
+    .getByLabel("Google Maps or Instagram links")
     .fill(
       [
         "https://www.google.com/maps/place/Tiger+Den/@29.7052,-95.5523,17z",
@@ -86,12 +86,49 @@ test("a member builds a layer from Google Maps links and attaches an event", asy
   const googlePlaces = page.locator(".google-places > li");
   await expect(googlePlaces).toHaveCount(2);
   await page
-    .getByLabel("Google Maps links")
+    .getByLabel("Google Maps or Instagram links")
     .fill("https://maps.google.com/?q=Boba+Corner");
   await page.getByRole("button", { name: "Check links" }).click();
   await page.getByRole("button", { name: "Add 1 places" }).click();
   await expect(page.getByText("1 places added.")).toBeVisible();
   await expect(googlePlaces).toHaveCount(3);
+  // Instagram uses the real save endpoint; only extraction/search is mocked.
+  const instagramUrl = "https://www.instagram.com/p/test123/";
+  await page.route("**/api/v1/google-links/resolve", async (route) => {
+    if (!route.request().postDataJSON().links.includes(instagramUrl))
+      return route.continue();
+    await route.fulfill({
+      json: {
+        data: {
+          results: [
+            {
+              input: instagramUrl,
+              sourceUrl: instagramUrl,
+              source: "instagram",
+              status: "resolved",
+              providerPlaceId: "fake-link-instagram-e2e",
+              name: "Test Instagram Cafe",
+              address: "100 Test Road",
+              potentiallyTruncated: true,
+            },
+          ],
+        },
+      },
+    });
+  });
+  await page.getByLabel("Google Maps or Instagram links").fill(instagramUrl);
+  await page.getByRole("button", { name: "Check links" }).click();
+  await expect(page.getByText("100 Test Road", { exact: true })).toBeVisible();
+  await expect(
+    page.getByRole("button", { name: "Add 0 places" }),
+  ).toBeDisabled();
+  await page
+    .getByRole("checkbox", {
+      name: "I checked the matched place and address. Add this restaurant.",
+    })
+    .check();
+  await page.getByRole("button", { name: "Add 1 places" }).click();
+  await expect(googlePlaces).toHaveCount(4);
   const first = googlePlaces.first();
   await first.locator("summary", { hasText: "Events" }).click();
   await first.getByRole("button", { name: "Add event" }).click();
@@ -105,6 +142,6 @@ test("a member builds a layer from Google Maps links and attaches an event", asy
   // Back on the map, the place carries its upcoming event.
   await page.goto(`/?layers=${slug}`);
   await openMapList(page);
-  await expect(places).toHaveCount(3);
+  await expect(places).toHaveCount(4);
   await expect(places.first()).toContainText("Night market");
 });

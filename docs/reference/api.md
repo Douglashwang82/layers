@@ -1,5 +1,30 @@
 # HTTP API v1
 
+## Instagram links in layers
+
+`POST /api/v1/google-links/resolve` also accepts a single Instagram `/p/` or
+`/reel/` URL in `links`. Optional `layerId` checks edit access before extraction;
+otherwise the authenticated member is preparing a new layer. Map MVP and layer
+writes must be enabled. Instagram checks are limited to five per member per ten
+minutes, with at most five restaurant matches per post. The configured worker
+uses Playwright and local Ollama; the web server searches Google by extracted
+name and address. No writes occur during resolution.
+
+Instagram results include `source: "instagram"`, canonical `sourceUrl`, optional
+`name` and `address`, and `potentiallyTruncated`. Each restaurant has its own
+result/status; missing facts, blocked posts, worker unavailability, busy responses
+and provider failures are explicit reasons. Mixed batches keep Google results
+but return `instagram_limit` for Instagram inputs. Clients must show the match
+for user review rather than automatically saving it.
+
+`POST /api/v1/layers/{id}/google-places` and `/api/v1/layers/from-google` accept
+optional `sourceLinks`, a mapping from place ID to validated Instagram URL.
+The URL becomes the newly added layer item's note. Duplicate imports preserve
+existing notes and memberships. Layer edit permissions and transaction rules
+are unchanged. See [worker setup](../guides/instagram-caption-extraction.md).
+
+## Common conventions
+
 Success: `{ "data": ... }`. Error: `{ "error": { "code": "...", "message": "..." } }`. Auth endpoints retain Better Auth's native response shape. Images/preferences use a message on errors. HTTP 400 validation, 401 unauthenticated, 403 forbidden, 404 missing/disabled, 409 capacity/ended conflicts, 413 oversized, 429 throttled, 500 unexpected failure.
 
 Better Auth is mounted at `/api/auth/*`: `/sign-in/email`, `/sign-out`, `/get-session`, `/sign-in/email-otp`, `/email-otp/send-verification-otp`, and social provider flows. Use its browser SDK or bearer plugin contract for native clients. All application mutations use the authenticated actor; body user IDs are ignored by schemas.

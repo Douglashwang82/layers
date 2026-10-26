@@ -1,5 +1,13 @@
 # Deployment
 
+Instagram imports require a separately running Playwright/Ollama worker. Configure
+`INSTAGRAM_WORKER_URL` and the shared server-only `INSTAGRAM_WORKER_TOKEN` on the
+web host; set `INSTAGRAM_OLLAMA_MODEL` and the token on the worker. Vercel cannot
+reach a worker on your laptop via `127.0.0.1`; an operator-managed HTTPS origin is
+needed. Leave the URL unset to disable Instagram imports. See
+[worker setup and limits](instagram-caption-extraction.md). No worker hosting or
+production configuration is provisioned automatically.
+
 ## Vercel + PostgreSQL/PostGIS
 
 1. Create a PostgreSQL database with PostGIS support (Neon or compatible). Use TLS and provider pooling for runtime; use a direct privileged URL for migrations. Test `CREATE EXTENSION IF NOT EXISTS postgis` with the migration role.

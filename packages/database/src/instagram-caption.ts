@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { restaurantsSchema } from "../../shared/src/instagram";
 
 export function captionFromDescription(description: string | null) {
   return description
@@ -7,35 +8,10 @@ export function captionFromDescription(description: string | null) {
     ?.trim();
 }
 
-export function instagramPostUrl(value: string) {
-  const url = new URL(value);
-  if (
-    url.protocol !== "https:" ||
-    !["www.instagram.com", "instagram.com"].includes(url.hostname) ||
-    url.port ||
-    url.username ||
-    url.password ||
-    !/^\/(p|reel)\/[A-Za-z0-9_-]+\/?$/.test(url.pathname)
-  )
-    throw new Error("Expected a public Instagram /p/ or /reel/ HTTPS URL.");
-  return `https://www.instagram.com${url.pathname.replace(/\/$/, "")}/`;
-}
-
-export const restaurantsSchema = z
-  .object({
-    restaurants: z
-      .array(
-        z
-          .object({
-            name: z.string().trim().min(1).max(200).nullable(),
-            address: z.string().trim().min(1).max(500).nullable(),
-          })
-          .strict(),
-      )
-      .max(20),
-  })
-  .strict();
-
+export {
+  instagramPostUrl,
+  restaurantsSchema,
+} from "../../shared/src/instagram";
 export function validateExtraction(caption: string, value: unknown) {
   const parsed = restaurantsSchema.parse(value);
   for (const restaurant of parsed.restaurants) {

@@ -29,7 +29,8 @@
     "ingest": "tsx packages/database/src/ingestion-cli.ts",
     "db:sync-demo-flags": "tsx packages/database/src/sync-demo-flags.ts",
     "agent:run": "tsx packages/database/src/feed-agent.ts",
-    "instagram:extract": "tsx packages/database/src/instagram-caption-cli.ts"
+    "instagram:extract": "tsx packages/database/src/instagram-caption-cli.ts",
+    "instagram:worker": "tsx packages/database/src/instagram-worker-cli.ts"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.127.0",

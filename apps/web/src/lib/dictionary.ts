@@ -857,14 +857,34 @@ export const en = {
   noLayersYet: "You don't have any layers yet.",
   signInForLayers: "Sign in to put your layers on the map.",
   googleLinksIntro:
-    "In Google Maps, open a place, tap Share and copy its link. Paste one link per line — up to {max}.",
-  googleLinksLabel: "Google Maps links",
+    "Paste Google Maps place links, one per line (up to {max}), or one Instagram post / Reel link on its own. Confirm the restaurant before adding it.",
+  googleLinksLabel: "Google Maps or Instagram links",
+  instagramUnavailable:
+    "Instagram import is unavailable. Use a Google Maps place link instead.",
+  instagramBusy:
+    "Instagram import is busy or you have checked too many posts. Please try again later.",
+  instagramFailed:
+    "Couldn't read this post. It may require login or be temporarily unavailable. Use its restaurant's Google Maps link instead.",
+  instagramMissingFields:
+    "The caption needs both a restaurant name and address. Use a Google Maps place link instead.",
+  instagramNoPlaces: "No restaurant was found in the caption.",
+  instagramTooManyPlaces:
+    "This post mentions more than five restaurants. Add their Google Maps links instead.",
+  instagramLimit: "Check one Instagram post at a time, without other links.",
+  instagramWorking:
+    "Instagram posts may take up to three minutes to read and match.",
+  instagramTruncated:
+    "The post preview may be incomplete. Check the original post and the matched place.",
+  instagramVerifyMap: "Verify this place on Google Maps",
+  instagramConfirm:
+    "I checked the matched place and address. Add this restaurant.",
   checkLinks: "Check links",
   checkingLinks: "Checking links…",
   linksFound: "{count} places found",
   linkFromName: "From the link: {name}",
   linkInvalid: "This isn't a link.",
-  linkNotGoogleMaps: "This isn't a Google Maps link.",
+  linkNotGoogleMaps:
+    "Use a Google Maps place link or an Instagram post / Reel link.",
   linkList:
     "Google Maps lists aren't supported yet. Share each place's link instead.",
   linkNoPlace: "This link doesn't point at a single place.",
@@ -876,7 +896,7 @@ export const en = {
   addGooglePlaces: "Add {count} places",
   googlePlacesAdded: "{added} places added.",
   googlePlacesSkipped: "{count} skipped (already in the layer or unavailable).",
-  addFromGoogle: "Add from Google Maps",
+  addFromGoogle: "Add from Google Maps or Instagram",
   createEmptyLayer: "Create an empty layer instead",
   googlePlacesInLayer: "Places from Google Maps",
   removeGooglePlace: "Remove this place",
@@ -1698,14 +1718,29 @@ export const zh: Copy = {
   noLayersYet: "你還沒有任何圖層。",
   signInForLayers: "登入後即可把你的圖層放上地圖。",
   googleLinksIntro:
-    "在 Google 地圖開啟地點，點「分享」並複製連結。每行貼上一個連結，最多 {max} 個。",
-  googleLinksLabel: "Google 地圖連結",
+    "貼上 Google 地圖地點連結，每行一個，最多 {max} 個；或單獨貼上一個 Instagram 貼文／Reel 連結。加入前請確認餐廳位置。",
+  googleLinksLabel: "Google 地圖或 Instagram 連結",
+  instagramUnavailable:
+    "目前無法匯入 Instagram，請改用餐廳的 Google 地圖連結。",
+  instagramBusy: "Instagram 匯入忙碌中或已達查詢次數上限，請稍後再試。",
+  instagramFailed:
+    "無法讀取貼文，可能需要登入或暫時無法存取。請改用餐廳的 Google 地圖連結。",
+  instagramMissingFields:
+    "貼文需要同時包含餐廳名稱與地址。請改用 Google 地圖地點連結。",
+  instagramNoPlaces: "貼文文字中找不到餐廳。",
+  instagramTooManyPlaces:
+    "貼文提及超過五家餐廳，請改為貼上各餐廳的 Google 地圖連結。",
+  instagramLimit: "每次請單獨檢查一個 Instagram 貼文，不要混入其他連結。",
+  instagramWorking: "讀取 Instagram 貼文並比對地點可能需要三分鐘。",
+  instagramTruncated: "貼文預覽可能不完整，請核對原始貼文與找到的地點。",
+  instagramVerifyMap: "在 Google 地圖確認地點",
+  instagramConfirm: "我已核對找到的地點與地址，加入這家餐廳。",
   checkLinks: "檢查連結",
   checkingLinks: "正在檢查連結…",
   linksFound: "找到 {count} 個地點",
   linkFromName: "連結中的名稱：{name}",
   linkInvalid: "這不是連結。",
-  linkNotGoogleMaps: "這不是 Google 地圖連結。",
+  linkNotGoogleMaps: "請使用 Google 地圖地點連結或 Instagram 貼文／Reel 連結。",
   linkList: "目前還不支援 Google 地圖清單，請改為分享每個地點的連結。",
   linkNoPlace: "這個連結沒有指向單一地點。",
   linkNotFound: "找不到相符的地點。",
@@ -1716,7 +1751,7 @@ export const zh: Copy = {
   addGooglePlaces: "加入 {count} 個地點",
   googlePlacesAdded: "已加入 {added} 個地點。",
   googlePlacesSkipped: "略過 {count} 個（已在圖層中或無法使用）。",
-  addFromGoogle: "從 Google 地圖加入",
+  addFromGoogle: "從 Google 地圖或 Instagram 加入",
   createEmptyLayer: "改為建立空白圖層",
   googlePlacesInLayer: "來自 Google 地圖的地點",
   removeGooglePlace: "移除這個地點",

@@ -1,5 +1,6 @@
 import { z } from "zod";
 import { plainText } from "./text";
+import { instagramUrlSchema } from "./instagram";
 /* ---------------------------------------------------------------------------
    Google Maps share links (docs/plans/layer-mvp-google-links-plan.md, M1).
    Only single-place links are supported. Parsing is pure and never fetches:
@@ -30,6 +31,13 @@ export const googleLinkReasons = [
   "expand_failed",
   "no_match",
   "provider_error",
+  "instagram_unavailable",
+  "instagram_busy",
+  "instagram_failed",
+  "instagram_missing_fields",
+  "instagram_no_places",
+  "instagram_too_many_places",
+  "instagram_limit",
 ] as const;
 export type GoogleLinkReason = (typeof googleLinkReasons)[number];
 /** A short link (`maps.app.goo.gl/…`, `goo.gl/maps/…`) that must be expanded server-side. */
@@ -139,6 +147,7 @@ export function parseGoogleMapsLink(text: string): GoogleMapsLink {
 const linkText = z.string().trim().min(1).max(2048);
 export const googleLinksResolveInput = z.object({
   links: z.array(linkText).min(1).max(maxGoogleLinks),
+  layerId: z.uuid().optional(),
 });
 const providerPlaceIds = z
   .array(z.string().regex(providerPlaceIdPattern))
@@ -156,6 +165,9 @@ const linkNames = z
 export const googlePlacesImportInput = z.object({
   providerPlaceIds,
   linkNames,
+  sourceLinks: z
+    .record(z.string().regex(providerPlaceIdPattern), instagramUrlSchema)
+    .optional(),
 });
 /** A new private or group layer filled from resolved Google places in one transaction. */
 export const layerFromGoogleInput = z
@@ -168,6 +180,9 @@ export const layerFromGoogleInput = z
     groupId: z.uuid().optional(),
     providerPlaceIds,
     linkNames,
+    sourceLinks: z
+      .record(z.string().regex(providerPlaceIdPattern), instagramUrlSchema)
+      .optional(),
   })
   .refine((v) => v.audience !== "group" || !!v.groupId, {
     message: "Choose a group.",
@@ -180,4 +195,8 @@ export type GoogleLinkResult = {
   /** The place name read from the link: shown in the preview, and kept on the layer item when added. */
   name?: string;
   reason?: GoogleLinkReason;
+  source?: "instagram";
+  sourceUrl?: string;
+  address?: string;
+  potentiallyTruncated?: boolean;
 };

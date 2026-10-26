@@ -1,4 +1,5 @@
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import { createInstagramWorker } from "../../packages/database/src/instagram-worker";
 import { pool } from "../../packages/database/src";
 import {
   createLayerFromGoogle,
@@ -75,7 +76,30 @@ async function subjectOf(providerPlaceId: string) {
   return rows[0].subject_id;
 }
 const flagsBefore = { ...flags };
+const instagramEnv = {
+  url: process.env.INSTAGRAM_WORKER_URL,
+  token: process.env.INSTAGRAM_WORKER_TOKEN,
+};
+const instagramWorker = createInstagramWorker(
+  "integration-test-instagram-token-0123456789",
+  async (sourceUrl) => ({
+    sourceUrl,
+    potentiallyTruncated: true,
+    restaurants: [
+      { name: `mvp-${run}-cafe`, address: "100 Test Road, Houston" },
+    ],
+  }),
+);
 beforeAll(async () => {
+  await new Promise<void>((resolve) =>
+    instagramWorker.listen(0, "127.0.0.1", resolve),
+  );
+  const address = instagramWorker.address();
+  if (!address || typeof address === "string")
+    throw new Error("Worker port unavailable");
+  process.env.INSTAGRAM_WORKER_URL = `http://127.0.0.1:${address.port}`;
+  process.env.INSTAGRAM_WORKER_TOKEN =
+    "integration-test-instagram-token-0123456789";
   for (const actor of users)
     await pool.query(
       'INSERT INTO "user"(id,name,email,email_verified,role) VALUES($1,$2,$3,true,$4)',
@@ -94,6 +118,13 @@ beforeAll(async () => {
   );
 });
 afterAll(async () => {
+  instagramWorker.closeAllConnections();
+  await new Promise<void>((resolve) => instagramWorker.close(() => resolve()));
+  if (instagramEnv.url === undefined) delete process.env.INSTAGRAM_WORKER_URL;
+  else process.env.INSTAGRAM_WORKER_URL = instagramEnv.url;
+  if (instagramEnv.token === undefined)
+    delete process.env.INSTAGRAM_WORKER_TOKEN;
+  else process.env.INSTAGRAM_WORKER_TOKEN = instagramEnv.token;
   Object.assign(flags, flagsBefore);
   delete process.env.GOOGLE_MAPS_LINK_API_KEY;
   const ids = users.map((u) => u.id);
@@ -122,12 +153,71 @@ afterAll(async () => {
     [ids],
   );
   await pool.query("DELETE FROM rate_limit WHERE key LIKE ANY($1::text[])", [
-    ids.flatMap((id) => [`google-links:${id}`, `contribution:${id}`]),
+    ids.flatMap((id) => [
+      `google-links:${id}`,
+      `instagram-links:${id}`,
+      `contribution:${id}`,
+    ]),
   ]);
   await pool.query('DELETE FROM "user" WHERE id=ANY($1::uuid[])', [ids]);
   await pool.end();
 });
 describe("layers from Google places", () => {
+  it("resolves Instagram for editors and preserves source notes on idempotent import", async () => {
+    const layer = (
+      await createLayer(alice, {
+        title: "Instagram collection",
+        city: "houston",
+      })
+    ).layer;
+    const source = "https://www.instagram.com/p/test123/";
+    await expect(
+      resolveGoogleLinks(bob, { layerId: layer.id, links: [source] }),
+    ).rejects.toBeDefined();
+    await expect(
+      resolveGoogleLinks(null, { layerId: layer.id, links: [source] }),
+    ).rejects.toBeDefined();
+    const { results } = await resolveGoogleLinks(alice, {
+      layerId: layer.id,
+      links: [source],
+    });
+    expect(results[0]).toMatchObject({ status: "resolved", sourceUrl: source });
+    const id = (results[0] as { providerPlaceId: string }).providerPlaceId;
+    const body = {
+      providerPlaceIds: [id],
+      sourceLinks: { [id]: source },
+      linkNames: { [id]: "Test cafe" },
+    };
+    expect((await importGooglePlaces(alice, layer.id, body)).added).toBe(1);
+    expect((await importGooglePlaces(alice, layer.id, body)).added).toBe(0);
+    expect(
+      (
+        await pool.query("SELECT note FROM layer_item WHERE layer_id=$1", [
+          layer.id,
+        ])
+      ).rows,
+    ).toEqual([{ note: source }]);
+    await expect(importGooglePlaces(bob, layer.id, body)).rejects.toBeDefined();
+    await expect(
+      importGooglePlaces(alice, layer.id, {
+        ...body,
+        sourceLinks: { [id]: "https://evil.example/" },
+      }),
+    ).rejects.toBeDefined();
+    for (let i = 0; i < 4; i++)
+      await resolveGoogleLinks(alice, { layerId: layer.id, links: [source] });
+    expect(
+      (await resolveGoogleLinks(alice, { layerId: layer.id, links: [source] }))
+        .results[0],
+    ).toMatchObject({ reason: "instagram_busy" });
+    await pool.query("DELETE FROM layer WHERE id=$1", [layer.id]);
+    const subject = await subjectOf(id);
+    await pool.query(
+      "DELETE FROM place_provider_reference WHERE subject_id=$1",
+      [subject],
+    );
+    await pool.query("DELETE FROM place_subject WHERE id=$1", [subject]);
+  });
   it("creates an active private layer with its places in one step", async () => {
     const created = await createLayerFromGoogle(alice, {
       title: "Weekend eats",

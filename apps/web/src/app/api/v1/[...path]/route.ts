@@ -1,4 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
+// Local inference plus bounded Google matching can take several minutes.
+export const maxDuration = 240;
 import { z } from "zod";
 import {
   pool,

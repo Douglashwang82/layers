@@ -660,6 +660,7 @@ export const groupInviteInput = z.object({
 export const groupRoleInput = z.object({
   role: z.enum(["owner", "editor", "viewer"]),
 });
+export * from "./instagram";
 export const mapPreferenceInput = z.object({
   layers: z.array(z.string().regex(slugPattern)).max(maxAppliedLayers),
   view: z.enum(["map", "list"]).default("map"),
