@@ -90,13 +90,18 @@ test("library Apply adds to the current set; duplicates render once with members
   );
   await page.locator(".map-profile-menu summary").click();
   await page.getByRole("link", { name: "Layers", exact: true }).first().click();
-  await expect(page).toHaveURL(/\/layers/);
+  await expect(page).toHaveURL(/layerPanel=library/);
   const food = page.locator(".layer-card", {
     hasText: "Local food favorites",
   });
   await food.getByRole("button", { name: "Apply to map" }).click();
   await expect(page).toHaveURL(/layers=discover-houston(,|%2C)food-houston/);
   await expect(page).toHaveURL(/types=place/);
+  await page
+    .locator(".layer-workspace-screen")
+    .getByRole("link", { name: "Open in Map", exact: true })
+    .first()
+    .click();
   await openMapList(page);
   await page.getByRole("tab", { name: /Layers/ }).click();
   await expect(
@@ -154,14 +159,9 @@ test("sign-in return keeps the selected item; personal layer creation, add, appl
   await expect(
     page.getByRole("button", { name: "Saved", exact: true }),
   ).toBeVisible();
-  // My saves is a private projection over saved tables.
+  // Saves live on /saved; there is no My saves map layer.
   await page.goto("/saved");
-  await page.getByRole("link", { name: "Show on map" }).click();
-  await expect(page).toHaveURL(/layers=my-saves/);
-  await openMapList(page);
-  await expect(
-    page.locator(".result-row", { hasText: noodleHouse }),
-  ).toHaveCount(1);
+  await expect(page.getByRole("link", { name: "Show on map" })).toHaveCount(0);
   // Create a layer with only a title, add an item from the map preview, apply it.
   await page.goto("/layers/new");
   const title = `Weekend plan ${Date.now()}`;
@@ -170,9 +170,9 @@ test("sign-in return keeps the selected item; personal layer creation, add, appl
   await page.getByLabel("From", { exact: true }).fill("2026-09-26");
   await page.getByLabel("To", { exact: true }).fill("2026-09-27");
   await page.getByRole("button", { name: "Create layer", exact: true }).click();
-  await expect(page).toHaveURL(/\/layers\/weekend-plan-[a-z0-9-]+\/edit/);
-  await page.getByRole("searchbox", { name: "Search" }).fill("noodle");
-  await page.getByRole("button", { name: "Search", exact: true }).click();
+  await expect(page).toHaveURL(/layerPanel=contents.*layer=weekend-plan-/);
+  await page.locator(".layer-workspace-screen").getByRole("searchbox", { name: "Search", exact: true }).fill("noodle");
+  await page.locator(".layer-workspace-screen").getByRole("button", { name: "Search", exact: true }).click();
   await page
     .locator(".editor-results .result-row", { hasText: noodleHouse })
     .getByRole("button", { name: "Add to layer" })
@@ -182,8 +182,8 @@ test("sign-in return keeps the selected item; personal layer creation, add, appl
   ).toContainText("Added");
   // No catalog match: create a private custom place in place, pinned to the
   // (mocked) current location, so no geocoder request is made.
-  await page.getByRole("searchbox", { name: "Search" }).fill("Zzyzx Tea Lab");
-  await page.getByRole("button", { name: "Search", exact: true }).click();
+  await page.locator(".layer-workspace-screen").getByRole("searchbox", { name: "Search", exact: true }).fill("Zzyzx Tea Lab");
+  await page.locator(".layer-workspace-screen").getByRole("button", { name: "Search", exact: true }).click();
   await expect(page.getByText("No results for “Zzyzx Tea Lab”.")).toBeVisible();
   await page
     .getByRole("button", { name: "Add “Zzyzx Tea Lab” as a new place" })
@@ -202,8 +202,8 @@ test("sign-in return keeps the selected item; personal layer creation, add, appl
   });
   await expect(customRow.first()).toContainText("Private place");
   // A second search finds it under "Your places", already added.
-  await page.getByRole("searchbox", { name: "Search" }).fill("Zzyzx");
-  await page.getByRole("button", { name: "Search", exact: true }).click();
+  await page.locator(".layer-workspace-screen").getByRole("searchbox", { name: "Search", exact: true }).fill("Zzyzx");
+  await page.locator(".layer-workspace-screen").getByRole("button", { name: "Search", exact: true }).click();
   await expect(
     page.getByRole("heading", { name: "Your places" }),
   ).toBeVisible();
@@ -211,7 +211,7 @@ test("sign-in return keeps the selected item; personal layer creation, add, appl
     page.locator(".editor-results .result-row", { hasText: "Zzyzx Tea Lab" }),
   ).toContainText("Added");
   await page.getByRole("button", { name: "Done" }).click();
-  await expect(page).toHaveURL(/\/layers\/weekend-plan-[a-z0-9-]+$/);
+  await expect(page).toHaveURL(/layerPanel=detail.*layer=weekend-plan-/);
   await expect(
     page.getByRole("heading", { name: title, level: 1 }),
   ).toBeVisible();
@@ -223,6 +223,11 @@ test("sign-in return keeps the selected item; personal layer creation, add, appl
   const layerUrl = page.url();
   await page.getByRole("button", { name: "Apply to map" }).first().click();
   await expect(page).toHaveURL(/layers=.*weekend-plan/);
+  await page
+    .locator(".layer-workspace-screen")
+    .getByRole("link", { name: "Open in Map", exact: true })
+    .first()
+    .click();
   await openMapList(page);
   await page.getByRole("tab", { name: /Layers/ }).click();
   await expect(
@@ -288,6 +293,8 @@ test("a failed map provider keeps results, selection and directions usable", asy
   ).toHaveAttribute("href", /google\.com\/maps/);
   await page.getByRole("button", { name: "List view" }).first().click();
   await expect(page).toHaveURL(/view=list/);
+  // Changing the presentation keeps the selected place; return to its results explicitly.
+  await page.getByRole("button", { name: "Back to results", exact: true }).click();
   await expect(page.locator(".result-row").first()).toBeVisible();
 });
 

@@ -6,10 +6,17 @@ import {
   useRef,
   useState,
   type CSSProperties,
+  type ReactNode,
 } from "react";
-import Link from "next/link";
+import { LayerLink as Link } from "../layers/workspace-navigation";
 import { createPortal } from "react-dom";
-import { useSearchParams } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
+import { LayerWorkspaceContext } from "../layers/workspace-navigation";
+import {
+  layerPanelKeys,
+  readLayerPanel,
+  withoutLayerPanel,
+} from "@/lib/layer-workspace";
 import {
   CalendarDays,
   ChevronDown,
@@ -30,6 +37,7 @@ import {
   serializeMapQuery,
   type Bounds,
   type MapState,
+  maxAppliedLayers,
 } from "@taiwanhub/shared";
 import type {
   LayerAvailability,
@@ -155,6 +163,7 @@ export function MapWorkspace({
   layerWrites,
   places,
   library = null,
+  layerScreen,
 }: {
   initial: MapQueryResult;
   initialDetail: ItemDetail | null;
@@ -169,9 +178,15 @@ export function MapWorkspace({
   places: PlacesConfig;
   /** Map MVP: the signed-in member's loadable layers. */
   library?: LayerAvailability[] | null;
+  layerScreen?: ReactNode;
 }) {
   const mvp = places.mvp;
   const searchParams = useSearchParams();
+  const router = useRouter();
+  const layerPanel = readLayerPanel(new URLSearchParams(searchParams));
+  const layerScreenKey = layerPanelKeys
+    .map((key) => searchParams.get(key) ?? "")
+    .join("|");
   const canvas = useRef<MapCanvasHandle>(null);
   const { theme } = useMapTheme();
   // Tokens live on body (the header sits outside the workspace), so publish the theme there.
@@ -195,7 +210,7 @@ export function MapWorkspace({
   // Declared early: effects below open the panel when a selection arrives.
   const [panelOpen, setPanelOpen] = useState(() =>
     initialPanelOpen({
-      hasItem: !!state.item,
+      hasItem: !!state.item || !!layerPanel,
       listView,
       fallback: !token,
     }),
@@ -206,6 +221,21 @@ export function MapWorkspace({
   const [refreshing, setRefreshing] = useState(false);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [force, setForce] = useState(0);
+  useEffect(() => {
+    let timer: ReturnType<typeof setTimeout>;
+    const changed = () => {
+      clearTimeout(timer);
+      timer = setTimeout(() => {
+        setForce((value) => value + 1);
+        router.refresh();
+      }, 150);
+    };
+    window.addEventListener("layer:changed", changed);
+    return () => {
+      clearTimeout(timer);
+      window.removeEventListener("layer:changed", changed);
+    };
+  }, [router]);
   const seq = useRef(0);
   useEffect(() => {
     setResult(initial);
@@ -248,13 +278,18 @@ export function MapWorkspace({
         },
         { includeCity: hasExplicitCity },
       );
+      const params = new URLSearchParams(qs);
+      for (const key of layerPanelKeys) {
+        const value = searchParams.get(key);
+        if (value !== null) params.set(key, value);
+      }
       window.history[mode === "push" ? "pushState" : "replaceState"](
         null,
         "",
-        "/" + qs,
+        "/?" + params.toString(),
       );
     },
-    [state, hasExplicitCity],
+    [state, hasExplicitCity, searchParams],
   );
   useEffect(() => {
     try {
@@ -291,6 +326,11 @@ export function MapWorkspace({
     [authenticated],
   );
   const toggleLayer = (slug: string, applied: boolean) => {
+    if (applied && shownSlugs.includes(slug)) return;
+    if (applied && shownSlugs.length >= maxAppliedLayers) {
+      setLoadError(format(t.layerLimit, { max: maxAppliedLayers }));
+      return;
+    }
     const next = applied
       ? [...shownSlugs, slug]
       : shownSlugs.filter((s) => s !== slug);
@@ -397,9 +437,22 @@ export function MapWorkspace({
     setPanelOpen(true);
   };
   const select = (key: string) => {
+    if (
+      layerPanel &&
+      !window.dispatchEvent(
+        new Event("layer:before-leave", { cancelable: true }),
+      )
+    )
+      return;
     reveal();
     setBusiness(null);
-    commit({ item: key }, "push");
+    if (layerPanel) {
+      const params = new URLSearchParams(
+        withoutLayerPanel(searchParams.toString()).split("?")[1],
+      );
+      params.set("item", key);
+      router.push("/?" + params, { scroll: false });
+    } else commit({ item: key }, "push");
     pushedSelection.current = true;
     setSheet("half");
     track("map_item_selected", { type: key.split(":")[0] });
@@ -467,6 +520,10 @@ export function MapWorkspace({
   };
   /** A marker clicked on the map is already in view, so the camera stays put. */
   const selectBusiness = (next: BusinessSelection, moveCamera = true) => {
+    if (layerPanel) {
+      if (!window.dispatchEvent(new Event("layer:before-leave", { cancelable: true }))) return;
+      router.push(withoutLayerPanel(searchParams.toString()), { scroll: false });
+    }
     reveal();
     setBusiness(next);
     setSheet("half");
@@ -590,7 +647,8 @@ export function MapWorkspace({
   const mobile = useMedia("(max-width: 800px)");
   // Without a token or after a provider failure the list is the product and cannot be hidden.
   const fallback = !token || canvasStatus === "failed";
-  const visible = panelVisible({ open: panelOpen, listView, fallback });
+  const visible =
+    !!layerPanel || panelVisible({ open: panelOpen, listView, fallback });
   const savedScroll = useRef(0);
   const wasDetail = useRef(false);
   useEffect(() => {
@@ -626,7 +684,23 @@ export function MapWorkspace({
   }, [mobile]);
   const launcher = useRef<HTMLButtonElement>(null);
   const panelRef = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    if (!layerPanel) return;
+    panelRef.current?.focus();
+    panelRef.current?.scrollTo(0, 0);
+  }, [layerScreenKey, layerPanel]);
   const togglePanel = (open: boolean) => {
+    if (!open && layerPanel) {
+      if (
+        !window.dispatchEvent(
+          new Event("layer:before-leave", { cancelable: true }),
+        )
+      )
+        return;
+      router.push(withoutLayerPanel(searchParams.toString()), {
+        scroll: false,
+      });
+    }
     setPanelOpen(open);
     if (!mobile)
       try {
@@ -738,6 +812,17 @@ export function MapWorkspace({
     setActionsTarget(document.getElementById("map-header-actions"));
   }, []);
   const showLayers = () => {
+    if (layerPanel) {
+      if (
+        !window.dispatchEvent(
+          new Event("layer:before-leave", { cancelable: true }),
+        )
+      )
+        return;
+      router.push(withoutLayerPanel(searchParams.toString()), {
+        scroll: false,
+      });
+    }
     setTab("layers");
     setMode("layers");
     setDetailHidden(true);
@@ -850,8 +935,9 @@ export function MapWorkspace({
     />
   );
   // Details share the one floating panel with results and layers (business wins when both exist).
-  const detailInPanel = (!!selected || !!business) && !detailHidden;
-  const routeInPanel = mvp && routeOpen;
+  const detailInPanel =
+    !layerPanel && (!!selected || !!business) && !detailHidden;
+  const routeInPanel = !layerPanel && mvp && routeOpen;
   // The open place as a route stop: the keyboard and list path into a route.
   const openStop: PlannedStop | null = business
     ? business.location && !business.temporary
@@ -1195,6 +1281,7 @@ export function MapWorkspace({
   );
   const externalReferences = (
     <ExternalReferences
+      reload={force}
       provider={provider}
       queryKey={queryKey}
       area={state.area}
@@ -1313,451 +1400,546 @@ export function MapWorkspace({
     </div>
   );
   return (
-    <div
-      ref={root}
-      className={`map-workspace ${listView ? "view-list" : "view-map"} sheet-${sheet} ${visible ? "has-panel" : "panel-closed"} ${fallback ? "map-fallback" : ""} ${detailInPanel ? "has-detail" : ""}`}
-      data-canvas={canvasStatus}
-      data-map-theme={theme}
-      data-panel={visible ? "open" : "closed"}
-      style={
-        {
-          // The panel starts under the measured search cluster and clears the dock.
-          "--th-map-top": `${topInset + 12}px`,
-          // Provider attribution clears a phone sheet at its real height.
-          "--th-sheet-height": `${Math.round(visible ? panelHeight : 0)}px`,
-          ...markerCssVars(theme),
-        } as CSSProperties
-      }
+    <LayerWorkspaceContext.Provider
+      value={{
+        applied: shownSlugs,
+        apply: (slug, only) => {
+          if (!only) {
+            toggleLayer(slug, true);
+            return;
+          }
+          // Framing a layer does not replace the user's visible layer set.
+          const query = new URLSearchParams({ city: city.slug, layers: slug });
+          Promise.all([
+            fetch("/api/v1/map?" + query).then((response) => response.json()),
+            fetch("/api/v1/map/external-references?" + query).then((response) =>
+              response.json(),
+            ),
+          ])
+            .then(([catalog, external]) => {
+              if (catalog.error || external.error)
+                throw new Error(
+                  catalog.error?.message ?? external.error.message,
+                );
+              const points = (catalog.data.items as MapQueryResult["items"])
+                .filter(
+                  (item) => item.latitude != null && item.longitude != null,
+                )
+                .map((item) => ({ lat: item.latitude!, lng: item.longitude! }));
+              for (const ref of external.data.references as {
+                location: { lat: number; lng: number } | null;
+              }[])
+                if (ref.location) points.push(ref.location);
+              canvas.current?.fitPoints(points);
+            })
+            .catch((error: Error) => setLoadError(error.message));
+        },
+        selectItem: (key, slug) => {
+          const layers = shownSlugs.includes(slug)
+            ? shownSlugs
+            : [...shownSlugs, slug];
+          if (layers.length > maxAppliedLayers) {
+            setLoadError(format(t.layerLimit, { max: maxAppliedLayers }));
+            return;
+          }
+          const params = new URLSearchParams(
+            withoutLayerPanel(searchParams.toString()).split("?")[1],
+          );
+          params.set("layers", layers.join(","));
+          params.set("item", key);
+          router.push("/?" + params, { scroll: false });
+          reveal();
+        },
+        mapReady: canvasStatus === "ready",
+        deleted: (slug) => {
+          setHiddenLayers((layers) =>
+            layers.filter((layer) => layer.slug !== slug),
+          );
+          const params = new URLSearchParams(searchParams);
+          const remaining = shownSlugs.filter((value) => value !== slug);
+          params.set("layers", remaining.length ? remaining.join(",") : "none");
+          for (const key of layerPanelKeys) params.delete(key);
+          params.set("layerPanel", "library");
+          params.set("layerTab", "mine");
+          router.push("/?" + params, { scroll: false });
+        },
+        pinCenter: () => {
+          const point = canvas.current?.getCenter();
+          return point ? { latitude: point.lat, longitude: point.lng } : null;
+        },
+      }}
     >
-      <h1 className="sr-only">
-        {city.name} · {t.mapNav}
-      </h1>
-      <div className="map-stage">
-        {/* The MVP map has no search or filters: it shows the loaded layers. */}
-        {!mvp && (
-          <MapToolbar
-            state={state}
-            cityName={city.name}
-            t={t}
-            contentEnabled={contentEnabled}
-            onCommit={(patch) => {
-              commit(patch);
-              // A submitted search shows its results in the panel.
-              if (patch.q) {
-                setTab("results");
-                setDetailHidden(true);
-                setPanelOpen(true);
-              }
-            }}
-          />
-        )}
-        {actionsTarget &&
-          createPortal(
-            <button
-              type="button"
-              className="map-float-button"
-              aria-expanded={visible && !detailInPanel && tab === "layers"}
-              aria-controls="map-panel"
-              onClick={showLayers}
-            >
-              <LayersIcon size={20} aria-hidden="true" />
-              <span>{t.layersTab}</span>
-              <span className="count-pill">{layerCount}</span>
-            </button>,
-            actionsTarget,
-          )}
-        <div className="map-stage-body" hidden={listView} ref={stageBody}>
-          {token && canvasStatus !== "failed" ? (
-            <MapCanvas
-              ref={canvas}
-              token={token}
-              items={result.items}
-              selectedKey={business ? null : selectedKey}
-              extraPoints={extraPoints}
-              route={routeLine}
-              extraSelectedKey={business?.key ?? null}
-              effects={places.mapEffects}
-              onSelectExtra={onSelectExtra}
-              center={[city.longitude, city.latitude]}
-              zoom={cityZoom}
-              locale={locale}
-              theme={theme}
+      <div
+        ref={root}
+        className={`map-workspace ${listView ? "view-list" : "view-map"} sheet-${sheet} ${visible ? "has-panel" : "panel-closed"} ${fallback ? "map-fallback" : ""} ${detailInPanel ? "has-detail" : ""}`}
+        data-canvas={canvasStatus}
+        data-map-theme={theme}
+        data-panel={visible ? "open" : "closed"}
+        style={
+          {
+            // The panel starts under the measured search cluster and clears the dock.
+            "--th-map-top": `${topInset + 12}px`,
+            // Provider attribution clears a phone sheet at its real height.
+            "--th-sheet-height": `${Math.round(visible ? panelHeight : 0)}px`,
+            ...markerCssVars(theme),
+          } as CSSProperties
+        }
+      >
+        <h1 className="sr-only">
+          {city.name} · {t.mapNav}
+        </h1>
+        <div className="map-stage">
+          {/* The MVP map has no search or filters: it shows the loaded layers. */}
+          {!mvp && (
+            <MapToolbar
+              state={state}
+              cityName={city.name}
               t={t}
-              padding={padding}
-              highlightKey={listHoverKey}
-              onItemHover={onItemHover}
-              onSelect={(key) => {
-                if (!key) return;
-                pickedOnMap.current = key;
-                select(key);
+              contentEnabled={contentEnabled}
+              onCommit={(patch) => {
+                commit(patch);
+                // A submitted search shows its results in the panel.
+                if (patch.q) {
+                  setTab("results");
+                  setDetailHidden(true);
+                  setPanelOpen(true);
+                }
               }}
-              onUserMove={onUserMove}
-              onStatus={onStatus}
-              onLocationDenied={() => setLocationNote(t.locationDenied)}
             />
-          ) : (
-            <div className="map-unavailable" role="note">
-              <p>{token ? t.mapUnavailableBody : t.mapNeedsToken}</p>
-              <p className="fine-print">{t.mapUnavailable}</p>
-              {token && (
-                <button
-                  type="button"
-                  className="button secondary small"
-                  onClick={() => {
-                    setCanvasStatus("loading");
-                    window.setTimeout(() => canvas.current?.retry(), 0);
-                  }}
-                >
-                  {t.retry}
-                </button>
-              )}
+          )}
+          {actionsTarget &&
+            createPortal(
               <button
                 type="button"
-                className="button small"
-                onClick={() => setView("list")}
+                className="map-float-button"
+                aria-expanded={visible && !detailInPanel && tab === "layers"}
+                aria-controls="map-panel"
+                onClick={showLayers}
               >
-                <List size={16} aria-hidden="true" /> {t.listView}
-              </button>
-            </div>
-          )}
-          {canvasStatus === "loading" && token && (
-            <div className="map-skeleton" aria-hidden="true">
-              <span>{t.mapLoading}</span>
-            </div>
-          )}
-          {tip &&
-            (() => {
-              // A card with a button is no longer a plain tooltip.
-              const routeButton = tipRouteButton(tip.key);
-              const role = routeButton ? undefined : "tooltip";
-              // A Google place shows its own card: name, photo, rating, type.
-              const point = extraPoints.find((p) => p.key === tip.key);
-              if (point?.placeId && provider)
+                <LayersIcon size={20} aria-hidden="true" />
+                <span>{t.layersTab}</span>
+                <span className="count-pill">{layerCount}</span>
+              </button>,
+              actionsTarget,
+            )}
+          <div className="map-stage-body" hidden={listView} ref={stageBody}>
+            {token && canvasStatus !== "failed" ? (
+              <MapCanvas
+                ref={canvas}
+                token={token}
+                items={result.items}
+                selectedKey={business ? null : selectedKey}
+                extraPoints={extraPoints}
+                route={routeLine}
+                extraSelectedKey={business?.key ?? null}
+                effects={places.mapEffects}
+                onSelectExtra={onSelectExtra}
+                center={[city.longitude, city.latitude]}
+                zoom={cityZoom}
+                locale={locale}
+                theme={theme}
+                t={t}
+                padding={padding}
+                highlightKey={listHoverKey}
+                onItemHover={onItemHover}
+                onSelect={(key) => {
+                  if (!key) return;
+                  pickedOnMap.current = key;
+                  select(key);
+                }}
+                onUserMove={onUserMove}
+                onStatus={onStatus}
+                onLocationDenied={() => setLocationNote(t.locationDenied)}
+              />
+            ) : (
+              <div className="map-unavailable" role="note">
+                <p>{token ? t.mapUnavailableBody : t.mapNeedsToken}</p>
+                <p className="fine-print">{t.mapUnavailable}</p>
+                {token && (
+                  <button
+                    type="button"
+                    className="button secondary small"
+                    onClick={() => {
+                      setCanvasStatus("loading");
+                      window.setTimeout(() => canvas.current?.retry(), 0);
+                    }}
+                  >
+                    {t.retry}
+                  </button>
+                )}
+                <button
+                  type="button"
+                  className="button small"
+                  onClick={() => setView("list")}
+                >
+                  <List size={16} aria-hidden="true" /> {t.listView}
+                </button>
+              </div>
+            )}
+            {canvasStatus === "loading" && token && (
+              <div className="map-skeleton" aria-hidden="true">
+                <span>{t.mapLoading}</span>
+              </div>
+            )}
+            {tip &&
+              (() => {
+                // A card with a button is no longer a plain tooltip.
+                const routeButton = tipRouteButton(tip.key);
+                const role = routeButton ? undefined : "tooltip";
+                // A Google place shows its own card: name, photo, rating, type.
+                const point = extraPoints.find((p) => p.key === tip.key);
+                if (point?.placeId && provider)
+                  return (
+                    <div
+                      className="map-tooltip map-place-tip"
+                      role={point.tabelog ? undefined : role}
+                      style={{
+                        left: tip.x,
+                        top: tip.y,
+                        width: placeTipWidth,
+                        transform: tip.above ? "translateY(-100%)" : undefined,
+                      }}
+                      onMouseEnter={() => window.clearTimeout(tipTimer.current)}
+                      onMouseLeave={() => setTip(null)}
+                    >
+                      <ProviderDetails
+                        key={point.placeId}
+                        provider={provider}
+                        placeId={point.placeId}
+                        compact
+                        preview
+                        onLoad={() => {}}
+                        onError={() => setTip(null)}
+                      />
+                      {point.tabelog && (
+                        <TabelogLink
+                          name={point.tabelog.name}
+                          href={point.tabelog.url}
+                          t={t}
+                          className="tip-tabelog"
+                        />
+                      )}
+                      {routeButton}
+                    </div>
+                  );
+                const item = result.items.find((i) => i.key === tip.key);
+                if (!item) return null;
+                const kind = markerKind(item);
                 return (
                   <div
-                    className="map-tooltip map-place-tip"
-                    role={point.tabelog ? undefined : role}
+                    className="map-tooltip"
+                    role={tabelogLink(item) ? undefined : role}
                     style={{
                       left: tip.x,
                       top: tip.y,
-                      width: placeTipWidth,
-                      transform: tip.above ? "translateY(-100%)" : undefined,
                     }}
                     onMouseEnter={() => window.clearTimeout(tipTimer.current)}
                     onMouseLeave={() => setTip(null)}
                   >
-                    <ProviderDetails
-                      key={point.placeId}
-                      provider={provider}
-                      placeId={point.placeId}
-                      compact
-                      preview
-                      onLoad={() => {}}
-                      onError={() => setTip(null)}
-                    />
-                    {point.tabelog && (
-                      <TabelogLink
-                        name={point.tabelog.name}
-                        href={point.tabelog.url}
-                        t={t}
-                        className="tip-tabelog"
+                    <strong>{localizedName(item, locale)}</strong>
+                    <span>
+                      <i
+                        className="kind-dot"
+                        style={{ background: `var(--marker-${kind})` }}
+                        aria-hidden="true"
                       />
-                    )}
+                      {markerLabel(kind, t)}
+                      {item.category ? ` · ${item.category}` : ""}
+                    </span>
+                    <TabelogLink
+                      name={item.name}
+                      href={tabelogLink(item)}
+                      t={t}
+                      className="tip-tabelog"
+                    />
                     {routeButton}
                   </div>
                 );
-              const item = result.items.find((i) => i.key === tip.key);
-              if (!item) return null;
-              const kind = markerKind(item);
-              return (
-                <div
-                  className="map-tooltip"
-                  role={tabelogLink(item) ? undefined : role}
-                  style={{
-                    left: tip.x,
-                    top: tip.y,
-                  }}
-                  onMouseEnter={() => window.clearTimeout(tipTimer.current)}
-                  onMouseLeave={() => setTip(null)}
+              })()}
+            <div className="map-overlays">
+              {pendingArea && (
+                <button
+                  type="button"
+                  className="button search-area"
+                  onClick={searchArea}
                 >
-                  <strong>{localizedName(item, locale)}</strong>
-                  <span>
-                    <i
-                      className="kind-dot"
-                      style={{ background: `var(--marker-${kind})` }}
-                      aria-hidden="true"
-                    />
-                    {markerLabel(kind, t)}
-                    {item.category ? ` · ${item.category}` : ""}
-                  </span>
-                  <TabelogLink
-                    name={item.name}
-                    href={tabelogLink(item)}
-                    t={t}
-                    className="tip-tabelog"
-                  />
-                  {routeButton}
+                  {t.searchThisArea}
+                </button>
+              )}
+              {newDay && (
+                <div className="map-chip" role="status">
+                  {t.newDayAvailable}{" "}
+                  <button
+                    type="button"
+                    className="text-button"
+                    onClick={() => setForce((n) => n + 1)}
+                  >
+                    {t.refresh}
+                  </button>
                 </div>
-              );
-            })()}
-          <div className="map-overlays">
-            {pendingArea && (
-              <button
-                type="button"
-                className="button search-area"
-                onClick={searchArea}
-              >
-                {t.searchThisArea}
-              </button>
-            )}
-            {newDay && (
-              <div className="map-chip" role="status">
-                {t.newDayAvailable}{" "}
-                <button
-                  type="button"
-                  className="text-button"
-                  onClick={() => setForce((n) => n + 1)}
-                >
-                  {t.refresh}
-                </button>
-              </div>
-            )}
-            {locationNote && (
-              <div className="map-chip" role="status">
-                {locationNote}{" "}
-                <button
-                  type="button"
-                  className="text-button"
-                  onClick={() => setLocationNote(null)}
-                >
-                  {t.close}
-                </button>
-              </div>
-            )}
+              )}
+              {locationNote && (
+                <div className="map-chip" role="status">
+                  {locationNote}{" "}
+                  <button
+                    type="button"
+                    className="text-button"
+                    onClick={() => setLocationNote(null)}
+                  >
+                    {t.close}
+                  </button>
+                </div>
+              )}
+            </div>
           </div>
-        </div>
-        <div className="map-dock">
-          {!listView && !fallback && (
-            <button
-              ref={launcher}
-              type="button"
-              className="map-float-button map-list-toggle"
-              aria-expanded={panelOpen}
-              aria-controls="map-panel"
-              onClick={() => togglePanel(!panelOpen)}
-            >
-              <List size={18} aria-hidden="true" />
-              <span>
-                {panelOpen
-                  ? t.hideList
-                  : format(t.showList, { count: placeCount })}
-              </span>
-            </button>
-          )}
-          {!listView && canvasStatus === "ready" && (
-            <button
-              type="button"
-              className="map-float-button map-fit"
-              onClick={() => canvas.current?.fitTo(result.items)}
-              disabled={mapped.length === 0}
-            >
-              <Crosshair size={16} aria-hidden="true" />
-              <span>{t.fitResults}</span>
-            </button>
-          )}
-          {!listView && canvasStatus === "ready" && routeBar}
-          {mvp && !routeInPanel && (
-            <span className="sr-only" role="status">
-              {routeNotice}
-            </span>
-          )}
-          {state.area && !listView && (
-            <button
-              type="button"
-              className="map-float-button"
-              onClick={() => commit({ area: undefined })}
-            >
-              <X size={16} aria-hidden="true" />
-              <span>{t.clearArea}</span>
-            </button>
-          )}
-          {!listView ? (
-            <button
-              type="button"
-              className="map-float-button"
-              onClick={() => setView("list")}
-            >
-              <List size={16} aria-hidden="true" />
-              <span>{t.listView}</span>
-            </button>
-          ) : (
-            <button
-              type="button"
-              className="map-float-button"
-              onClick={() => setView("map")}
-            >
-              <MapIcon size={16} aria-hidden="true" />
-              <span>{t.mapView}</span>
-            </button>
-          )}
-          {hasDemo && !visible && (
-            <span className="map-demo-chip">{t.demoNotice}</span>
-          )}
-        </div>
-      </div>
-      <div
-        id="map-panel"
-        className="map-panel"
-        ref={panelRef}
-        role="region"
-        aria-label={t.mapNav}
-        tabIndex={-1}
-        hidden={!visible}
-        onScroll={(event) => {
-          if (!detailInPanel)
-            savedScroll.current = event.currentTarget.scrollTop;
-        }}
-        onKeyDown={(event) => {
-          // Escape closes the panel unless a field or open menu owns the key.
-          if (event.key !== "Escape" || event.defaultPrevented) return;
-          const target = event.target as HTMLElement;
-          if (target.closest("input, textarea, select, details[open]")) return;
-          if (listView || fallback) return;
-          event.preventDefault();
-          togglePanel(false);
-        }}
-      >
-        <div id="map-sidebar-content" className="map-sidebar-content">
-          <div className="sheet-handle">
-            <span className="sheet-buttons">
-              <button
-                type="button"
-                className="icon-button"
-                aria-label={t.shrinkPanel}
-                disabled={sheet === "half"}
-                onClick={() => setSheet("half")}
-              >
-                <ChevronDown size={18} aria-hidden="true" />
-              </button>
-              <button
-                type="button"
-                className="icon-button"
-                aria-label={t.expand}
-                disabled={sheet === "expanded"}
-                onClick={() => setSheet("expanded")}
-              >
-                <ChevronUp size={18} aria-hidden="true" />
-              </button>
-            </span>
+          <div className="map-dock">
             {!listView && !fallback && (
               <button
+                ref={launcher}
                 type="button"
-                className="icon-button"
-                aria-label={t.hideList}
-                title={t.hideList}
-                onClick={() => togglePanel(false)}
+                className="map-float-button map-list-toggle"
+                aria-expanded={panelOpen}
+                aria-controls="map-panel"
+                onClick={() => togglePanel(!panelOpen)}
               >
-                <X size={18} aria-hidden="true" />
+                <List size={18} aria-hidden="true" />
+                <span>
+                  {panelOpen
+                    ? t.hideList
+                    : format(t.showList, { count: placeCount })}
+                </span>
               </button>
             )}
+            {!listView && canvasStatus === "ready" && (
+              <button
+                type="button"
+                className="map-float-button map-fit"
+                onClick={() => canvas.current?.fitTo(result.items)}
+                disabled={mapped.length === 0}
+              >
+                <Crosshair size={16} aria-hidden="true" />
+                <span>{t.fitResults}</span>
+              </button>
+            )}
+            {!listView && canvasStatus === "ready" && routeBar}
+            {mvp && !routeInPanel && (
+              <span className="sr-only" role="status">
+                {routeNotice}
+              </span>
+            )}
+            {state.area && !listView && (
+              <button
+                type="button"
+                className="map-float-button"
+                onClick={() => commit({ area: undefined })}
+              >
+                <X size={16} aria-hidden="true" />
+                <span>{t.clearArea}</span>
+              </button>
+            )}
+            {!listView ? (
+              <button
+                type="button"
+                className="map-float-button"
+                onClick={() => setView("list")}
+              >
+                <List size={16} aria-hidden="true" />
+                <span>{t.listView}</span>
+              </button>
+            ) : (
+              <button
+                type="button"
+                className="map-float-button"
+                onClick={() => setView("map")}
+              >
+                <MapIcon size={16} aria-hidden="true" />
+                <span>{t.mapView}</span>
+              </button>
+            )}
+            {hasDemo && !visible && (
+              <span className="map-demo-chip">{t.demoNotice}</span>
+            )}
           </div>
-          {provider && !mvp && (
-            <div
-              className="segmented discovery-modes"
-              role="group"
-              aria-label={t.discoveryModes}
-            >
-              {(
-                [
-                  ["layers", t.layersMode],
-                  ["business", t.businessMode],
-                ] as const
-              ).map(([value, label]) => (
+        </div>
+        <div
+          id="map-panel"
+          className="map-panel"
+          ref={panelRef}
+          role="region"
+          aria-label={t.mapNav}
+          tabIndex={-1}
+          hidden={!visible}
+          onScroll={(event) => {
+            if (!detailInPanel)
+              savedScroll.current = event.currentTarget.scrollTop;
+          }}
+          onKeyDown={(event) => {
+            // Escape closes the panel unless a field or open menu owns the key.
+            if (event.key !== "Escape" || event.defaultPrevented) return;
+            const target = event.target as HTMLElement;
+            if (target.closest("input, textarea, select, details[open]"))
+              return;
+            if (listView || fallback) return;
+            event.preventDefault();
+            togglePanel(false);
+          }}
+        >
+          <div id="map-sidebar-content" className="map-sidebar-content">
+            <div className="sheet-handle">
+              <span className="sheet-buttons">
                 <button
-                  key={value}
                   type="button"
-                  aria-pressed={mode === value}
-                  className={mode === value ? "on" : ""}
-                  onClick={() => {
-                    setMode(value);
-                    setTab("results");
-                    setDetailHidden(true);
-                    // Leaving discovery clears temporary pins but keeps layer pins and selection.
-                    if (value === "layers") {
-                      setSearchPoints([]);
-                      if (business?.temporary) setBusiness(null);
-                    }
-                  }}
+                  className="icon-button"
+                  aria-label={t.shrinkPanel}
+                  disabled={sheet === "half"}
+                  onClick={() => setSheet("half")}
                 >
-                  {label}
+                  <ChevronDown size={18} aria-hidden="true" />
                 </button>
-              ))}
+                <button
+                  type="button"
+                  className="icon-button"
+                  aria-label={t.expand}
+                  disabled={sheet === "expanded"}
+                  onClick={() => setSheet("expanded")}
+                >
+                  <ChevronUp size={18} aria-hidden="true" />
+                </button>
+              </span>
+              {!listView && !fallback && (
+                <button
+                  type="button"
+                  className="icon-button"
+                  aria-label={t.hideList}
+                  title={t.hideList}
+                  onClick={() => togglePanel(false)}
+                >
+                  <X size={18} aria-hidden="true" />
+                </button>
+              )}
             </div>
-          )}
-          {otherCity.map((l) => (
-            <p key={l.slug} className="fine-print">
-              {format(t.layerOtherCity, { city: l.cityName ?? "" })}
-            </p>
-          ))}
-          {routeInPanel ? (
-            <div className="panel-body">
-              <RoutePlanner
-                stops={routeStops}
-                mode={travelMode}
-                notice={routeNotice}
-                t={t}
-                onMode={setTravelMode}
-                onChange={setRouteStops}
-                onDone={() => setRouteOpen(false)}
-              />
-            </div>
-          ) : detailInPanel ? (
-            <>
-              {routeAction}
-              {attachedEvents}
-              {businessPanel ?? preview}
-            </>
-          ) : mode === "business" && discoveryPanel && !mvp ? (
-            <div className="panel-body">{discoveryPanel}</div>
-          ) : (
-            <>
-              <div className="panel-tabs" role="tablist" aria-label={t.mapNav}>
-                <button
-                  type="button"
-                  role="tab"
-                  aria-selected={tab === "layers"}
-                  onClick={() => setTab("layers")}
-                >
-                  {t.layersTab} <span className="count-pill">{layerCount}</span>
-                </button>
-                <button
-                  type="button"
-                  role="tab"
-                  aria-selected={tab === "results"}
-                  onClick={() => setTab("results")}
-                >
-                  {t.resultsTab}{" "}
-                  <span className="count-pill">{placeCount}</span>
-                </button>
+            {provider && !mvp && !layerPanel && (
+              <div
+                className="segmented discovery-modes"
+                role="group"
+                aria-label={t.discoveryModes}
+              >
+                {(
+                  [
+                    ["layers", t.layersMode],
+                    ["business", t.businessMode],
+                  ] as const
+                ).map(([value, label]) => (
+                  <button
+                    key={value}
+                    type="button"
+                    aria-pressed={mode === value}
+                    className={mode === value ? "on" : ""}
+                    onClick={() => {
+                      setMode(value);
+                      setTab("results");
+                      setDetailHidden(true);
+                      // Leaving discovery clears temporary pins but keeps layer pins and selection.
+                      if (value === "layers") {
+                        setSearchPoints([]);
+                        if (business?.temporary) setBusiness(null);
+                      }
+                    }}
+                  >
+                    {label}
+                  </button>
+                ))}
               </div>
-              <div className="panel-body" role="tabpanel">
-                {tab === "layers" ? layersPanel : resultsPanel}
+            )}
+            {otherCity.map((l) => (
+              <p key={l.slug} className="fine-print">
+                {format(t.layerOtherCity, { city: l.cityName ?? "" })}
+              </p>
+            ))}
+            {layerPanel ? (
+              <div
+                className="panel-body layer-workspace-screen"
+                key={layerScreenKey}
+              >
+                <Link
+                  className="text-button"
+                  href="/"
+                >
+                  {t.mapEntry}
+                </Link>
+                {layerScreen}
+                {loadError && <p className="message error-message" role="alert">{loadError}</p>}
               </div>
-            </>
-          )}
-          {mvp && (
-            // Google place pins come from these rows, so they stay mounted
-            // (hidden) whichever view the panel shows.
-            <div
-              className="panel-body mvp-places"
-              hidden={routeInPanel || detailInPanel || tab !== "results"}
-            >
-              {externalReferences}
-            </div>
-          )}
-          {footer}
+            ) : routeInPanel ? (
+              <div className="panel-body">
+                <RoutePlanner
+                  stops={routeStops}
+                  mode={travelMode}
+                  notice={routeNotice}
+                  t={t}
+                  onMode={setTravelMode}
+                  onChange={setRouteStops}
+                  onDone={() => setRouteOpen(false)}
+                />
+              </div>
+            ) : detailInPanel ? (
+              <>
+                {routeAction}
+                {attachedEvents}
+                {businessPanel ?? preview}
+              </>
+            ) : mode === "business" && discoveryPanel && !mvp ? (
+              <div className="panel-body">{discoveryPanel}</div>
+            ) : (
+              <>
+                <div
+                  className="panel-tabs"
+                  role="tablist"
+                  aria-label={t.mapNav}
+                >
+                  <button
+                    type="button"
+                    role="tab"
+                    aria-selected={tab === "layers"}
+                    onClick={() => setTab("layers")}
+                  >
+                    {t.layersTab}{" "}
+                    <span className="count-pill">{layerCount}</span>
+                  </button>
+                  <button
+                    type="button"
+                    role="tab"
+                    aria-selected={tab === "results"}
+                    onClick={() => setTab("results")}
+                  >
+                    {t.resultsTab}{" "}
+                    <span className="count-pill">{placeCount}</span>
+                  </button>
+                </div>
+                <div className="panel-body" role="tabpanel">
+                  {tab === "layers" ? layersPanel : resultsPanel}
+                </div>
+              </>
+            )}
+            {mvp && (
+              // Google place pins come from these rows, so they stay mounted
+              // (hidden) whichever view the panel shows.
+              <div
+                className="panel-body mvp-places"
+                hidden={
+                  !!layerPanel ||
+                  routeInPanel ||
+                  detailInPanel ||
+                  tab !== "results"
+                }
+              >
+                {externalReferences}
+              </div>
+            )}
+            {footer}
+          </div>
         </div>
       </div>
-    </div>
+    </LayerWorkspaceContext.Provider>
   );
 }

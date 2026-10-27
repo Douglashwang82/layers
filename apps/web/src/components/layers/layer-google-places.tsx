@@ -4,6 +4,7 @@ import { Trash2 } from "lucide-react";
 import type { LayerEvent } from "@taiwanhub/shared";
 import { api, StatusMessage } from "@/components/actions";
 import { ProviderDetails } from "@/components/places/provider-slot";
+import { LocalNote } from "@/components/places/local-note";
 import type { ExternalReference } from "@/features/map/external";
 import { getPlacesProvider } from "@/lib/places/provider";
 import type { Copy, Locale } from "@/lib/dictionary";
@@ -120,7 +121,7 @@ export function LayerGooglePlaces({
                 ) : (
                   <p className="fine-print">{t.externalUnavailable}</p>
                 )}
-                {ref.localNote && <p className="muted">{ref.localNote}</p>}
+                <LocalNote note={ref.localNote} t={t} />
                 {!readOnly && (
                   <span className="editor-item-actions">
                     <button

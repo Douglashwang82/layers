@@ -1,4 +1,4 @@
-import Link from "next/link";
+import { LayerLink as Link } from "./workspace-navigation";
 import type { LayerWithAccess } from "@/features/layers/repository";
 import { type Copy, type Locale, format, dateLabel } from "@/lib/dictionary";
 import { layerTitle, ownerLabel, scheduleLabel } from "@/lib/layer-labels";

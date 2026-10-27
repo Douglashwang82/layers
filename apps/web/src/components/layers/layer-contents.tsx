@@ -1,9 +1,11 @@
 "use client";
-import { useRouter } from "next/navigation";
+import { useLayerRouter as useRouter } from "./workspace-navigation";
+import { useContext } from "react";
+import { LayerWorkspaceContext } from "./workspace-navigation";
 import type { MapItem } from "@/features/map/query";
 import type { Copy, Locale } from "@/lib/dictionary";
 import { ResultRow } from "@/components/map/map-results";
-/** Read-only contents list; selecting a row opens it on the map with this layer applied alone. */
+/** Contents select an item while preserving the map's other applied layers. */
 export function LayerContentsList({
   items,
   slug,
@@ -16,6 +18,7 @@ export function LayerContentsList({
   locale: Locale;
 }) {
   const router = useRouter();
+  const workspace = useContext(LayerWorkspaceContext);
   return (
     <ul className="layer-contents">
       {items.map((item) => (
@@ -26,7 +29,9 @@ export function LayerContentsList({
           locale={locale}
           selected={false}
           onSelect={(key) =>
-            router.push(`/?layers=${slug}&item=${encodeURIComponent(key)}`)
+            workspace
+              ? workspace.selectItem(key, slug)
+              : router.push(`/?layers=${slug}&item=${encodeURIComponent(key)}`)
           }
         />
       ))}

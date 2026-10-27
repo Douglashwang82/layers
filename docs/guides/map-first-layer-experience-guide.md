@@ -12,6 +12,10 @@ This is a proposed migration, based on the current repository's source. It does 
 
 ## Implemented map navigation (October 2026)
 
+Layer management now shares the map panel: see the
+[map layer workspace guide](map-layer-workspace.md) for navigation, editing, and
+legacy URL behavior.
+
 The map home now fills the viewport behind floating search, city, layer and menu
 controls. Its warm, low-saturation basemap uses dots and a selected ring/label.
 A fresh map session starts with results collapsed; the floating list opens on

@@ -1,4 +1,4 @@
-import Link from "next/link";
+import { LayerLink as Link } from "./layers/workspace-navigation";
 import type { ReactNode } from "react";
 import { Photo as Image } from "@/components/photo";
 import { MapPin, Check, Users } from "lucide-react";

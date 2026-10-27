@@ -1,5 +1,5 @@
 "use client";
-import Link from "next/link";
+import { LayerLink as Link } from "../layers/workspace-navigation";
 import { Plus, Layers as LayersIcon } from "lucide-react";
 import type { LayerAvailability } from "@/features/map/query";
 import { type Copy, type Locale, format } from "@/lib/dictionary";
@@ -57,10 +57,11 @@ export function ActiveLayersPanel({
       <ul className="layer-rows">
         {rows.map(({ layer, applied: isApplied }) => (
           <li key={layer.slug} className={`layer-row status-${layer.status}`}>
-            <label className="layer-toggle">
+            <div className="layer-toggle">
               <input
                 type="checkbox"
                 checked={isApplied}
+                aria-label={`${t.showOnMap}: ${layerTitle(layer, locale)}`}
                 disabled={
                   layer.status === "unavailable" ||
                   (!isApplied && applied >= maxAppliedLayers)
@@ -70,9 +71,13 @@ export function ActiveLayersPanel({
               />
               <span className="layer-text">
                 <span className="layer-title">
-                  {layer.status === "unavailable"
-                    ? t.layerUnavailable
-                    : layerTitle(layer, locale)}
+                  {layer.status === "unavailable" ? (
+                    t.layerUnavailable
+                  ) : (
+                    <Link href={`/layers/${layer.slug}`}>
+                      {layerTitle(layer, locale)}
+                    </Link>
+                  )}
                 </span>
                 <span className="layer-meta" id={`layer-${layer.slug}-meta`}>
                   {layer.status === "other-city"
@@ -90,7 +95,7 @@ export function ActiveLayersPanel({
                   {isApplied ? layer.count : t.layerNotApplied}
                 </span>
               )}
-            </label>
+            </div>
             {layer.status === "ok" && (
               <span className="layer-actions">
                 <Link className="text-button" href={`/layers/${layer.slug}`}>

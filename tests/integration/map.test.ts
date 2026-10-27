@@ -121,15 +121,18 @@ describe("map query", () => {
     expect(cityWide.items.some((i) => /noodle/i.test(i.name))).toBe(true);
     expect(cityWide.items.every((i) => i.layers.length === 0)).toBe(true);
   });
-  it("projects My saves for the signed-in user only", async () => {
-    const mine = await runMapQuery(state({ layers: "my-saves" }), city, member);
-    expect(mine.layers[0].status).toBe("ok");
-    expect(mine.items.map((i) => i.id)).toContain(placeId);
-    const guest = await runMapQuery(state({ layers: "my-saves" }), city, null);
-    expect(guest.layers[0].status).toBe("unavailable");
-    expect(guest.total).toBe(0);
+  it("no longer offers a My saves layer", async () => {
+    for (const actor of [member, null]) {
+      const result = await runMapQuery(
+        state({ layers: "my-saves" }),
+        city,
+        actor,
+      );
+      expect(result.layers[0].status).toBe("unavailable");
+      expect(result.total).toBe(0);
+    }
     const library = await listLibrary("mine", member, city);
-    expect(library[0].layer.slug).toBe("my-saves");
-    expect(await getLayer("my-saves", null, city)).toBeNull();
+    expect(library.some((l) => l.layer.slug === "my-saves")).toBe(false);
+    expect(await getLayer("my-saves", member)).toBeNull();
   });
 });

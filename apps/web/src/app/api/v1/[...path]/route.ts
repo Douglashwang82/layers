@@ -227,7 +227,7 @@ async function handler(
     if (method === "GET" && resource === "layers") {
       const { city } = await getActiveCity(query.city);
       if (id) {
-        const found = await getLayer(id, actor, city);
+        const found = await getLayer(id, actor);
         if (!found)
           throw new AppError(404, "NOT_FOUND", "This layer is unavailable.");
         if (action === "events")

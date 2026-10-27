@@ -44,7 +44,7 @@ test("group creation, email-bound invitation, restricted layer and revocation", 
   await expect(member.getByText("2 members · Editor")).toBeVisible();
   // Editors create group layers; the layer is restricted to members.
   await member.getByRole("link", { name: "Create layer" }).click();
-  await expect(member).toHaveURL(/\/layers\/new\?group=/);
+  await expect(member).toHaveURL(/layerPanel=new.*group=/);
   await member
     .getByLabel("Title", { exact: true })
     .fill(`Student favorites ${stamp}`);
@@ -52,7 +52,7 @@ test("group creation, email-bound invitation, restricted layer and revocation", 
     .getByRole("button", { name: "Create layer", exact: true })
     .click();
   await expect(member).toHaveURL(
-    /\/layers\/student-favorites-[a-z0-9-]+\/edit/,
+    /layerPanel=contents.*layer=student-favorites-/,
   );
   await member.getByRole("button", { name: "Done" }).click();
   await expect(member.getByText("Group members only").first()).toBeVisible();

@@ -69,8 +69,15 @@ test("a member builds a layer from Google Maps links and attaches an event", asy
   await page
     .getByRole("button", { name: "Create layer with 2 places" })
     .click();
-  await expect(page).toHaveURL(/\/\?layers=weekend-eats-/);
-  const slug = new URL(page.url()).searchParams.get("layers")!;
+  await expect(page).toHaveURL(/layerPanel=detail.*layer=weekend-eats-/);
+  const slug = new URL(page.url()).searchParams.get("layer")!;
+  await page.getByRole("button", { name: "Apply to map", exact: true }).click();
+  await expect(page).toHaveURL(/layers=weekend-eats-/);
+  await page
+    .locator(".layer-workspace-screen")
+    .getByRole("link", { name: "Open in Map", exact: true })
+    .first()
+    .click();
   // The map shows the layer's places, and there is still no search.
   await openMapList(page);
   await expect(page.getByRole("searchbox")).toHaveCount(0);
@@ -82,7 +89,7 @@ test("a member builds a layer from Google Maps links and attaches an event", asy
     page.getByRole("checkbox", { name: new RegExp(title) }),
   ).toBeChecked();
   // Edit: add another place from a link and an event at the first place.
-  await page.goto(`/layers/${slug}/edit`);
+  await page.goto(`/?layers=${slug}&layerPanel=contents&layer=${slug}`);
   const googlePlaces = page.locator(".google-places > li");
   await expect(googlePlaces).toHaveCount(2);
   await page

@@ -403,7 +403,7 @@ describe("the MVP map", () => {
     expect(library.some((l) => l.layer.ownerKind === "system")).toBe(false);
     const picker = await listMapLibrary(alice, city);
     expect(picker.map((l) => l.layer.slug)).toContain(mine);
-    expect(picker[0].layer.slug).toBe("my-saves");
+    expect(picker.some((l) => l.layer.slug === "my-saves")).toBe(false);
   });
   it("shows a layer in every city and counts its Google places", async () => {
     // Made while Houston was selected, holding places that are elsewhere (M6).

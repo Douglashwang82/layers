@@ -1,7 +1,8 @@
 "use client";
-import { useState } from "react";
-import Link from "next/link";
-import { useRouter } from "next/navigation";
+import { useContext, useState } from "react";
+import { LayerWorkspaceContext } from "./workspace-navigation";
+import { LayerLink as Link } from "./workspace-navigation";
+import { useLayerRouter as useRouter } from "./workspace-navigation";
 import {
   Check,
   Link2,
@@ -41,8 +42,17 @@ export function ApplyLayerButton({
   only?: boolean;
 }) {
   const router = useRouter();
+  const workspace = useContext(LayerWorkspaceContext);
   const [note, setNote] = useState<string | null>(null);
   const apply = () => {
+    if (workspace) {
+      if (!only && !workspace.applied.includes(slug) && workspace.applied.length >= maxAppliedLayers) {
+        setNote(format(t.layerLimit, { max: maxAppliedLayers }));
+        return;
+      }
+      workspace.apply(slug, only);
+      return;
+    }
     track("layer_applied", { layer: slug, from: "library" });
     if (only) {
       router.push(`/?layers=${slug}`);
@@ -210,6 +220,7 @@ export function OwnerActions({
   locale: Locale;
 }) {
   const router = useRouter();
+  const workspace = useContext(LayerWorkspaceContext);
   const [pending, setPending] = useState<string | null>(null);
   const [feedback, setFeedback] = useState<{
     tone: "success" | "error";
@@ -241,6 +252,13 @@ export function OwnerActions({
         <Link className="button secondary" href={`/layers/${layer.slug}/edit`}>
           <Pencil size={16} aria-hidden="true" />
           {t.editLayer}
+        </Link>
+        <Link
+          className="button secondary"
+          href={`/layers/${layer.slug}/edit#add-items`}
+        >
+          <Plus size={16} aria-hidden="true" />
+          {t.addItems}
         </Link>
         {access.manage && layer.ownerKind === "user" && (
           <button
@@ -328,7 +346,10 @@ export function OwnerActions({
                 run(
                   "delete",
                   () => api(`layers/${layer.id}`, "DELETE"),
-                  () => router.push("/layers?tab=mine"),
+                  () =>
+                    workspace
+                      ? workspace.deleted(layer.slug)
+                      : router.push("/layers?tab=mine"),
                 )
               }
             >

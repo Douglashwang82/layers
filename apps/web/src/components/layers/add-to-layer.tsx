@@ -1,6 +1,6 @@
 "use client";
 import { useState } from "react";
-import Link from "next/link";
+import { LayerLink as Link } from "./workspace-navigation";
 import { usePathname, useRouter } from "next/navigation";
 import { Plus, Check } from "lucide-react";
 import { api, StatusMessage } from "@/components/actions";

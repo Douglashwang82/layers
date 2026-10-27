@@ -1,7 +1,10 @@
 "use client";
 import { useEffect, useRef, useState, type FormEvent } from "react";
-import Link from "next/link";
-import { useRouter } from "next/navigation";
+import { LayerLink as Link } from "./workspace-navigation";
+import {
+  useLayerRouter as useRouter,
+  useLayerDraft,
+} from "./workspace-navigation";
 import { ArrowDown, ArrowUp, Pencil, Plus, Search, Trash2 } from "lucide-react";
 import { api, StatusMessage } from "@/components/actions";
 import { Field, fieldProps } from "@/components/ui/field";
@@ -50,6 +53,7 @@ function draftOf(layer?: LayerRecord, groupId?: string): Draft {
  */
 export function LayerEditor({
   mode,
+  section,
   layer,
   items: initialItems,
   city,
@@ -67,6 +71,7 @@ export function LayerEditor({
   providerKey = null,
 }: {
   mode: "create" | "edit";
+  section?: "settings" | "contents";
   layer?: LayerRecord;
   items?: MapItem[];
   city: { slug: string; name: string; timezone: string };
@@ -97,6 +102,7 @@ export function LayerEditor({
     draftOf(layer, groups.some((g) => g.id === groupId) ? groupId : undefined),
   );
   const [dirty, setDirty] = useState(false);
+  useLayerDraft(dirty, t.discardLayerChanges);
   const [saving, setSaving] = useState(false);
   const [feedback, setFeedback] = useState<Feedback>(null);
   const [revision, setRevision] = useState(layer?.revision ?? 1);
@@ -215,7 +221,9 @@ export function LayerEditor({
           }
         }
         router.push(
-          addKey && next ? next : `/layers/${created.layer.slug}/edit`,
+          addKey && next
+            ? next
+            : `/layers/${created.layer.slug}/edit#add-items`,
         );
         return;
       }
@@ -357,7 +365,12 @@ export function LayerEditor({
       {canCreatePlaces && layer?.audience !== "public" && (
         <MapImportLinks locale={locale} layerId={layer?.id} />
       )}
-      <form className="form-panel form-stack" onSubmit={submit} noValidate>
+      <form
+        hidden={section === "contents"}
+        className="form-panel form-stack"
+        onSubmit={submit}
+        noValidate
+      >
         <h1>{mode === "create" ? t.createLayer : t.editLayer}</h1>
         {mode === "create" && <p>{t.layerHelp}</p>}
         <Field
@@ -539,9 +552,19 @@ export function LayerEditor({
         {dirty && <p className="fine-print">{t.unsavedChanges}</p>}
         <StatusMessage feedback={feedback} />
       </form>
-      {mode === "edit" && layer && (
+      {mode === "edit" && layer && section !== "settings" && (
         <section className="form-panel" aria-labelledby="contents-editor">
           <h2 id="contents-editor">{t.contents}</h2>
+          {section === "contents" && (
+            <button
+              type="button"
+              className="button secondary small"
+              disabled={saving}
+              onClick={done}
+            >
+              {t.done}
+            </button>
+          )}
           <p className="muted">{format(t.itemsCount, { count: itemCount })}</p>
           {layer.lifecycle === "draft" && itemCount === 0 && (
             <p className="notice">{t.draftSaved}</p>

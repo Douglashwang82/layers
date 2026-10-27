@@ -1,6 +1,9 @@
 "use client";
 import { useMemo, useState, type FormEvent } from "react";
-import { useRouter } from "next/navigation";
+import {
+  useLayerRouter as useRouter,
+  useLayerDraft,
+} from "./workspace-navigation";
 import { Link2, Plus, X } from "lucide-react";
 import {
   maxGoogleLinks,
@@ -89,6 +92,10 @@ export function GoogleLinksForm({
   const [feedback, setFeedback] = useState<Feedback>(null);
   const [title, setTitle] = useState("");
   const [titleChinese, setTitleChinese] = useState("");
+  useLayerDraft(
+    !saving && !!(text || title || titleChinese),
+    t.discardLayerChanges,
+  );
   const [audience, setAudience] = useState<"private" | "group">("private");
   const [groupId, setGroupId] = useState(groups[0]?.id ?? "");
   const lines = text
@@ -111,10 +118,16 @@ export function GoogleLinksForm({
         !removed.has(i),
     )
     .map(({ r }) => r.providerPlaceId!);
-  // Names read from the links label the places in this layer.
+  // Names read from Maps links label the places in this layer. Instagram
+  // names are unverified caption text, so those places show Google's details.
   const linkNames = Object.fromEntries(
     (results ?? [])
-      .filter((r) => r.name && chosen.includes(r.providerPlaceId!))
+      .filter(
+        (r) =>
+          r.name &&
+          r.source !== "instagram" &&
+          chosen.includes(r.providerPlaceId!),
+      )
       .map((r) => [r.providerPlaceId!, r.name!]),
   );
   const sourceLinks = Object.fromEntries(
@@ -170,7 +183,7 @@ export function GoogleLinksForm({
           linkNames,
           sourceLinks,
         })) as { layer: { slug: string } };
-        router.push(`/?layers=${encodeURIComponent(created.layer.slug)}`);
+        router.push(`/layers/${encodeURIComponent(created.layer.slug)}`);
         return;
       }
       const outcome = (await api(`layers/${layerId}/google-places`, "POST", {
@@ -353,7 +366,7 @@ export function GoogleLinksForm({
                           onError={() => {}}
                         />
                       )}
-                      {r.name && (
+                      {r.name && r.source !== "instagram" && (
                         <p className="fine-print">
                           {format(t.linkFromName, { name: r.name })}
                         </p>

@@ -2067,6 +2067,52 @@ body[data-map-theme="dark"]:has(.map-workspace) .provider-slot > * {
   text-decoration: none;
   cursor: pointer;
 }
+
+/* Layer screens share the map's desktop panel and mobile bottom sheet. */
+.layer-workspace-screen .container {
+  width: 100%;
+  max-width: none;
+  padding: 12px 0;
+  margin: 0;
+}
+.layer-workspace-screen .page-header {
+  margin: 0 0 16px;
+  padding: 0;
+}
+.layer-workspace-screen h1 {
+  font-size: 24px;
+}
+.layer-workspace-screen .layer-cards,
+.layer-workspace-screen .layer-editor-layout {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+}
+.layer-workspace-screen .form-panel {
+  padding: 12px;
+  min-width: 0;
+}
+.layer-workspace-screen .form-panel[hidden] {
+  display: none;
+}
+.layer-workspace-screen .library-tabs {
+  overflow-x: auto;
+}
+.layer-workspace-screen .filters-row,
+.layer-workspace-screen .form-row {
+  flex-wrap: wrap;
+}
+.layer-workspace-screen .layer-detail-header {
+  padding: 0;
+}
+.layer-workspace-screen .actions {
+  flex-wrap: wrap;
+}
+.layer-workspace-screen .layer-contents .result-row {
+  min-width: 0;
+}
+.layer-workspace-screen .editor-item-actions {
+  flex-wrap: wrap;
+}
 .route-bar-action {
   color: var(--th-brand-text);
   font-weight: 500;

@@ -55,6 +55,7 @@ export default defineConfig({
     // Browser tests use the deterministic fake places provider: no live key,
     // no paid requests. A reused server must be started with the same values.
     env: {
+      E2E_ISOLATED_BUILD: "true",
       FEATURE_GOOGLE_PLACES_DISCOVERY: "true",
       FEATURE_PLACE_REVIEW_WRITES: "true",
       FEATURE_EXTERNAL_PLACE_COLLECTIONS: "true",

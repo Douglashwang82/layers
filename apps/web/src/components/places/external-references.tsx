@@ -13,6 +13,7 @@ import type { LatLng, PlacesProvider } from "@/lib/places/provider";
 import type { ExternalReference } from "@/features/map/external";
 import type { ExtraPoint } from "@/components/map/map-canvas";
 import { ProviderDetails } from "./provider-slot";
+import { LocalNote, isUrl } from "./local-note";
 type Row = ExternalReference & {
   state: "loading" | "resolved" | "unavailable";
   location: LatLng | null;
@@ -44,6 +45,7 @@ export function ExternalReferences({
   timeZone = "America/Chicago",
   autoLoad = false,
   onPending,
+  reload = 0,
 }: {
   provider: PlacesProvider | null;
   queryKey: string;
@@ -63,6 +65,7 @@ export function ExternalReferences({
    * components load only while on screen, so a hidden list never locates.
    */
   onPending?: (count: number) => void;
+  reload?: number;
 }) {
   const [rows, setRows] = useState<Row[]>([]);
   const [next, setNext] = useState<string | null>(null);
@@ -104,7 +107,7 @@ export function ExternalReferences({
     load(null);
     // A new query replaces the page; stale responses are ignored by `seq`.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [queryKey, provider]);
+  }, [queryKey, provider, reload]);
   const settled = rows.filter((r) => r.state !== "loading").length;
   const pendingRef = useRef(onPending);
   useEffect(() => {
@@ -143,7 +146,10 @@ export function ExternalReferences({
             lat: r.location!.lat,
             lng: r.location!.lng,
             placeId: r.providerPlaceId ?? undefined,
-            label: r.name ?? r.localNote ?? undefined,
+            label:
+              r.name ??
+              (isUrl(r.localNote) ? undefined : r.localNote) ??
+              undefined,
             tabelog: url && r.name ? { name: r.name, url } : undefined,
             marker: r.types ? googleMarkerKind(r.types) : undefined,
           };
@@ -219,7 +225,7 @@ export function ExternalReferences({
               locale={locale}
               timeZone={timeZone}
             />
-            {row.localNote && <p className="muted">{row.localNote}</p>}
+            <LocalNote note={row.localNote} t={t} />
             {row.name && (
               <TabelogLink
                 name={row.name}

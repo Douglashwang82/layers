@@ -4,6 +4,8 @@ import { flags, placesClientConfig } from "@/lib/config";
 import { resolveMapRequest } from "@/features/map/request";
 import { runMapQuery } from "@/features/map/query";
 import { redirect } from "next/navigation";
+import { LayerWorkspaceScreen } from "@/components/layers/workspace-screen";
+import { layerPanelKeys } from "@/lib/layer-workspace";
 import { getMapItemDetail } from "@/features/map/detail";
 import { listMapLibrary, resolveLayers } from "@/features/layers/repository";
 import {
@@ -74,7 +76,12 @@ export default async function HomePage({
     // The URL is the client's source of truth: drop what the MVP ignores
     // (search, filters, area, disabled system layers) instead of showing it.
     const canonical = await mvpCanonicalUrl(params, state, city, actor);
-    if (canonical) redirect(canonical);
+    if (canonical) {
+      const url = new URL(canonical, "https://local.invalid");
+      for (const key of layerPanelKeys)
+        if (params[key] !== undefined) url.searchParams.set(key, params[key]!);
+      redirect(url.pathname + url.search);
+    }
   }
   const [result, detail, library] = await Promise.all([
     runMapQuery(state, city, actor),
@@ -86,6 +93,7 @@ export default async function HomePage({
   ]);
   return (
     <MapWorkspace
+      layerScreen={<LayerWorkspaceScreen params={params} />}
       initial={result}
       initialDetail={detail}
       city={city}

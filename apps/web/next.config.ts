@@ -3,6 +3,8 @@ import { config } from "dotenv";
 import path from "node:path";
 config({ path: path.resolve(process.cwd(), "../../.env"), quiet: true });
 const nextConfig: NextConfig = {
+  // Keep browser-test compilation separate from an open developer server.
+  distDir: process.env.E2E_ISOLATED_BUILD === "true" ? ".next/e2e" : ".next",
   poweredByHeader: false,
   serverExternalPackages: ["pg"],
   images: {

@@ -461,6 +461,9 @@ export const en = {
   undo: "Undo",
   removed: "Removed.",
   unsavedChanges: "You have unsaved changes.",
+  discardLayerChanges: "You have unsaved changes. Discard them and leave?",
+  workspacePinHelp:
+    "Move the main map to your place, then choose Use map center. You can use the arrow keys to move the map.",
   publishLayer: "Publish layer",
   unpublishLayer: "Make private",
   publishNote:
@@ -824,6 +827,7 @@ export const en = {
   removeSaved: "Remove",
   closeBusiness: "Close business details",
   openPlacePage: "Open place page",
+  sourcePost: "Source post",
   leaveDraft: "You have an unsaved review. Leave anyway?",
   dailyPick: "Daily Pick",
   dailyPickIntro:
@@ -1353,6 +1357,9 @@ export const zh: Copy = {
   undo: "復原",
   removed: "已移除。",
   unsavedChanges: "你有尚未儲存的變更。",
+  discardLayerChanges: "你有尚未儲存的變更。要捨棄變更並離開嗎？",
+  workspacePinHelp:
+    "將主地圖移至地點，再選擇「使用地圖中心」。你可以使用方向鍵移動地圖。",
   publishLayer: "公開圖層",
   unpublishLayer: "改為私人",
   publishNote: "公開圖層需經審核後才會出現在「探索」。策展筆記將對所有人可見。",
@@ -1690,6 +1697,7 @@ export const zh: Copy = {
   removeSaved: "移除",
   closeBusiness: "關閉商家資訊",
   openPlacePage: "開啟地點頁面",
+  sourcePost: "來源貼文",
   leaveDraft: "你有尚未儲存的評論，確定要離開嗎？",
   dailyPick: "每日精選",
   dailyPickIntro: "每天介紹一個值得探索的地點，並說明推薦的原因。",

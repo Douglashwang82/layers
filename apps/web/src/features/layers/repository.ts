@@ -223,22 +223,7 @@ export type LayerWithAccess = { layer: LayerRecord; access: LayerAccess };
 export async function getLayer(
   idOrSlug: string,
   actor: Actor | null,
-  city?: { id: string; slug: string; name: string; timezone: string },
 ): Promise<LayerWithAccess | null> {
-  if (idOrSlug === mySavesSlug) {
-    if (!actor || !city) return null;
-    return {
-      layer: mySavesLayer(actor, city),
-      access: {
-        view: true,
-        apply: true,
-        edit: false,
-        manage: false,
-        following: false,
-        role: "owner",
-      },
-    };
-  }
   const result = await pool.query<Record<string, unknown>>(
     `SELECT ${columns} ${from} WHERE l.slug=$1 OR l.id::text=$1`,
     [idOrSlug],
@@ -283,27 +268,11 @@ export async function resolveLayers(
     followingSet(actor?.id),
     pool.query<Record<string, unknown>>(
       `SELECT ${columns} ${from} WHERE l.slug=ANY($1::text[])`,
-      [slugs.filter((s) => s !== mySavesSlug)],
+      [slugs],
     ),
   ]);
   const bySlug = new Map(result.rows.map((r) => [String(r.slug), record(r)]));
   for (const slug of slugs) {
-    if (slug === mySavesSlug) {
-      if (actor)
-        resolved.push({
-          layer: mySavesLayer(actor, city),
-          access: {
-            view: true,
-            apply: true,
-            edit: false,
-            manage: false,
-            following: false,
-            role: "owner",
-          },
-        });
-      else unavailable.push(slug);
-      continue;
-    }
     const layer = bySlug.get(slug);
     if (!layer) {
       unavailable.push(slug);
@@ -383,22 +352,10 @@ export async function listLibrary(
       access: accessFor(layer, actor, memberships, following.has(layer.id)),
     }))
     .filter((entry) => entry.access.view);
-  if (scope === "mine" && actor)
-    layers.unshift({
-      layer: mySavesLayer(actor, city),
-      access: {
-        view: true,
-        apply: true,
-        edit: false,
-        manage: false,
-        following: false,
-        role: "owner",
-      },
-    });
   return layers;
 }
 /**
- * The map MVP's layer picker: the actor's own layers (with My saves), their
+ * The map MVP's layer picker: the actor's own layers, their
  * groups' layers and the layers they follow, in this city, without archived
  * ones and without duplicates.
  */
