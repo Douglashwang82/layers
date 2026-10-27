@@ -115,6 +115,7 @@ export function LayerGooglePlaces({
                     provider={provider}
                     placeId={ref.providerPlaceId}
                     compact
+                    preview
                     onLoad={() => {}}
                     onError={() => {}}
                   />

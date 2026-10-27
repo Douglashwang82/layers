@@ -30,7 +30,7 @@ export type PlacesProvider = {
   ): Promise<Cleanup>;
   mountDetails(
     container: HTMLElement,
-    /** `preview`: a compact card limited to rating and type, without photos (map hover). */
+    /** `preview`: a compact card limited to rating and type, without photos (map hover and every multi-place list). */
     options: { placeId: string; compact: boolean; preview?: boolean },
     handlers: {
       onLoad: (place: ProviderPlace) => void;

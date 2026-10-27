@@ -80,6 +80,7 @@ export function SavedExternalList({
               provider={provider}
               placeId={item.providerPlaceId}
               compact
+              preview
               onLoad={() =>
                 setSettled((s) => ({ ...s, [item.subjectId]: true }))
               }

@@ -362,6 +362,7 @@ export function GoogleLinksForm({
                           provider={provider}
                           placeId={r.providerPlaceId!}
                           compact
+                          preview
                           onLoad={() => {}}
                           onError={() => {}}
                         />
