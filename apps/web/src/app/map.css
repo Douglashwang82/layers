@@ -598,13 +598,13 @@ summary.map-float-button::-webkit-details-marker {
 }
 /* Floating list: compact rows; name, type, date, demo/private marks lead, photos do not. */
 .map-panel .result-row a {
-  grid-template-columns: 36px minmax(0, 1fr);
+  grid-template-columns: 56px minmax(0, 1fr);
   gap: var(--th-space-2);
   padding: 8px;
 }
 .map-panel .row-thumb {
-  width: 36px;
-  height: 36px;
+  width: 56px;
+  height: 56px;
   border-radius: 10px;
 }
 .map-panel .row-title {
@@ -2133,4 +2133,61 @@ body[data-map-theme="dark"]:has(.map-workspace) .provider-slot > * {
   .route-bar-open span {
     display: none;
   }
+}
+
+/* Layer-grouped list: color-coded collapsible sections and quick layer chips. */
+.layer-chips {
+  display: flex;
+  gap: var(--th-space-2);
+  overflow-x: auto;
+  padding-bottom: var(--th-space-3);
+  scrollbar-width: thin;
+}
+.layer-chip {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 36px;
+  padding: 0 12px;
+  border-radius: 999px;
+  border: 1px solid var(--th-control-border);
+  background: var(--th-surface);
+  color: var(--th-muted);
+  font-size: 14px;
+}
+.layer-chip[aria-pressed="true"] {
+  color: var(--th-brand-text);
+  border-color: var(--th-brand-text);
+  font-weight: 600;
+}
+.layer-chip.manage {
+  border-style: dashed;
+}
+.layer-swatch {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  flex: none;
+}
+.layer-section {
+  margin-bottom: var(--th-space-3);
+}
+.layer-section > summary {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 44px;
+  cursor: pointer;
+  font-size: 15px;
+  font-weight: 600;
+  position: sticky;
+  top: 48px;
+  background: var(--th-surface);
+  z-index: 1;
+}
+.layer-section-title {
+  flex: 1;
+  min-width: 0;
+  overflow-wrap: anywhere;
 }

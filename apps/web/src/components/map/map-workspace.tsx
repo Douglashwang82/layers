@@ -69,6 +69,8 @@ import {
   markerLabel,
 } from "@/lib/marker-presentation";
 import { useMapTheme } from "@/lib/map-theme";
+import { layerColor } from "@/components/map/layer-section";
+import { layerTitle } from "@/lib/layer-labels";
 import { ActiveLayersPanel } from "./active-layers-panel";
 import { MapResults, TabelogLink } from "./map-results";
 import { tabelogLink } from "@/lib/tabelog";
@@ -521,8 +523,15 @@ export function MapWorkspace({
   /** A marker clicked on the map is already in view, so the camera stays put. */
   const selectBusiness = (next: BusinessSelection, moveCamera = true) => {
     if (layerPanel) {
-      if (!window.dispatchEvent(new Event("layer:before-leave", { cancelable: true }))) return;
-      router.push(withoutLayerPanel(searchParams.toString()), { scroll: false });
+      if (
+        !window.dispatchEvent(
+          new Event("layer:before-leave", { cancelable: true }),
+        )
+      )
+        return;
+      router.push(withoutLayerPanel(searchParams.toString()), {
+        scroll: false,
+      });
     }
     reveal();
     setBusiness(next);
@@ -1291,6 +1300,7 @@ export function MapWorkspace({
       timeZone={city.timezone}
       events={result.events}
       autoLoad={mvp}
+      layers={panelLayers}
       onPending={setPendingExternal}
       onPoints={setExternalPoints}
       onSelect={(ref, location) =>
@@ -1324,8 +1334,45 @@ export function MapWorkspace({
       </ul>
     </section>
   ) : null;
+  const layerChips = (
+    <div className="layer-chips" role="group" aria-label={t.onYourMap}>
+      {[
+        ...panelLayers,
+        ...hiddenLayers.filter((h) => !shownSlugs.includes(h.slug)),
+      ]
+        .filter((l) => l.status === "ok")
+        .map((layer) => {
+          const on = shownSlugs.includes(layer.slug);
+          return (
+            <button
+              key={layer.slug}
+              type="button"
+              className="layer-chip"
+              aria-pressed={on}
+              disabled={!on && shownSlugs.length >= maxAppliedLayers}
+              onClick={() => toggleLayer(layer.slug, !on)}
+            >
+              <span
+                className="layer-swatch"
+                style={{ background: layerColor(layer.slug) }}
+                aria-hidden="true"
+              />
+              {layerTitle(layer, locale)}
+            </button>
+          );
+        })}
+      <button
+        type="button"
+        className="layer-chip manage"
+        onClick={() => setTab("layers")}
+      >
+        {t.manageLayers}
+      </button>
+    </div>
+  );
   const resultsPanel = (
     <>
+      {layerChips}
       {dailyPick}
       {summary}
       {routeThroughButton}
@@ -1342,6 +1389,7 @@ export function MapWorkspace({
           onHover={setListHoverKey}
           events={result.events}
           timeZone={city.timezone}
+          layers={panelLayers}
         />
       )}
       {!mvp && externalReferences}
@@ -1861,14 +1909,15 @@ export function MapWorkspace({
                 className="panel-body layer-workspace-screen"
                 key={layerScreenKey}
               >
-                <Link
-                  className="text-button"
-                  href="/"
-                >
+                <Link className="text-button" href="/">
                   {t.mapEntry}
                 </Link>
                 {layerScreen}
-                {loadError && <p className="message error-message" role="alert">{loadError}</p>}
+                {loadError && (
+                  <p className="message error-message" role="alert">
+                    {loadError}
+                  </p>
+                )}
               </div>
             ) : routeInPanel ? (
               <div className="panel-body">

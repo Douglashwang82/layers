@@ -7,6 +7,8 @@ import {
   type LayerEvent,
 } from "@taiwanhub/shared";
 import { type Copy, type Locale, format } from "@/lib/dictionary";
+import type { LayerAvailability } from "@/features/map/query";
+import { LayerSection, groupByLayer } from "@/components/map/layer-section";
 import { NextEvent, TabelogLink } from "@/components/map/map-results";
 import { googleTabelogLink } from "@/lib/tabelog";
 import type { LatLng, PlacesProvider } from "@/lib/places/provider";
@@ -46,6 +48,7 @@ export function ExternalReferences({
   autoLoad = false,
   onPending,
   reload = 0,
+  layers,
 }: {
   provider: PlacesProvider | null;
   queryKey: string;
@@ -66,6 +69,8 @@ export function ExternalReferences({
    */
   onPending?: (count: number) => void;
   reload?: number;
+  /** Applied layers; when given, rows are grouped under one section each. */
+  layers?: LayerAvailability[];
 }) {
   const [rows, setRows] = useState<Row[]>([]);
   const [next, setNext] = useState<string | null>(null);
@@ -169,6 +174,65 @@ export function ExternalReferences({
       list.map((r) => (r.subjectId === subjectId ? { ...r, ...patch } : r)),
     );
   if (!rows.length && !error) return null;
+  const renderRow = (row: Row, index: number, prefix = "") => (
+    <li
+      key={prefix + row.subjectId}
+      className={row.subjectId === selectedSubjectId ? "selected" : ""}
+    >
+      {provider &&
+        row.providerPlaceId &&
+        row.state !== "unavailable" &&
+        index < settled + concurrency && (
+          <ProviderDetails
+            provider={provider}
+            placeId={row.providerPlaceId}
+            compact
+            onLoad={(place) =>
+              update(row.subjectId, {
+                state: place.location ? "resolved" : "unavailable",
+                location: place.location,
+              })
+            }
+            onError={() => update(row.subjectId, { state: "unavailable" })}
+          />
+        )}
+      {row.state === "unavailable" && (
+        <p className="fine-print">{t.externalUnavailable}</p>
+      )}
+      {row.state !== "resolved" && (
+        <span className="chip">{t.awaitingLocation}</span>
+      )}
+      {row.isDailyPick && <span className="badge">{t.dailyPick}</span>}
+      <NextEvent
+        events={events[row.canonicalKey]}
+        locale={locale}
+        timeZone={timeZone}
+      />
+      <LocalNote note={row.localNote} t={t} />
+      {row.name && (
+        <TabelogLink
+          name={row.name}
+          href={googleTabelogLink(row)}
+          t={t}
+          className="row-tabelog external-tabelog"
+        />
+      )}
+      <button
+        type="button"
+        className="text-button"
+        aria-current={row.subjectId === selectedSubjectId || undefined}
+        onClick={() => onSelect(row, row.location)}
+      >
+        {t.openPlacePage}
+      </button>
+    </li>
+  );
+  const indexed = visible.map((row, index) => ({
+    row,
+    index,
+    layers: row.layers,
+  }));
+  const { groups, rest } = groupByLayer(indexed, layers);
   const pending = visible.filter((r) => r.state !== "resolved").length;
   return (
     <section className="external-references" aria-label={t.externalBusinesses}>
@@ -188,63 +252,31 @@ export function ExternalReferences({
           </button>
         </p>
       )}
-      <ul className="result-list">
-        {visible.map((row, index) => (
-          <li
-            key={row.subjectId}
-            className={row.subjectId === selectedSubjectId ? "selected" : ""}
-          >
-            {provider &&
-              row.providerPlaceId &&
-              row.state !== "unavailable" &&
-              index < settled + concurrency && (
-                <ProviderDetails
-                  provider={provider}
-                  placeId={row.providerPlaceId}
-                  compact
-                  onLoad={(place) =>
-                    update(row.subjectId, {
-                      state: place.location ? "resolved" : "unavailable",
-                      location: place.location,
-                    })
-                  }
-                  onError={() =>
-                    update(row.subjectId, { state: "unavailable" })
-                  }
-                />
-              )}
-            {row.state === "unavailable" && (
-              <p className="fine-print">{t.externalUnavailable}</p>
-            )}
-            {row.state !== "resolved" && (
-              <span className="chip">{t.awaitingLocation}</span>
-            )}
-            {row.isDailyPick && <span className="badge">{t.dailyPick}</span>}
-            <NextEvent
-              events={events[row.canonicalKey]}
+      {layers && groups.length > 0 ? (
+        <>
+          {groups.map(({ layer, rows }) => (
+            <LayerSection
+              key={layer.slug}
+              layer={layer}
               locale={locale}
-              timeZone={timeZone}
-            />
-            <LocalNote note={row.localNote} t={t} />
-            {row.name && (
-              <TabelogLink
-                name={row.name}
-                href={googleTabelogLink(row)}
-                t={t}
-                className="row-tabelog external-tabelog"
-              />
-            )}
-            <button
-              type="button"
-              className="text-button"
-              aria-current={row.subjectId === selectedSubjectId || undefined}
-              onClick={() => onSelect(row, row.location)}
+              count={rows.length}
             >
-              {t.openPlacePage}
-            </button>
-          </li>
-        ))}
-      </ul>
+              <ul className="result-list">
+                {rows.map((r) => renderRow(r.row, r.index, `${layer.slug}:`))}
+              </ul>
+            </LayerSection>
+          ))}
+          {rest.length > 0 && (
+            <ul className="result-list">
+              {rest.map((r) => renderRow(r.row, r.index))}
+            </ul>
+          )}
+        </>
+      ) : (
+        <ul className="result-list">
+          {visible.map((row, index) => renderRow(row, index))}
+        </ul>
+      )}
       {next && !autoLoad && (
         <button
           type="button"
