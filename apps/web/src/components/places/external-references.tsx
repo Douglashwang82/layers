@@ -177,7 +177,17 @@ export function ExternalReferences({
   const renderRow = (row: Row, index: number, prefix = "") => (
     <li
       key={prefix + row.subjectId}
-      className={row.subjectId === selectedSubjectId ? "selected" : ""}
+      className={`external-row ${row.subjectId === selectedSubjectId ? "selected" : ""}`}
+      onClick={(event) => {
+        // The whole row opens the place; links and buttons keep their own action.
+        if (
+          (event.target as HTMLElement).closest(
+            "a, button, gmp-place-details-compact",
+          )
+        )
+          return;
+        onSelect(row, row.location);
+      }}
     >
       {provider &&
         row.providerPlaceId &&
@@ -187,6 +197,7 @@ export function ExternalReferences({
             provider={provider}
             placeId={row.providerPlaceId}
             compact
+            preview
             onLoad={(place) =>
               update(row.subjectId, {
                 state: place.location ? "resolved" : "unavailable",
@@ -236,9 +247,10 @@ export function ExternalReferences({
   const pending = visible.filter((r) => r.state !== "resolved").length;
   return (
     <section className="external-references" aria-label={t.externalBusinesses}>
-      <h3>{t.externalBusinesses}</h3>
       <p className="fine-print" role="status">
-        {format(t.externalSummary, { count: visible.length, pending })}
+        {pending > 0
+          ? format(t.externalSummary, { count: visible.length, pending })
+          : ""}
       </p>
       {error && (
         <p className="message error-message" role="alert">

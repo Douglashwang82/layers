@@ -1425,6 +1425,21 @@ summary.map-float-button::-webkit-details-marker {
   display: grid;
   gap: var(--th-space-1);
 }
+/* Google places share the list-row shell: card, note, event and action in one block. */
+.external-references li.external-row {
+  padding: 10px;
+  border-radius: var(--th-radius-card);
+  cursor: pointer;
+  transition: background-color var(--th-fast) var(--th-ease);
+}
+.external-references li.external-row:hover {
+  background: var(--th-surface-soft);
+}
+.external-references li.external-row .text-button {
+  justify-self: start;
+  color: var(--th-brand-text);
+  font-weight: 500;
+}
 .external-references li.selected {
   outline: 2px solid var(--th-primary);
   outline-offset: 2px;
