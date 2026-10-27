@@ -162,6 +162,7 @@ export function ResultRow({
   onHover,
   events,
   timeZone = "America/Chicago",
+  showNote = false,
 }: {
   item: MapItem;
   t: Copy;
@@ -173,6 +174,8 @@ export function ResultRow({
   /** Upcoming events attached to this place in the applied layers. */
   events?: LayerEvent[];
   timeZone?: string;
+  /** Layer contents quote the curator's note under the title. */
+  showNote?: boolean;
 }) {
   const Icon = icons[item.type];
   const kind = markerKind(item);
@@ -219,6 +222,9 @@ export function ResultRow({
           </span>
           <span className="row-title">{name}</span>
           <ItemMeta {...{ item, t, locale }} />
+          {showNote && item.note && (
+            <span className="row-note">{item.note}</span>
+          )}
           <NextEvent events={events} locale={locale} timeZone={timeZone} />
           <span className="row-foot">
             <LocationLabel item={item} t={t} />

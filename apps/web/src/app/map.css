@@ -972,6 +972,19 @@ summary.map-float-button::-webkit-details-marker {
   width: 64px;
   height: 64px;
 }
+/* Curator note: quoted, two lines at most, so the list stays scannable. */
+.row-note {
+  font-size: 14px;
+  line-height: 20px;
+  font-style: italic;
+  color: var(--th-text);
+  padding-left: 8px;
+  border-left: 2px solid var(--th-divider);
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
 .editor-item-actions {
   display: flex;
   gap: 4px;

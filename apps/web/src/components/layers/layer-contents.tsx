@@ -28,6 +28,7 @@ export function LayerContentsList({
           t={t}
           locale={locale}
           selected={false}
+          showNote
           onSelect={(key) =>
             workspace
               ? workspace.selectItem(key, slug)
