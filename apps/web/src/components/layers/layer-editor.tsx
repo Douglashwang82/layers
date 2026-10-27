@@ -16,6 +16,7 @@ import type { LayerEvent } from "@taiwanhub/shared";
 import { GoogleLinksForm } from "./google-links-form";
 import { LayerGooglePlaces } from "./layer-google-places";
 import { LayerItemEvents } from "./layer-item-events";
+import { MapImportLinks } from "./map-import-links";
 type Feedback = { tone: "success" | "error"; text: string } | null;
 type Draft = {
   title: string;
@@ -353,6 +354,9 @@ export function LayerEditor({
   const contained = new Set(items.map((i) => i.key));
   return (
     <div className={mode === "edit" ? "layer-editor-layout" : ""}>
+      {canCreatePlaces && layer?.audience !== "public" && (
+        <MapImportLinks locale={locale} layerId={layer?.id} />
+      )}
       <form className="form-panel form-stack" onSubmit={submit} noValidate>
         <h1>{mode === "create" ? t.createLayer : t.editLayer}</h1>
         {mode === "create" && <p>{t.layerHelp}</p>}

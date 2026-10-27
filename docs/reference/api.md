@@ -169,3 +169,9 @@ Map query parameters: `city`, `layers` (comma-separated slugs, at most 5, or `no
 Moderation body: `entityType` in `places|events|products|organizations|notes|sightings|recommendations|layers|content`, `entityId`, `action` in `approved|rejected|hidden|deleted`, `reason`. ADMIN or MODERATOR required; `deleted` requires ADMIN. Editable common fields: `name,nameChinese,description,descriptionChinese,image,category,aliases`. Type-specific edits include place address/coordinates/hours/phone/website; event address/coordinates/venue/start/end/capacity; product brand/onlineUrl; organization website/Instagram/Facebook. Capacity cannot be reduced below current attendance; coordinate edits update PostGIS geometry atomically. Each change creates an audit entry. Public clients cannot set status, role, votes, RSVP counts, verification or author IDs.
 
 Contribution endpoints allow 30 calls/user/minute using PostgreSQL counters. Browser writes validate Origin. Requests from native bearer clients can omit Origin. Do not put tokens into query strings. API changes should remain backward compatible inside `/v1`.
+
+## Shared map imports
+
+Authenticated `POST /api/v1/map-imports/preview`, `/review`, and `/commit`
+support one-time Google My Maps/KML/KMZ imports into private or group layers.
+See [shared map import contracts and limits](../guides/shared-map-import.md).

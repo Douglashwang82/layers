@@ -866,6 +866,55 @@ export const layerFollow = pgTable(
   },
   (t) => [primaryKey({ columns: [t.userId, t.layerId] })],
 );
+/** A private/group-owned organizer. Child layers retain their own access checks. */
+export const layerCollection = pgTable(
+  "layer_collection",
+  {
+    id: id(),
+    title: text("title").notNull(),
+    ownerUserId: uuid("owner_user_id").references(() => user.id, {
+      onDelete: "cascade",
+    }),
+    ownerGroupId: uuid("owner_group_id").references(() => group.id, {
+      onDelete: "cascade",
+    }),
+    sourceUrl: text("source_url").default("").notNull(),
+    ...timestamps(),
+  },
+  (t) => [
+    check(
+      "layer_collection_owner_check",
+      sql`num_nonnulls(${t.ownerUserId},${t.ownerGroupId})=1`,
+    ),
+  ],
+);
+export const layerCollectionMember = pgTable(
+  "layer_collection_member",
+  {
+    collectionId: uuid("collection_id")
+      .notNull()
+      .references(() => layerCollection.id, { onDelete: "cascade" }),
+    layerId: uuid("layer_id")
+      .notNull()
+      .references(() => layer.id, { onDelete: "cascade" }),
+    position: integer("position").notNull(),
+  },
+  (t) => [primaryKey({ columns: [t.collectionId, t.layerId] })],
+);
+/** Transactional retry receipt: no source document or imported private text. */
+export const mapImportReceipt = pgTable(
+  "map_import_receipt",
+  {
+    userId: uuid("user_id")
+      .notNull()
+      .references(() => user.id, { onDelete: "cascade" }),
+    requestId: uuid("request_id").notNull(),
+    digest: text("digest").notNull(),
+    result: jsonb("result").notNull(),
+    ...timestamps(),
+  },
+  (t) => [primaryKey({ columns: [t.userId, t.requestId] })],
+);
 /** Authorized active layers and view preference only; never a location trail. */
 export const userMapPreference = pgTable("user_map_preference", {
   userId: uuid("user_id")

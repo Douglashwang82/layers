@@ -197,6 +197,13 @@
       "when": 1792706253917,
       "tag": "0027_noisy_the_anarchist",
       "breakpoints": true
+    },
+    {
+      "idx": 28,
+      "version": "7",
+      "when": 1793077416312,
+      "tag": "0028_flippant_sheva_callister",
+      "breakpoints": true
     }
   ]
 }

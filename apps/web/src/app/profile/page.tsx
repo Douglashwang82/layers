@@ -2,7 +2,8 @@ import Link from "next/link";
 import { redirect } from "next/navigation";
 import { pool } from "@taiwanhub/database";
 import { currentActor } from "@/lib/session";
-import { getCopy } from "@/lib/i18n";
+import { getCopy, getLocale } from "@/lib/i18n";
+import { mapImportEn, mapImportZh } from "@/lib/map-import-copy";
 import { getCities } from "@/features/catalog/repository";
 import { ProfileForm } from "@/components/profile-form";
 import { SignOut } from "@/components/auth-form";
@@ -11,6 +12,8 @@ import { flags } from "@/lib/config";
 export default async function Profile() {
   const actor = await currentActor();
   if (!actor) redirect("/sign-in?next=/profile");
+  const importCopy =
+    (await getLocale()) === "zh-TW" ? mapImportZh : mapImportEn;
   const [t, cities, result] = await Promise.all([
     getCopy(),
     getCities(),
@@ -36,6 +39,16 @@ export default async function Profile() {
           <ProfileForm {...{ t, cities }} user={result.rows[0]} />
         </section>
         <nav className="settings-rows" aria-label={t.profile}>
+          {flags.layerWrites && flags.layerCustomPlaces && (
+            <Link className="settings-row" href="/map-import">
+              {importCopy.title} <span aria-hidden="true">→</span>
+            </Link>
+          )}
+          {flags.layerCustomPlaces && (
+            <Link className="settings-row" href="/layer-collections">
+              {importCopy.collections} <span aria-hidden="true">→</span>
+            </Link>
+          )}
           <Link className="settings-row" href="/saved">
             {t.saved} <span aria-hidden="true">→</span>
           </Link>
