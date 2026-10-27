@@ -121,6 +121,38 @@ function keepDetails(key: string, element: HTMLElement, place: ProviderPlace) {
     loadedDetails.delete(old);
   }
 }
+/** Card contents: the presets minus gmp-place-media. The name always shows. */
+const previewContent = [
+  "gmp-place-rating",
+  "gmp-place-type",
+  "gmp-place-attribution",
+];
+const compactContent = [
+  "gmp-place-rating",
+  "gmp-place-type",
+  "gmp-place-price",
+  "gmp-place-accessible-entrance-icon",
+  "gmp-place-open-now-status",
+  "gmp-place-attribution",
+];
+const fullContent = [
+  "gmp-place-address",
+  "gmp-place-rating",
+  "gmp-place-type",
+  "gmp-place-price",
+  "gmp-place-accessible-entrance-icon",
+  "gmp-place-open-now-status",
+  "gmp-place-website",
+  "gmp-place-phone-number",
+  "gmp-place-opening-hours",
+  "gmp-place-summary",
+  "gmp-place-type-specific-highlights",
+  "gmp-place-review-summary",
+  "gmp-place-reviews",
+  "gmp-place-feature-list",
+  "gmp-place-plus-code",
+  "gmp-place-attribution",
+];
 function googleProvider(key: string, language: string): PlacesProvider {
   const ready = async () => {
     await loadGoogle(key, language);
@@ -211,25 +243,19 @@ function googleProvider(key: string, language: string): PlacesProvider {
       const request = document.createElement("gmp-place-details-place-request");
       request.setAttribute("place", placeId);
       details.appendChild(request);
-      if (preview) {
-        // The compact card always shows the name; these add rating and type.
-        // No gmp-place-media: the widget has no photo-count setting and loads
-        // the whole set (about 10 billed photo requests per hover).
-        details.setAttribute("truncation-preferred", "");
-        const config = document.createElement("gmp-place-content-config");
-        for (const name of [
-          "gmp-place-rating",
-          "gmp-place-type",
-          "gmp-place-attribution",
-        ])
-          config.appendChild(document.createElement(name));
-        details.appendChild(config);
-      } else
-        details.appendChild(
-          document.createElement(
-            compact ? "gmp-place-standard-content" : "gmp-place-all-content",
-          ),
-        );
+      // No card mounts gmp-place-media: the widget has no photo-count setting
+      // and loads the whole set (up to ten billed photo requests per place).
+      // The standard and all-content presets include media, so every card
+      // lists its elements explicitly instead.
+      if (preview) details.setAttribute("truncation-preferred", "");
+      const config = document.createElement("gmp-place-content-config");
+      for (const name of preview
+        ? previewContent
+        : compact
+          ? compactContent
+          : fullContent)
+        config.appendChild(document.createElement(name));
+      details.appendChild(config);
       container.appendChild(details);
       const owner = Symbol();
       detailsOwner.set(details, owner);
