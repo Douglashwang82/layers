@@ -12,8 +12,9 @@ Work fast:
 2. Keep HTTP handlers thin (auth, Zod validation, delegate); services own authorization and mutations; repositories own SQL.
 3. New UI copy goes in both `en` and `zh` in `apps/web/src/lib/dictionary.ts`.
 4. Add or update a focused unit test in `tests/unit` for meaningful logic.
-5. Run `pnpm lint`, `pnpm typecheck`, and `pnpm exec vitest run <affected test files>`. Fix failures.
-6. Commit only the files you touched with a message saying what changed and why. Never push.
+5. Run `pnpm lint`, `pnpm typecheck`, and `pnpm exec vitest run <affected test files>`. Fix failures. If you changed UI, also run the existing Playwright specs for the screens you touched (`pnpm exec playwright test tests/e2e/<spec>`, with the `E2E_PORT` you were given).
+6. Run Prettier only on files you changed, never on a directory.
+7. Commit only the files you touched with a message saying what changed and why. Never push.
 
 If you are in a git worktree without `node_modules`, run `pnpm install --frozen-lockfile` first. If the slice needs a schema change, stop and report; `db-migrator` owns migrations.
 
