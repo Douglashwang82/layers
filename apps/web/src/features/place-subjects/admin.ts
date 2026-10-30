@@ -1,4 +1,8 @@
-import { pool } from "@taiwanhub/database";
+import {
+  moveSubjectReviewsToItem,
+  pool,
+  retireLayerItemReviews,
+} from "@taiwanhub/database";
 import type { PoolClient } from "pg";
 import { z } from "zod";
 import {
@@ -131,6 +135,7 @@ async function linkCatalogPlace(
   tx: PoolClient,
   subjectId: string,
   placeId: string,
+  actorId: string,
 ) {
   const place = await tx.query<{
     city_id: string;
@@ -172,6 +177,13 @@ async function linkCatalogPlace(
         "UPDATE layer_item SET place_id=$2,subject_id=NULL WHERE id=$1",
         [item.id, placeId],
       );
+      await moveSubjectReviewsToItem(
+        tx,
+        subjectId,
+        item.layer_id,
+        item.id,
+        actorId,
+      );
       continue;
     }
     if (twin.note && item.note && twin.note !== item.note)
@@ -189,6 +201,14 @@ async function linkCatalogPlace(
       "UPDATE daily_pick_layer_membership SET layer_item_id=$2 WHERE layer_item_id=$1",
       [item.id, twin.id],
     );
+    await moveSubjectReviewsToItem(
+      tx,
+      subjectId,
+      item.layer_id,
+      twin.id,
+      actorId,
+    );
+    await retireLayerItemReviews(tx, [item.id], actorId);
     await tx.query("DELETE FROM layer_item WHERE id=$1", [item.id]);
   }
   await tx.query(
@@ -250,7 +270,7 @@ export async function patchSubject(
           "LINKED",
           "This place is already linked to the catalog.",
         );
-      await linkCatalogPlace(tx, id, input.linkCatalogPlaceId);
+      await linkCatalogPlace(tx, id, input.linkCatalogPlaceId, a.id);
       action = "catalog_linked";
     } else {
       // Audited replacement keeps the old ID as an alias; a client can never move a review.

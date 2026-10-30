@@ -1294,9 +1294,13 @@ export const placeReview = pgTable(
     id: id(),
     /** Set for place-subject reviews; null for layer-item reviews. Exactly one of subjectId / layerItemId is set. */
     subjectId: uuid("subject_id").references(() => placeSubject.id),
-    /** Set for reviews of a layer item (place, event, content, custom place); always layer-scoped. */
+    /**
+     * Set for reviews of a layer item (place, event, content, custom place); always layer-scoped.
+     * Removing the item soft-deletes its reviews and detaches them (null here, status 'deleted'),
+     * so the review and revision history survive for audit.
+     */
     layerItemId: uuid("layer_item_id").references(() => layerItem.id, {
-      onDelete: "cascade",
+      onDelete: "set null",
     }),
     userId: uuid("user_id")
       .notNull()
@@ -1351,7 +1355,7 @@ export const placeReview = pgTable(
     index("place_review_subject_idx").on(t.subjectId),
     check(
       "place_review_target_check",
-      sql`(${t.subjectId} IS NOT NULL) <> (${t.layerItemId} IS NOT NULL)`,
+      sql`((${t.subjectId} IS NOT NULL) <> (${t.layerItemId} IS NOT NULL)) OR (${t.subjectId} IS NULL AND ${t.layerItemId} IS NULL AND ${t.status} = 'deleted')`,
     ),
     check(
       "place_review_item_scope_check",

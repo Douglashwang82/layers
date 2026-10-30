@@ -41,10 +41,10 @@ describe("layerItemReviewInput", () => {
 
 describe("review cursor", () => {
   const id = "00000000-0000-4000-8000-000000000001";
-  it("round-trips and rejects malformed cursors", () => {
-    const at = new Date("2026-10-01T12:00:00.000Z");
+  it("round-trips microsecond timestamps and rejects malformed cursors", () => {
+    const at = "2026-10-01 12:00:00.123457+00";
     expect(decodeReviewCursor(encodeReviewCursor(at, id))).toEqual({
-      createdAt: at.toISOString(),
+      createdAt: at,
       id,
     });
     expect(decodeReviewCursor(undefined)).toBeNull();
@@ -52,10 +52,6 @@ describe("review cursor", () => {
     expect(
       decodeReviewCursor(Buffer.from("nope|" + id).toString("base64url")),
     ).toBeNull();
-    expect(
-      decodeReviewCursor(
-        Buffer.from(`${at.toISOString()}|1; DROP`).toString("base64url"),
-      ),
-    ).toBeNull();
+    expect(decodeReviewCursor(encodeReviewCursor(at, "1; DROP"))).toBeNull();
   });
 });

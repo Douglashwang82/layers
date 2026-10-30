@@ -35,10 +35,54 @@ type Ratings = Record<
 type Feedback = { tone: "success" | "error"; text: string } | null;
 
 const changed = "layer:item-reviews";
+type LayerData = [
+  { ratings: Ratings },
+  { items: { id: string; key: string }[] },
+];
+/** Rows of one layer share one request pair; entries expire so a stale view never outlives the TTL. */
+const cacheTtlMs = 30_000;
 const shared = new Map<
   string,
-  Promise<[{ ratings: Ratings }, { items: { id: string; key: string }[] }]>
+  { startedAt: number; pending: Promise<LayerData> }
 >();
+
+/**
+ * `since` is the timestamp of the review-change event being handled: a cached
+ * request started at or after it already reflects that change, so the many
+ * hooks reacting to one event trigger a single refetch.
+ */
+function fetchLayerData(layerId: string, since: number | null) {
+  const now = performance.now();
+  const hit = shared.get(layerId);
+  if (
+    hit &&
+    now - hit.startedAt < cacheTtlMs &&
+    (since === null || hit.startedAt >= since)
+  )
+    return hit.pending;
+  const pending = Promise.all([
+    subjectApi<{ ratings: Ratings }>(`layers/${layerId}/item-ratings`),
+    subjectApi<{ items: { id: string; key: string }[] }>(
+      `layers/${layerId}/items?order=1`,
+    ),
+  ]);
+  const entry = { startedAt: now, pending };
+  shared.set(layerId, entry);
+  pending.catch(() => {
+    if (shared.get(layerId) === entry) shared.delete(layerId);
+  });
+  return pending;
+}
+
+/** Item ids by row key. When keys collide (a place and a custom place resolving alike) the lowest id wins. */
+export function itemIdsByKey(items: { id: string; key: string }[]) {
+  const ids = new Map<string, string>();
+  for (const { id, key } of items) {
+    const current = ids.get(key);
+    if (current === undefined || id < current) ids.set(key, id);
+  }
+  return ids;
+}
 
 /**
  * Layer item ids (the review API addresses items by id, rows by key) plus the
@@ -52,38 +96,25 @@ export function useLayerItemRatings(layerId: string | undefined) {
     available: boolean | null;
   }>({ ids: new Map(), ratings: {}, available: null });
   const load = useCallback(
-    async (fresh: boolean) => {
+    async (since: number | null) => {
       if (!layerId) return;
-      // Rows of one layer share a single request pair.
-      if (fresh) shared.delete(layerId);
-      let pending = shared.get(layerId);
-      if (!pending) {
-        pending = Promise.all([
-          subjectApi<{ ratings: Ratings }>(`layers/${layerId}/item-ratings`),
-          subjectApi<{ items: { id: string; key: string }[] }>(
-            `layers/${layerId}/items?order=1`,
-          ),
-        ]);
-        shared.set(layerId, pending);
-      }
       try {
-        const [ratings, items] = await pending;
+        const [ratings, items] = await fetchLayerData(layerId, since);
         setState({
-          ids: new Map(items.items.map((i) => [i.key, i.id])),
+          ids: itemIdsByKey(items.items),
           ratings: ratings.ratings,
           available: true,
         });
       } catch {
-        shared.delete(layerId);
         setState((s) => ({ ...s, available: false }));
       }
     },
     [layerId],
   );
   useEffect(() => {
-    const reload = () => void load(true);
+    const reload = (e: Event) => void load(e.timeStamp);
     // Loads once on mount and again whenever a review changes.
-    void load(false);
+    void load(null);
     window.addEventListener(changed, reload);
     return () => window.removeEventListener(changed, reload);
   }, [load]);
@@ -450,16 +481,19 @@ export function LayerItemReviewsByKey({
   t: Copy;
   locale: Locale;
 }) {
-  const { ids, available } = useLayerItemRatings(layerId);
+  const { ids, ratings, available } = useLayerItemRatings(layerId);
   const itemId = ids.get(itemKey);
   if (!available || !itemId) return null;
   return (
-    <LayerItemReviews
-      layerId={layerId}
-      itemId={itemId}
-      itemName={itemName}
-      t={t}
-      locale={locale}
-    />
+    <>
+      <LayerItemRatingBadge rating={ratings[itemId]} t={t} />
+      <LayerItemReviews
+        layerId={layerId}
+        itemId={itemId}
+        itemName={itemName}
+        t={t}
+        locale={locale}
+      />
+    </>
   );
 }

@@ -1,4 +1,4 @@
-import { pool } from "@taiwanhub/database";
+import { pool, retireLayerItemReviews } from "@taiwanhub/database";
 import type { PoolClient } from "pg";
 import type { z } from "zod";
 import {
@@ -475,18 +475,25 @@ export async function removeLayerItem(
   const found = await requireEditableLayer(id, a);
   notProjected(found);
   // A catalog key also covers custom places shown as that approved catalog place.
-  const result = await pool.query(
-    ref.type === "place"
-      ? `DELETE FROM layer_item WHERE layer_id=$1 AND (place_id=$2 OR custom_place_id IN (SELECT id FROM custom_place WHERE catalog_place_id=$2))`
-      : `DELETE FROM layer_item WHERE layer_id=$1 AND ${itemColumns[ref.type]}=$2`,
-    [found.layer.id, ref.id],
-  );
-  if (result.rowCount)
-    await pool.query(
+  const removed = await transaction(async (tx) => {
+    const items = await tx.query<{ id: string }>(
+      ref.type === "place"
+        ? `SELECT id FROM layer_item WHERE layer_id=$1 AND (place_id=$2 OR custom_place_id IN (SELECT id FROM custom_place WHERE catalog_place_id=$2)) ORDER BY id FOR UPDATE`
+        : `SELECT id FROM layer_item WHERE layer_id=$1 AND ${itemColumns[ref.type]}=$2 ORDER BY id FOR UPDATE`,
+      [found.layer.id, ref.id],
+    );
+    if (!items.rowCount) return false;
+    const ids = items.rows.map((r) => r.id);
+    // Reviews are soft-deleted and detached so their history outlives the item.
+    await retireLayerItemReviews(tx, ids, a.id);
+    await tx.query("DELETE FROM layer_item WHERE id=ANY($1::uuid[])", [ids]);
+    await tx.query(
       "UPDATE layer SET updated_by=$2,updated_at=now() WHERE id=$1",
       [found.layer.id, a.id],
     );
-  return { removed: (result.rowCount ?? 0) > 0, key };
+    return true;
+  });
+  return { removed, key };
 }
 /** Following retains a layer in the library; it never applies it to the map. */
 export async function followLayer(

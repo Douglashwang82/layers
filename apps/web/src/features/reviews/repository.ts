@@ -10,7 +10,11 @@ import {
   type ReviewStatus,
 } from "@taiwanhub/shared";
 import { getLayer } from "@/features/layers/repository";
-import { getVisibleSubject } from "@/features/place-subjects/repository";
+import {
+  findSubjectById,
+  getVisibleSubject,
+  isBlocked,
+} from "@/features/place-subjects/repository";
 type Queryable = Pick<PoolClient, "query">;
 export const reviewPageSize = 20;
 /** Scope filter on alias `r`. Parameter indexes are supplied by the caller; the column is allowlisted. */
@@ -263,7 +267,7 @@ export async function findLayerItem(
   lock = false,
 ) {
   const result = await db.query<LayerItemRef>(
-    `SELECT id,subject_id FROM layer_item WHERE id=$1 AND layer_id=$2${lock ? " FOR SHARE" : ""}`,
+    `SELECT id,subject_id FROM layer_item WHERE id=$1 AND layer_id=$2${lock ? " FOR NO KEY UPDATE" : ""}`,
     [itemId, layerId],
   );
   return result.rows[0] ?? null;
@@ -295,6 +299,10 @@ export async function listItemReviews(
   if (!access) return null;
   const item = await findLayerItem(pool, layerId, itemId);
   if (!item) return null;
+  if (item.subject_id) {
+    const subject = await findSubjectById(pool, item.subject_id);
+    if (!subject || isBlocked(subject)) return null;
+  }
   const target = targetWhere(itemTarget(item));
   const cursor = decodeReviewCursor(cursorToken);
   const params: unknown[] = [target.value, layerId, actor?.id ?? null];
@@ -311,9 +319,10 @@ export async function listItemReviews(
     author_name: string;
     author_image: string | null;
     created_at: Date;
+    created_at_text: string;
     updated_at: Date;
   }>(
-    `SELECT r.id,r.user_id,r.stars,r.body,u.name AS author_name,u.image AS author_image,r.created_at,r.updated_at
+    `SELECT r.id,r.user_id,r.stars,r.body,u.name AS author_name,u.image AS author_image,r.created_at,r.created_at::text AS created_at_text,r.updated_at
      FROM place_review r JOIN "user" u ON u.id=r.user_id
      WHERE ${target.sql} AND r.layer_id=$2
        AND (r.status='approved' OR (r.user_id=$3::uuid AND r.status='pending')) ${after}
@@ -353,7 +362,7 @@ export async function listItemReviews(
     })),
     nextCursor:
       rows.rows.length > itemReviewPageSize && last
-        ? encodeReviewCursor(last.created_at, last.id)
+        ? encodeReviewCursor(last.created_at_text, last.id)
         : null,
     own: own ? stripScope(own) : null,
     canReview: actor !== null,
@@ -379,9 +388,13 @@ export async function listLayerItemRatings(
   }>(
     `SELECT i.id,count(r.stars)::int AS rated,round(avg(r.stars)::numeric,1)::text AS average
      FROM layer_item i
+     LEFT JOIN place_subject s ON s.id=i.subject_id
+     LEFT JOIN place sp ON sp.id=s.catalog_place_id
      JOIN place_review r ON r.status='approved' AND r.layer_id=i.layer_id
        AND (r.layer_item_id=i.id OR (i.subject_id IS NOT NULL AND r.subject_id=i.subject_id))
-     WHERE i.layer_id=$1 GROUP BY i.id`,
+     WHERE i.layer_id=$1
+       AND (i.subject_id IS NULL OR (s.status='active' AND (s.catalog_place_id IS NULL OR sp.status='approved')))
+     GROUP BY i.id`,
     [layerId],
   );
   const ratings: Record<

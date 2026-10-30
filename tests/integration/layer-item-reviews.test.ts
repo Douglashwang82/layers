@@ -2,7 +2,11 @@ import { beforeAll, afterAll, describe, it, expect } from "vitest";
 import { pool } from "../../packages/database/src";
 import { resolvePlaceSubject } from "../../apps/web/src/features/place-subjects/service";
 import { createGroup } from "../../apps/web/src/features/groups/service";
-import { createLayer } from "../../apps/web/src/features/layers/service";
+import {
+  createLayer,
+  removeLayerItem,
+} from "../../apps/web/src/features/layers/service";
+import { patchSubject } from "../../apps/web/src/features/place-subjects/admin";
 import {
   decideReview,
   deleteItemReview,
@@ -394,5 +398,257 @@ describe("layer item reviews", () => {
       expectedRevision: 2,
     });
     expect(current.status).toBe("deleted");
+  });
+});
+
+describe("layer item review lifecycle", () => {
+  const extraLayers: string[] = [];
+  const extraPlaces: string[] = [];
+  const extraSubjects: string[] = [];
+  async function layerWith(audience: "private" | "public") {
+    const id = (
+      await createLayer(alice, {
+        title: `Lifecycle ${audience}`,
+        city: "houston",
+      })
+    ).layer.id;
+    extraLayers.push(id);
+    if (audience === "public")
+      await pool.query(
+        "UPDATE layer SET audience='public',review_status='approved',lifecycle='active' WHERE id=$1",
+        [id],
+      );
+    return id;
+  }
+  async function newPlace() {
+    const id = crypto.randomUUID();
+    extraPlaces.push(id);
+    await pool.query(
+      `INSERT INTO place(id,slug,name,image,category,city_id,neighborhood,address,latitude,longitude,status)
+       VALUES($1,$2,'Lifecycle place','https://example.test/x.png','Taiwanese',$3,'Test','1 Test St',29.7,-95.4,'approved')`,
+      [id, `lifecycle-${id.slice(0, 8)}`, houston],
+    );
+    return id;
+  }
+  async function placeItem(layerId: string, place: string) {
+    const r = await pool.query<{ id: string }>(
+      "INSERT INTO layer_item(layer_id,place_id,position) VALUES($1,$2,0) RETURNING id",
+      [layerId, place],
+    );
+    return r.rows[0].id;
+  }
+  async function subjectItem(layerId: string) {
+    const resolved = await resolvePlaceSubject(alice, {
+      provider: "google",
+      providerPlaceId: `test-${crypto.randomUUID()}`,
+    });
+    extraSubjects.push(resolved.subjectId);
+    const r = await pool.query<{ id: string }>(
+      "INSERT INTO layer_item(layer_id,subject_id,position) VALUES($1,$2,0) RETURNING id",
+      [layerId, resolved.subjectId],
+    );
+    return { item: r.rows[0].id, subjectId: resolved.subjectId };
+  }
+  afterAll(async () => {
+    await pool.query(
+      "DELETE FROM place_review WHERE layer_id=ANY($1::uuid[])",
+      [extraLayers],
+    );
+    await pool.query("DELETE FROM submission WHERE user_id=ANY($1::uuid[])", [
+      users.map((u) => u.id),
+    ]);
+    await pool.query("DELETE FROM layer WHERE id=ANY($1::uuid[])", [
+      extraLayers,
+    ]);
+    await pool.query(
+      "DELETE FROM place_provider_reference WHERE subject_id=ANY($1::uuid[])",
+      [extraSubjects],
+    );
+    await pool.query("DELETE FROM place_subject WHERE id=ANY($1::uuid[])", [
+      extraSubjects,
+    ]);
+    await pool.query("DELETE FROM place WHERE id=ANY($1::uuid[])", [
+      extraPlaces,
+    ]);
+  });
+
+  it("keeps review history and supersedes pending requests when an item is removed", async () => {
+    const layerId = await layerWith("public");
+    const place = await newPlace();
+    const item = await placeItem(layerId, place);
+    const review = await writeItemReview(bob, layerId, item, input(4, "Tasty"));
+    expect(review.status).toBe("pending");
+    const result = await removeLayerItem(alice, layerId, `place:${place}`);
+    expect(result.removed).toBe(true);
+    const row = await pool.query(
+      "SELECT layer_item_id,subject_id,status,revision FROM place_review WHERE id=$1",
+      [review.id],
+    );
+    expect(row.rows[0]).toEqual({
+      layer_item_id: null,
+      subject_id: null,
+      status: "deleted",
+      revision: 2,
+    });
+    const history = await pool.query<{ change_kind: string }>(
+      "SELECT change_kind FROM place_review_revision WHERE review_id=$1 ORDER BY revision",
+      [review.id],
+    );
+    expect(history.rows.map((r) => r.change_kind)).toEqual([
+      "created",
+      "item_removed",
+    ]);
+    const pending = await pool.query<{ status: string }>(
+      "SELECT status FROM submission WHERE entity_type='reviews' AND entity_id=$1",
+      [review.id],
+    );
+    expect(pending.rows.map((r) => r.status)).toEqual(["superseded"]);
+  });
+
+  it("answers a concurrent first review with a revision conflict, not a server error", async () => {
+    const layerId = await layerWith("private");
+    const item = await placeItem(layerId, await newPlace());
+    const results = await Promise.allSettled([
+      writeItemReview(alice, layerId, item, input(5, "one")),
+      writeItemReview(alice, layerId, item, input(3, "two")),
+    ]);
+    expect(results.filter((r) => r.status === "fulfilled")).toHaveLength(1);
+    const failed = results.find(
+      (r): r is PromiseRejectedResult => r.status === "rejected",
+    );
+    expect(failed!.reason).toMatchObject({
+      status: 409,
+      code: "REVISION_CONFLICT",
+    });
+  });
+
+  it("moves a subject's layer reviews onto the item when linked to the catalog", async () => {
+    const layerId = await layerWith("private");
+    const place = await newPlace();
+    const { item, subjectId: sid } = await subjectItem(layerId);
+    const mine = await writeItemReview(alice, layerId, item, input(5, "Keep"));
+    const revision = (
+      await pool.query<{ revision: number }>(
+        "SELECT revision FROM place_subject WHERE id=$1",
+        [sid],
+      )
+    ).rows[0].revision;
+    await patchSubject(moderator, sid, {
+      expectedRevision: revision,
+      reason: "link",
+      linkCatalogPlaceId: place,
+    });
+    const row = await pool.query(
+      "SELECT subject_id,layer_item_id,status,revision FROM place_review WHERE id=$1",
+      [mine.id],
+    );
+    expect(row.rows[0]).toEqual({
+      subject_id: null,
+      layer_item_id: item,
+      status: "approved",
+      revision: 1,
+    });
+    const view = await listItemReviews(layerId, item, alice, undefined);
+    expect(view!.summary).toMatchObject({ totalReviews: 1, averageStars: 5 });
+    expect(view!.own).toMatchObject({ id: mine.id, revision: 1 });
+  });
+
+  it("merges into an existing catalog item without losing the author's review", async () => {
+    const layerId = await layerWith("private");
+    const place = await newPlace();
+    const twin = await placeItem(layerId, place);
+    const { item, subjectId: sid } = await subjectItem(layerId);
+    const old = await writeItemReview(alice, layerId, item, input(2, "Old"));
+    const kept = await writeItemReview(alice, layerId, twin, input(5, "Twin"));
+    const viaSubject = (
+      await pool.query<{ id: string }>(
+        `INSERT INTO place_review(subject_id,user_id,scope_kind,layer_id,stars,body,status)
+         SELECT subject_id,$2,'layer',layer_id,4,'B','approved' FROM place_review WHERE id=$1 RETURNING id`,
+        [old.id, bob.id],
+      )
+    ).rows[0];
+    const revision = (
+      await pool.query<{ revision: number }>(
+        "SELECT revision FROM place_subject WHERE id=$1",
+        [sid],
+      )
+    ).rows[0].revision;
+    await patchSubject(moderator, sid, {
+      expectedRevision: revision,
+      reason: "merge",
+      linkCatalogPlaceId: place,
+    });
+    const rows = await pool.query<{
+      id: string;
+      layer_item_id: string | null;
+      status: string;
+    }>(
+      "SELECT id,layer_item_id,status FROM place_review WHERE id=ANY($1::uuid[])",
+      [[old.id, kept.id, viaSubject.id]],
+    );
+    const by = new Map(rows.rows.map((r) => [r.id, r]));
+    // Alice keeps her existing twin review; her older subject review is retired.
+    expect(by.get(kept.id)).toMatchObject({ layer_item_id: twin });
+    expect(by.get(old.id)).toMatchObject({
+      layer_item_id: null,
+      status: "deleted",
+    });
+    expect(by.get(viaSubject.id)).toMatchObject({
+      layer_item_id: twin,
+      status: "approved",
+    });
+  });
+
+  it("hides items of blocked subjects from reads", async () => {
+    const layerId = await layerWith("private");
+    const { item, subjectId: sid } = await subjectItem(layerId);
+    await writeItemReview(alice, layerId, item, input(4, "ok"));
+    expect(
+      await listItemReviews(layerId, item, alice, undefined),
+    ).not.toBeNull();
+    expect(
+      (await listLayerItemRatings(layerId, alice))!.ratings[item],
+    ).toBeDefined();
+    await pool.query("UPDATE place_subject SET status='hidden' WHERE id=$1", [
+      sid,
+    ]);
+    expect(await listItemReviews(layerId, item, alice, undefined)).toBeNull();
+    expect(
+      (await listLayerItemRatings(layerId, alice))!.ratings[item],
+    ).toBeUndefined();
+  });
+
+  it("pages through reviews created within the same millisecond", async () => {
+    const layerId = await layerWith("private");
+    const item = await placeItem(layerId, await newPlace());
+    const tag = crypto.randomUUID();
+    const bulk = await pool.query<{ id: string }>(
+      `INSERT INTO "user"(id,name,email,role) SELECT gen_random_uuid(),'Micro '||g,'micro-'||g||'-'||$1||'@example.test','USER' FROM generate_series(1,23) g RETURNING id`,
+      [tag],
+    );
+    try {
+      let n = 0;
+      for (const u of bulk.rows)
+        await pool.query(
+          `INSERT INTO place_review(layer_item_id,user_id,scope_kind,layer_id,stars,body,status,created_at)
+           VALUES($1,$2,'layer',$3,5,'m','approved',timestamptz '2026-01-01 00:00:00.100000+00' + ($4::int * interval '1 microsecond'))`,
+          [item, u.id, layerId, n++],
+        );
+      const seen = new Set<string>();
+      let cursor: string | undefined;
+      do {
+        const page = await listItemReviews(layerId, item, alice, cursor);
+        for (const r of page!.reviews) seen.add(r.id);
+        cursor = page!.nextCursor ?? undefined;
+      } while (cursor);
+      expect(seen.size).toBe(23);
+    } finally {
+      await pool.query("DELETE FROM place_review WHERE layer_item_id=$1", [
+        item,
+      ]);
+      await pool.query('DELETE FROM "user" WHERE id=ANY($1::uuid[])', [
+        bulk.rows.map((r) => r.id),
+      ]);
+    }
   });
 });
