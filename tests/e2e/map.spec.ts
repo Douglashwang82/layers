@@ -11,10 +11,8 @@ test("map home: default layer, selection with Back, filters and layer toggles", 
   await page.goto("/");
   // A fresh session starts with the list collapsed; opening it keeps everything else.
   await openMapList(page);
-  await expect(page.getByRole("tab", { name: /Results/ })).toHaveAttribute(
-    "aria-selected",
-    "true",
-  );
+  // The sidebar is the place list itself, with no tab bar.
+  await expect(page.getByRole("tab")).toHaveCount(0);
   await expect(page.getByRole("status").first()).toContainText(
     "results in this area",
   );
@@ -58,15 +56,16 @@ test("map home: default layer, selection with Back, filters and layer toggles", 
   await page.getByRole("button", { name: "Exit search" }).click();
   await expect(page).not.toHaveURL(/q=/);
   // Hiding the only layer yields the explicit empty state, never a secret default.
-  await page.getByRole("tab", { name: /Layers/ }).click();
+  await page.getByRole("button", { name: "Manage layers" }).click();
   const discover = page.getByRole("checkbox", { name: /Discover Houston/ });
   await expect(discover).toBeChecked();
   await discover.uncheck();
   await expect(page).toHaveURL(/layers=none/);
-  await expect(page.getByRole("tab", { name: /Results/ })).toContainText("0");
   await discover.check();
   await expect(page).toHaveURL(/layers=discover-houston/);
-  await page.getByRole("tab", { name: /Results/ }).click();
+  await page
+    .getByRole("button", { name: "Back to results", exact: true })
+    .click();
   await expect(page.locator(".result-row").first()).toBeVisible();
   // Date preset and list view are URL state too.
   await page.getByRole("button", { name: /^Filters/ }).click();
@@ -103,19 +102,21 @@ test("library Apply adds to the current set; duplicates render once with members
     .first()
     .click();
   await openMapList(page);
-  await page.getByRole("tab", { name: /Layers/ }).click();
+  await page.getByRole("button", { name: "Manage layers" }).click();
   await expect(
     page.getByRole("checkbox", { name: /Local food favorites/ }),
   ).toBeChecked();
   await expect(
     page.getByRole("checkbox", { name: /Discover Houston/ }),
   ).toBeChecked();
-  await page.getByRole("tab", { name: /Results/ }).click();
+  await page
+    .getByRole("button", { name: "Back to results", exact: true })
+    .click();
   const row = page.locator(".result-row", { hasText: noodleHouse });
   await expect(row).toHaveCount(1);
   await expect(row).toContainText("In 2 layers");
   // Show only this layer is explicit and keeps the other listed for undo.
-  await page.getByRole("tab", { name: /Layers/ }).click();
+  await page.getByRole("button", { name: "Manage layers" }).click();
   await page
     .getByRole("button", { name: "Show only this layer" })
     .first()
@@ -171,8 +172,14 @@ test("sign-in return keeps the selected item; personal layer creation, add, appl
   await page.getByLabel("To", { exact: true }).fill("2026-09-27");
   await page.getByRole("button", { name: "Create layer", exact: true }).click();
   await expect(page).toHaveURL(/layerPanel=contents.*layer=weekend-plan-/);
-  await page.locator(".layer-workspace-screen").getByRole("searchbox", { name: "Search", exact: true }).fill("noodle");
-  await page.locator(".layer-workspace-screen").getByRole("button", { name: "Search", exact: true }).click();
+  await page
+    .locator(".layer-workspace-screen")
+    .getByRole("searchbox", { name: "Search", exact: true })
+    .fill("noodle");
+  await page
+    .locator(".layer-workspace-screen")
+    .getByRole("button", { name: "Search", exact: true })
+    .click();
   await page
     .locator(".editor-results .result-row", { hasText: noodleHouse })
     .getByRole("button", { name: "Add to layer" })
@@ -182,8 +189,14 @@ test("sign-in return keeps the selected item; personal layer creation, add, appl
   ).toContainText("Added");
   // No catalog match: create a private custom place in place, pinned to the
   // (mocked) current location, so no geocoder request is made.
-  await page.locator(".layer-workspace-screen").getByRole("searchbox", { name: "Search", exact: true }).fill("Zzyzx Tea Lab");
-  await page.locator(".layer-workspace-screen").getByRole("button", { name: "Search", exact: true }).click();
+  await page
+    .locator(".layer-workspace-screen")
+    .getByRole("searchbox", { name: "Search", exact: true })
+    .fill("Zzyzx Tea Lab");
+  await page
+    .locator(".layer-workspace-screen")
+    .getByRole("button", { name: "Search", exact: true })
+    .click();
   await expect(page.getByText("No results for “Zzyzx Tea Lab”.")).toBeVisible();
   await page
     .getByRole("button", { name: "Add “Zzyzx Tea Lab” as a new place" })
@@ -202,8 +215,14 @@ test("sign-in return keeps the selected item; personal layer creation, add, appl
   });
   await expect(customRow.first()).toContainText("Private place");
   // A second search finds it under "Your places", already added.
-  await page.locator(".layer-workspace-screen").getByRole("searchbox", { name: "Search", exact: true }).fill("Zzyzx");
-  await page.locator(".layer-workspace-screen").getByRole("button", { name: "Search", exact: true }).click();
+  await page
+    .locator(".layer-workspace-screen")
+    .getByRole("searchbox", { name: "Search", exact: true })
+    .fill("Zzyzx");
+  await page
+    .locator(".layer-workspace-screen")
+    .getByRole("button", { name: "Search", exact: true })
+    .click();
   await expect(
     page.getByRole("heading", { name: "Your places" }),
   ).toBeVisible();
@@ -229,13 +248,15 @@ test("sign-in return keeps the selected item; personal layer creation, add, appl
     .first()
     .click();
   await openMapList(page);
-  await page.getByRole("tab", { name: /Layers/ }).click();
+  await page.getByRole("button", { name: "Manage layers" }).click();
   await expect(
     page.getByRole("checkbox", { name: new RegExp(title) }),
   ).toBeChecked();
   await expect(page.getByText("By you")).toBeVisible();
   // Add to layer from the map preview shows existing membership instead of duplicating.
-  await page.getByRole("tab", { name: /Results/ }).click();
+  await page
+    .getByRole("button", { name: "Back to results", exact: true })
+    .click();
   await page
     .getByRole("link", { name: noodleHouse, exact: false })
     .first()
@@ -260,7 +281,7 @@ test("sign-in return keeps the selected item; personal layer creation, add, appl
   // Returning users get their layers restored without explicit URL state.
   await page.goto("/");
   await openMapList(page);
-  await page.getByRole("tab", { name: /Layers/ }).click();
+  await page.getByRole("button", { name: "Manage layers" }).click();
   await expect(
     page.getByRole("checkbox", { name: new RegExp(title) }),
   ).toBeChecked();
@@ -294,7 +315,9 @@ test("a failed map provider keeps results, selection and directions usable", asy
   await page.getByRole("button", { name: "List view" }).first().click();
   await expect(page).toHaveURL(/view=list/);
   // Changing the presentation keeps the selected place; return to its results explicitly.
-  await page.getByRole("button", { name: "Back to results", exact: true }).click();
+  await page
+    .getByRole("button", { name: "Back to results", exact: true })
+    .click();
   await expect(page.locator(".result-row").first()).toBeVisible();
 });
 
@@ -323,7 +346,7 @@ test("floating shell: full-viewport map, one search, labeled menu and no page sc
   await expect(page).toHaveURL(/q=noodle/);
   await page.reload();
   await expect(header.getByRole("searchbox")).toHaveValue("noodle");
-  await expect(page.getByRole("tab", { name: /Results/ })).toBeVisible();
+  await expect(page.locator(".result-count")).toBeVisible();
   // The labeled menu reaches every destination and Escape returns focus.
   const summary = page.locator(".map-profile-menu summary");
   await expect(summary).toContainText("Menu");
@@ -338,7 +361,7 @@ test("floating shell: full-viewport map, one search, labeled menu and no page sc
   // Phones: same full-bleed map, wrapped search and a floating bottom navigation.
   await page.setViewportSize({ width: 390, height: 844 });
   await expect(header.getByRole("searchbox")).toBeVisible();
-  await expect(page.getByRole("tab", { name: /Results/ })).toBeVisible();
+  await expect(page.locator(".result-count")).toBeVisible();
   const nav = await page.locator(".bottom-nav").boundingBox();
   expect(nav!.x).toBeGreaterThan(0);
   expect(nav!.y + nav!.height).toBeLessThan(844);

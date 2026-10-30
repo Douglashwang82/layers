@@ -854,7 +854,7 @@ export function MapWorkspace({
         scroll: false,
       });
     }
-    openLayersTab();
+    setTab("layers");
     setMode("layers");
     setDetailHidden(true);
     setPanelOpen(true);
@@ -875,11 +875,6 @@ export function MapWorkspace({
       /* ignore */
     }
   };
-  // The list view has no tabs, so managing layers returns to the map view.
-  function openLayersTab() {
-    if (listView && !layerPanel) setView("map");
-    setTab("layers");
-  }
   /* New day notice for rolling layers */
   const [newDay, setNewDay] = useState(false);
   useEffect(() => {
@@ -1218,7 +1213,7 @@ export function MapWorkspace({
               <button
                 type="button"
                 className="button secondary small"
-                onClick={openLayersTab}
+                onClick={() => setTab("layers")}
               >
                 {t.yourLayers}
               </button>
@@ -1391,7 +1386,7 @@ export function MapWorkspace({
       <button
         type="button"
         className="layer-chip manage"
-        onClick={openLayersTab}
+        onClick={() => setTab("layers")}
       >
         {t.manageLayers}
       </button>
@@ -1982,38 +1977,20 @@ export function MapWorkspace({
               </>
             ) : mode === "business" && discoveryPanel && !mvp ? (
               <div className="panel-body">{discoveryPanel}</div>
-            ) : listView ? (
-              <div className="panel-body">{resultsPanel}</div>
-            ) : (
-              <>
-                <div
-                  className="panel-tabs"
-                  role="tablist"
-                  aria-label={t.mapNav}
+            ) : tab === "layers" ? (
+              // No tab bar: the sidebar is the place list, and Manage layers opens this.
+              <div className="panel-body">
+                <button
+                  type="button"
+                  className="text-button"
+                  onClick={() => setTab("results")}
                 >
-                  <button
-                    type="button"
-                    role="tab"
-                    aria-selected={tab === "layers"}
-                    onClick={() => setTab("layers")}
-                  >
-                    {t.layersTab}{" "}
-                    <span className="count-pill">{layerCount}</span>
-                  </button>
-                  <button
-                    type="button"
-                    role="tab"
-                    aria-selected={tab === "results"}
-                    onClick={() => setTab("results")}
-                  >
-                    {t.resultsTab}{" "}
-                    <span className="count-pill">{placeCount}</span>
-                  </button>
-                </div>
-                <div className="panel-body" role="tabpanel">
-                  {tab === "layers" ? layersPanel : resultsPanel}
-                </div>
-              </>
+                  {t.backToResults}
+                </button>
+                {layersPanel}
+              </div>
+            ) : (
+              <div className="panel-body">{resultsPanel}</div>
             )}
             {mvp && (
               // Google place pins come from these rows, so they stay mounted
@@ -2024,7 +2001,7 @@ export function MapWorkspace({
                   !!layerPanel ||
                   routeInPanel ||
                   detailInPanel ||
-                  (!listView && tab !== "results")
+                  tab !== "results"
                 }
               >
                 {externalReferences}
