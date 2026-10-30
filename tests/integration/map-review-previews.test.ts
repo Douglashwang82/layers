@@ -136,14 +136,16 @@ describe("map review previews", () => {
     const key = `place:${placeId}`;
     const view = await listMapReviewPreviews(state([shared.slug]), city, bob);
     expect(view.previews[key]).toEqual({
-      averageStars: 2.5,
-      ratedCount: 2,
-      commentCount: 1,
       reviewerCount: 2,
-      reviewers: [
+      reviews: [
         // Newest first; an unsafe image URL is dropped.
-        { name: "Preview reviewer 1", image: null },
-        { name: "Preview reviewer 0", image: "https://example.test/a.png" },
+        { name: "Preview reviewer 1", image: null, stars: 1, comment: "" },
+        {
+          name: "Preview reviewer 0",
+          image: "https://example.test/a.png",
+          stars: 4,
+          comment: "Great",
+        },
       ],
     });
     expect(
@@ -159,15 +161,15 @@ describe("map review previews", () => {
     // the layer's owner sees that pin, so only the owner gets its preview.
     await pool.query(
       `INSERT INTO place_review(subject_id,user_id,scope_kind,layer_id,stars,body,status)
-       VALUES($1,$2,'layer',$3,5,'Lovely','approved')`,
-      [subjectId, carol.id, open.id],
+       VALUES($1,$2,'layer',$3,5,$4,'approved')`,
+      // Leading and trailing newlines are trimmed in SQL.
+      [subjectId, carol.id, open.id, "\n\tLovely\n"],
     );
     const key = `subject:${subjectId}`;
     const owner = await listMapReviewPreviews(state([open.slug]), city, alice);
     expect(owner.previews[key]).toMatchObject({
-      averageStars: 5,
-      commentCount: 1,
       reviewerCount: 1,
+      reviews: [{ stars: 5, comment: "Lovely" }],
     });
     const anon = await listMapReviewPreviews(state([open.slug]), city, null);
     expect(anon.previews[key]).toBeUndefined();
@@ -180,7 +182,7 @@ describe("map review previews", () => {
       city,
       null,
     );
-    expect(approved.previews[key]).toMatchObject({ ratedCount: 1 });
+    expect(approved.previews[key]).toMatchObject({ reviewerCount: 1 });
     // A scheduled item is not on the map yet.
     await pool.query(
       "UPDATE layer_item SET valid_from=now()+interval '1 day' WHERE id=$1",

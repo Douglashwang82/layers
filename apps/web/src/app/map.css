@@ -1802,71 +1802,107 @@ summary.map-float-button::-webkit-details-marker {
   border: 0;
   box-shadow: none;
 }
-.tip-main {
+/* Reviews float beside the card: avatar, the reviewer's stars, a speech bubble.
+   The list's left padding keeps the pointer inside the tooltip on the way over. */
+.map-tooltip .tip-reviews {
+  position: absolute;
+  top: 0;
+  left: 100%;
   display: grid;
-  gap: 2px;
-  min-width: 0;
-  flex: 1;
+  gap: 8px;
+  width: 246px;
+  margin: 0;
+  padding: 0 0 0 10px;
+  list-style: none;
+  box-sizing: border-box;
 }
-.map-place-tip .tip-main {
-  gap: 6px;
+/* A card flipped above the pointer grows its reviews upward too. */
+.map-tooltip.tip-above .tip-reviews {
+  top: auto;
+  bottom: 0;
 }
-/* Reviews sit in a column on the card's right. */
-.map-tooltip.has-reviews {
+.tip-review {
   display: flex;
   align-items: flex-start;
-  gap: 10px;
-  max-width: 304px;
-}
-.tip-reviews {
-  display: grid;
-  flex: none;
-  justify-items: center;
-  gap: 6px;
-  width: 44px;
-  padding-left: 10px;
-  border-left: 1px solid var(--th-divider);
-}
-.map-place-tip .tip-reviews {
-  padding-top: 6px;
-}
-.map-tooltip .tip-avatars {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 0;
+  gap: 8px;
 }
 .map-tooltip .tip-avatar {
   display: grid;
+  flex: none;
   place-items: center;
-  width: 26px;
-  height: 26px;
+  width: 36px;
+  height: 36px;
   overflow: hidden;
   border: 2px solid var(--th-surface);
   border-radius: 50%;
   background: var(--th-divider);
+  box-shadow: var(--th-float-shadow);
   color: var(--th-text);
-  font-size: 12px;
+  font-size: 14px;
   font-weight: 600;
-}
-.map-tooltip .tip-avatar + .tip-avatar {
-  margin-top: -8px;
 }
 .tip-avatar img {
   width: 100%;
   height: 100%;
   object-fit: cover;
 }
-.map-tooltip .tip-avatar-more {
-  font-size: 10px;
-}
-.map-tooltip .tip-review-stat {
+.tip-review-body {
+  display: grid;
+  justify-items: start;
   gap: 3px;
-  font-size: 12px;
-  font-variant-numeric: tabular-nums;
+  min-width: 0;
 }
-.map-tooltip .tip-review-rating svg {
+.map-tooltip .tip-review-stars {
+  gap: 1px;
   color: var(--th-warning);
+  filter: drop-shadow(0 0 1px var(--th-surface))
+    drop-shadow(0 0 1px var(--th-surface));
+}
+.tip-review-stars svg {
+  fill: currentColor;
+}
+.tip-bubble {
+  position: relative;
+  max-width: 100%;
+  margin: 0 0 4px;
+  padding: 6px 10px;
+  border: 1px solid var(--th-divider);
+  border-radius: 14px;
+  background: var(--th-surface);
+  box-shadow: var(--th-float-shadow);
+  font-size: 13px;
+  line-height: 1.35;
+}
+/* The bubble's tail, bottom left. */
+.tip-bubble::after {
+  content: "";
+  position: absolute;
+  left: 14px;
+  bottom: -5px;
+  width: 8px;
+  height: 8px;
+  border-right: 1px solid var(--th-divider);
+  border-bottom: 1px solid var(--th-divider);
+  background: var(--th-surface);
+  transform: rotate(45deg);
+}
+.map-tooltip .tip-bubble-text {
+  display: -webkit-box;
+  overflow: hidden;
+  color: var(--th-text);
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  line-clamp: 2;
+}
+.tip-review-more {
+  justify-self: start;
+  margin-left: 44px;
+  padding: 2px 8px;
+  border: 1px solid var(--th-divider);
+  border-radius: 999px;
+  background: var(--th-surface);
+  color: var(--th-muted);
+  font-size: 12px;
 }
 @media (max-width: 800px) {
   .map-tooltip {

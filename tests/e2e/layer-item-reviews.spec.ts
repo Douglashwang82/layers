@@ -165,14 +165,29 @@ test("a layer item rating and comment is visible to another group member", async
     throw new Error("pin tooltip did not appear");
   }).toPass({ timeout: 60000 });
   await expect(tooltip).toContainText("Auntie Lin Noodles");
-  const reviews = tooltip.locator(".tip-reviews");
+  // Beside the card, one row per reviewer (newest first): avatar, their stars, their comment.
+  const reviews = tooltip.getByRole("list", { name: "Ratings and comments" });
   await expect(reviews).toBeVisible();
-  await expect(reviews.locator(".tip-avatars")).toHaveAttribute(
-    "aria-label",
-    /^Reviewed by .*Reviewer (Ann|Ben)/,
-  );
-  await expect(reviews.getByRole("img", { name: "2 comments" })).toBeVisible();
+  const rows = reviews.getByRole("listitem");
+  await expect(rows).toHaveCount(2);
+  await expect(rows.nth(0)).toContainText("Reviewer Ben");
   await expect(
-    reviews.getByRole("img", { name: "3.0 average from 2 ratings" }),
+    rows.nth(0).getByRole("img", { name: "2 of 5 stars" }),
   ).toBeVisible();
+  await expect(rows.nth(0).locator(".tip-bubble")).toHaveText(
+    "Too salty for me.",
+  );
+  await expect(rows.nth(1)).toContainText("Reviewer Ann");
+  await expect(
+    rows.nth(1).getByRole("img", { name: "4 of 5 stars" }),
+  ).toBeVisible();
+  await expect(rows.nth(1).locator(".tip-bubble")).toHaveText(
+    "Broth is rich and the noodles chewy.",
+  );
+  // The pointer can cross to the reviews without the card closing.
+  const box = (await rows.nth(1).boundingBox())!;
+  await owner.mouse.move(box.x + box.width / 2, box.y + box.height / 2, {
+    steps: 8,
+  });
+  await expect(reviews).toBeVisible();
 });

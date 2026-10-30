@@ -1,18 +1,26 @@
 "use client";
 import { useCallback, useEffect, useState } from "react";
-import { MessageCircle, Star } from "lucide-react";
+import { Star } from "lucide-react";
 import { reviewsChangedEvent } from "@/components/layers/layer-item-reviews";
 import { type Copy, format } from "@/lib/dictionary";
 
 export type ReviewPreview = {
-  averageStars: number | null;
-  ratedCount: number;
-  commentCount: number;
   reviewerCount: number;
-  reviewers: { name: string; image: string | null }[];
+  reviews: {
+    name: string;
+    image: string | null;
+    stars: number | null;
+    comment: string;
+  }[];
 };
-/** Width the review column adds to a hover card, for keeping it inside the map. */
-export const tipReviewsWidth = 64;
+/** Width of the review list beside a hover card (gap included), for keeping it inside the map. */
+export const tipReviewsWidth = 246;
+/** Approximate height of the review list (rows with two-line bubbles), for flipping the card above the pointer. */
+export function tipReviewsHeight(preview: ReviewPreview | undefined) {
+  if (!preview?.reviews.length) return 0;
+  const more = preview.reviewerCount > preview.reviews.length ? 32 : 0;
+  return preview.reviews.length * 72 + more;
+}
 
 const none: Record<string, ReviewPreview> = {};
 
@@ -77,7 +85,10 @@ function Avatar({ name, image }: { name: string; image: string | null }) {
   );
 }
 
-/** The hover card's right column: reviewer avatars, comment count, average rating. */
+/**
+ * Beside the hover card: each reviewer's avatar, their stars and a speech
+ * bubble with their comment, newest first, then "+N more".
+ */
 export function TipReviews({
   preview,
   t,
@@ -85,57 +96,39 @@ export function TipReviews({
   preview: ReviewPreview | undefined;
   t: Copy;
 }) {
-  if (!preview || preview.reviewerCount === 0) return null;
-  const names = preview.reviewers.map((r) => r.name).join(", ");
-  const more = preview.reviewerCount - preview.reviewers.length;
-  const average =
-    preview.averageStars === null ? null : preview.averageStars.toFixed(1);
+  if (!preview?.reviews.length) return null;
+  const more = preview.reviewerCount - preview.reviews.length;
   return (
-    <div className="tip-reviews">
-      <span
-        className="tip-avatars"
-        role="img"
-        aria-label={
-          more > 0
-            ? format(t.tipReviewersMore, { names, count: more })
-            : format(t.tipReviewers, { names })
-        }
-      >
-        {preview.reviewers.map((r, i) => (
-          <Avatar key={i} name={r.name} image={r.image} />
-        ))}
-        {more > 0 && (
-          <span className="tip-avatar tip-avatar-more" aria-hidden="true">
-            +{more}
-          </span>
-        )}
-      </span>
-      {preview.commentCount > 0 && (
-        <span
-          className="tip-review-stat"
-          role="img"
-          aria-label={format(
-            preview.commentCount === 1 ? t.tipComment : t.tipComments,
-            { count: preview.commentCount },
-          )}
-        >
-          <MessageCircle size={14} aria-hidden="true" />
-          {preview.commentCount}
-        </span>
+    <ul className="tip-reviews" aria-label={t.tipReviewsLabel}>
+      {preview.reviews.map((review, i) => (
+        <li key={i} className="tip-review">
+          <Avatar name={review.name} image={review.image} />
+          <div className="tip-review-body">
+            <span className="sr-only">{review.name}</span>
+            {review.stars !== null && (
+              <span
+                className="tip-review-stars"
+                role="img"
+                aria-label={format(t.starsOption, { count: review.stars })}
+              >
+                {Array.from({ length: review.stars }, (_, n) => (
+                  <Star key={n} size={13} aria-hidden="true" />
+                ))}
+              </span>
+            )}
+            {review.comment && (
+              <p className="tip-bubble">
+                <span className="tip-bubble-text">{review.comment}</span>
+              </p>
+            )}
+          </div>
+        </li>
+      ))}
+      {more > 0 && (
+        <li className="tip-review-more">
+          {format(t.tipMoreReviewers, { count: more })}
+        </li>
       )}
-      {average !== null && preview.ratedCount > 0 && (
-        <span
-          className="tip-review-stat tip-review-rating"
-          role="img"
-          aria-label={format(t.itemRatingBadge, {
-            average,
-            count: preview.ratedCount,
-          })}
-        >
-          <Star size={14} aria-hidden="true" fill="currentColor" />
-          {average}
-        </span>
-      )}
-    </div>
+    </ul>
   );
 }

@@ -77,6 +77,7 @@ import { tabelogLink } from "@/lib/tabelog";
 import { ItemPreview } from "./item-preview";
 import {
   TipReviews,
+  tipReviewsHeight,
   tipReviewsWidth,
   useMapReviewPreviews,
 } from "./tip-reviews";
@@ -519,7 +520,14 @@ export function MapWorkspace({
       const width = stage?.clientWidth ?? 1024;
       const height = stage?.clientHeight ?? 768;
       const card = extraPoints.some((p) => p.key === hover.key && p.placeId);
-      const [w, h] = card ? [placeTipWidth, placeTipHeight] : [234, 0];
+      // A review list beside the card can be taller than the card itself.
+      const [w, h] = [
+        card ? placeTipWidth : 234,
+        Math.max(
+          card ? placeTipHeight : 0,
+          tipReviewsHeight(reviewPreviews[hover.key]),
+        ),
+      ];
       const above = hover.y + 14 + h > height && hover.y - 14 - h > 0;
       setTip({
         key: hover.key,
@@ -1665,38 +1673,36 @@ export function MapWorkspace({
                 if (point?.placeId && provider)
                   return (
                     <div
-                      className={`map-tooltip map-place-tip${reviews ? " has-reviews" : ""}`}
+                      className={`map-tooltip map-place-tip${tip.above ? " tip-above" : ""}`}
                       role={point.tabelog ? undefined : role}
                       style={{
                         left,
                         top: tip.y,
-                        width: placeTipWidth + (reviews ? tipReviewsWidth : 0),
+                        width: placeTipWidth,
                         transform: tip.above ? "translateY(-100%)" : undefined,
                       }}
                       onMouseEnter={() => window.clearTimeout(tipTimer.current)}
                       onMouseLeave={() => setTip(null)}
                     >
-                      <div className="tip-main">
-                        <ProviderDetails
-                          key={point.placeId}
-                          provider={provider}
-                          placeId={point.placeId}
-                          compact
-                          preview
-                          photo
-                          onLoad={() => {}}
-                          onError={() => setTip(null)}
+                      <ProviderDetails
+                        key={point.placeId}
+                        provider={provider}
+                        placeId={point.placeId}
+                        compact
+                        preview
+                        photo
+                        onLoad={() => {}}
+                        onError={() => setTip(null)}
+                      />
+                      {point.tabelog && (
+                        <TabelogLink
+                          name={point.tabelog.name}
+                          href={point.tabelog.url}
+                          t={t}
+                          className="tip-tabelog"
                         />
-                        {point.tabelog && (
-                          <TabelogLink
-                            name={point.tabelog.name}
-                            href={point.tabelog.url}
-                            t={t}
-                            className="tip-tabelog"
-                          />
-                        )}
-                        {routeButton}
-                      </div>
+                      )}
+                      {routeButton}
                       <TipReviews preview={reviews} t={t} />
                     </div>
                   );
@@ -1705,34 +1711,33 @@ export function MapWorkspace({
                 const kind = markerKind(item);
                 return (
                   <div
-                    className={`map-tooltip${reviews ? " has-reviews" : ""}`}
+                    className={`map-tooltip${tip.above ? " tip-above" : ""}`}
                     role={tabelogLink(item) ? undefined : role}
                     style={{
                       left,
                       top: tip.y,
+                      transform: tip.above ? "translateY(-100%)" : undefined,
                     }}
                     onMouseEnter={() => window.clearTimeout(tipTimer.current)}
                     onMouseLeave={() => setTip(null)}
                   >
-                    <div className="tip-main">
-                      <strong>{localizedName(item, locale)}</strong>
-                      <span>
-                        <i
-                          className="kind-dot"
-                          style={{ background: `var(--marker-${kind})` }}
-                          aria-hidden="true"
-                        />
-                        {markerLabel(kind, t)}
-                        {item.category ? ` · ${item.category}` : ""}
-                      </span>
-                      <TabelogLink
-                        name={item.name}
-                        href={tabelogLink(item)}
-                        t={t}
-                        className="tip-tabelog"
+                    <strong>{localizedName(item, locale)}</strong>
+                    <span>
+                      <i
+                        className="kind-dot"
+                        style={{ background: `var(--marker-${kind})` }}
+                        aria-hidden="true"
                       />
-                      {routeButton}
-                    </div>
+                      {markerLabel(kind, t)}
+                      {item.category ? ` · ${item.category}` : ""}
+                    </span>
+                    <TabelogLink
+                      name={item.name}
+                      href={tabelogLink(item)}
+                      t={t}
+                      className="tip-tabelog"
+                    />
+                    {routeButton}
                     <TipReviews preview={reviews} t={t} />
                   </div>
                 );

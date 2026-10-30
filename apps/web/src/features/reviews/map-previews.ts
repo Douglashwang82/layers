@@ -6,15 +6,22 @@ import { runMapQuery, type MapCity } from "@/features/map/query";
 import { flags } from "@/lib/config";
 
 export const previewReviewerLimit = 3;
+/** Comment excerpt length in characters; the card clamps it to two lines. */
+export const previewCommentLimit = 140;
 const nameLimit = 80;
 const imageByteLimit = 2048;
 
 export type ReviewPreview = {
-  averageStars: number | null;
-  ratedCount: number;
-  commentCount: number;
+  /** Distinct reviewers; more than `reviews.length` means "+N more". */
   reviewerCount: number;
-  reviewers: { name: string; image: string | null }[];
+  /** Each reviewer's newest review, newest first. */
+  reviews: {
+    name: string;
+    image: string | null;
+    stars: number | null;
+    /** Trimmed excerpt, "" without a comment. */
+    comment: string;
+  }[];
 };
 /** One approved review of a layer item, with the item's identifying columns. */
 export type PreviewRow = {
@@ -27,7 +34,8 @@ export type PreviewRow = {
   catalog_id: string | null;
   user_id: string;
   stars: number | null;
-  has_body: boolean;
+  /** At most previewCommentLimit + 1 characters of the trimmed body. */
+  body: string;
   author_name: string;
   author_image: string | null;
   created_at: Date;
@@ -50,6 +58,17 @@ function candidateKeys(row: PreviewRow) {
   return [];
 }
 
+/** `body` arrives trimmed by SQL (whitespace class below) and cut at limit + 1, so length alone says whether it was cut. */
+function excerpt(body: string) {
+  const chars = Array.from(body);
+  return chars.length > previewCommentLimit
+    ? `${chars
+        .slice(0, previewCommentLimit - 1)
+        .join("")
+        .trimEnd()}…`
+    : chars.join("");
+}
+
 function safeImage(image: string | null) {
   if (!image || Buffer.byteLength(image) > imageByteLimit) return null;
   try {
@@ -62,9 +81,8 @@ function safeImage(image: string | null) {
 /**
  * Folds review rows into previews by marker key. A row counts only when its
  * item renders under that key in that layer (`visible`: key → layer ids), so
- * hidden, unreviewed or scheduled items never appear. Ratings and comments
- * count reviews; a person who reviewed one place in two layers counts twice
- * there but once as a reviewer.
+ * hidden, unreviewed or scheduled items never appear. A person who reviewed
+ * one place in two layers is shown once, with the newer review.
  */
 export function aggregateReviewPreviews(
   rows: PreviewRow[],
@@ -90,24 +108,16 @@ export function aggregateReviewPreviews(
         b.created_at.getTime() - a.created_at.getTime() ||
         (a.review_id < b.review_id ? 1 : -1),
     );
-    const rated = list.filter((r) => r.stars !== null);
     const users = new Map<string, PreviewRow>();
     for (const r of list) if (!users.has(r.user_id)) users.set(r.user_id, r);
     previews[key] = {
-      averageStars: rated.length
-        ? Math.round(
-            (rated.reduce((sum, r) => sum + r.stars!, 0) / rated.length) * 10,
-          ) / 10
-        : null,
-      ratedCount: rated.length,
-      commentCount: list.filter((r) => r.has_body).length,
       reviewerCount: users.size,
-      reviewers: [...users.values()]
-        .slice(0, previewReviewerLimit)
-        .map((r) => ({
-          name: r.author_name.slice(0, nameLimit),
-          image: safeImage(r.author_image),
-        })),
+      reviews: [...users.values()].slice(0, previewReviewerLimit).map((r) => ({
+        name: r.author_name.slice(0, nameLimit),
+        image: safeImage(r.author_image),
+        stars: r.stars,
+        comment: excerpt(r.body),
+      })),
     };
   }
   return previews;
@@ -147,7 +157,7 @@ export async function listMapReviewPreviews(
   // Two branches so each uses its own index: item reviews and subject reviews.
   const rows = await pool.query<PreviewRow>(
     `SELECT x.review_id,x.layer_id,x.place_id,x.event_id,x.subject_id,x.custom_place_id,x.catalog_id,
-       r.user_id,r.stars,(btrim(r.body)<>'') AS has_body,u.name AS author_name,u.image AS author_image,r.created_at
+       r.user_id,r.stars,left(btrim(r.body,E' \t\r\n\f\v'),${previewCommentLimit + 1}) AS body,u.name AS author_name,u.image AS author_image,r.created_at
      FROM (
        SELECT r.id AS review_id,i.layer_id,i.place_id,i.event_id,NULL::uuid AS subject_id,i.custom_place_id,CASE WHEN cp.status='active' AND cpp.status='approved' THEN cp.catalog_place_id END AS catalog_id
        FROM layer_item i
