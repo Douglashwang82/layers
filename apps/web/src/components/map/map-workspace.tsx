@@ -99,9 +99,9 @@ type Sheet = "half" | "expanded";
 const cityZoom = 10.5;
 /** Wait for the panel and padding to settle before moving the camera. */
 const afterLayout = (run: () => void) => window.setTimeout(run, 80);
-/** The Google place hover card's size (height approximate), for keeping it inside the map. */
+/** The Google place hover card's size (height approximate: photo, card, Tabelog link), for keeping it inside the map. */
 const placeTipWidth = 280;
-const placeTipHeight = 360;
+const placeTipHeight = 400;
 /** Server-read flags and the browser-visible provider key (only when discovery or the MVP is on). */
 export type PlacesConfig = {
   providerKey: string | null;
