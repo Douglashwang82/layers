@@ -25,6 +25,11 @@ import {
   type Kind,
 } from "@taiwanhub/shared";
 import { currentActor } from "@/lib/session";
+import {
+  listItemReviews,
+  listLayerItemRatings,
+} from "@/features/reviews/repository";
+import { deleteItemReview, writeItemReview } from "@/features/reviews/service";
 import { getActiveCity } from "@/lib/city";
 import { runMapQuery } from "@/features/map/query";
 import { resolveMapRequest } from "@/features/map/request";
@@ -232,6 +237,26 @@ async function handler(
           throw new AppError(404, "NOT_FOUND", "This layer is unavailable.");
         if (action === "events")
           return ok({ events: await listLayerEvents(actor, id) });
+        if (action === "items" && path[3] && path[4] === "reviews") {
+          const result = await listItemReviews(
+            found.layer.id,
+            z.uuid().parse(path[3]),
+            actor,
+            typeof query.cursor === "string" ? query.cursor : undefined,
+          );
+          if (!result)
+            throw new AppError(404, "NOT_FOUND", "This item is unavailable.");
+          return ok({
+            ...result,
+            canReview: result.canReview && flags.placeReviewWrites,
+          });
+        }
+        if (action === "item-ratings") {
+          const result = await listLayerItemRatings(found.layer.id, actor);
+          if (!result)
+            throw new AppError(404, "NOT_FOUND", "This layer is unavailable.");
+          return ok(result);
+        }
         if (action === "items")
           return ok({ items: await listLayerItemRefs(found.layer.id) });
         if (action === "places") {
@@ -409,7 +434,13 @@ async function handler(
       const maxBody = resource === "google-links" ? 131072 : 16384;
       if (Number(request.headers.get("content-length") ?? 0) > maxBody)
         throw new AppError(413, "TOO_LARGE", "Request is too large.");
-      const raw = method === "DELETE" ? "{}" : await request.text();
+      // Item review deletes carry the expected revision in the body.
+      const deleteHasBody =
+        resource === "layers" && action === "items" && path[4] === "review";
+      const raw =
+        method === "DELETE" && !deleteHasBody
+          ? "{}"
+          : (await request.text()) || "{}";
       if (raw.length > maxBody)
         throw new AppError(413, "TOO_LARGE", "Request is too large.");
       const body: unknown = JSON.parse(raw);
@@ -563,6 +594,22 @@ async function handler(
           return ok(await updateLayer(a, id, body));
         if (id && !action && method === "DELETE")
           return ok(await deleteLayer(a, id));
+        if (
+          id &&
+          action === "items" &&
+          path[3] &&
+          path[4] === "review" &&
+          (method === "PUT" || method === "DELETE")
+        ) {
+          const layerUuid = z.uuid().parse(id);
+          const itemUuid = z.uuid().parse(path[3]);
+          return ok({
+            review:
+              method === "PUT"
+                ? await writeItemReview(a, layerUuid, itemUuid, body)
+                : await deleteItemReview(a, layerUuid, itemUuid, body),
+          });
+        }
         if (id && action === "items" && method === "POST")
           return ok(await addLayerItem(a, id, body), 201);
         if (id && action === "items" && method === "DELETE")

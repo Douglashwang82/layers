@@ -116,6 +116,37 @@ export const placeReviewDeleteInput = z.strictObject({
   scope: reviewScope,
   expectedRevision: z.number().int().min(1),
 });
+/** Rate and comment on one layer item; the layer and item come from the URL. */
+export const layerItemReviewInput = z
+  .strictObject({
+    stars: reviewStars.nullable(),
+    body: reviewBody.default(""),
+    expectedRevision: z.number().int().min(1).nullable(),
+  })
+  .refine(
+    (v) => v.stars !== null || v.body.length > 0,
+    "Add stars, a comment, or both.",
+  );
+export type LayerItemReviewInput = z.infer<typeof layerItemReviewInput>;
+export const layerItemReviewDeleteInput = z.strictObject({
+  expectedRevision: z.number().int().min(1),
+});
+/** Opaque keyset cursor over (created_at, id) for item review pages. */
+export function encodeReviewCursor(createdAt: Date, id: string) {
+  return Buffer.from(`${createdAt.toISOString()}|${id}`).toString("base64url");
+}
+export function decodeReviewCursor(
+  cursor: string | undefined | null,
+): { createdAt: string; id: string } | null {
+  if (!cursor) return null;
+  const [createdAt, id, extra] = Buffer.from(cursor, "base64url")
+    .toString("utf8")
+    .split("|");
+  if (extra !== undefined || !createdAt || !id) return null;
+  if (Number.isNaN(Date.parse(createdAt))) return null;
+  if (!/^[0-9a-f-]{36}$/.test(id)) return null;
+  return { createdAt, id };
+}
 export const reviewDecisionInput = z.strictObject({
   action: z.enum(["approved", "rejected", "hidden", "deleted"]),
   expectedRevision: z.number().int().min(1),
