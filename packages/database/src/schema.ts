@@ -1292,9 +1292,12 @@ export const placeReview = pgTable(
   "place_review",
   {
     id: id(),
-    subjectId: uuid("subject_id")
-      .notNull()
-      .references(() => placeSubject.id),
+    /** Set for place-subject reviews; null for layer-item reviews. Exactly one of subjectId / layerItemId is set. */
+    subjectId: uuid("subject_id").references(() => placeSubject.id),
+    /** Set for reviews of a layer item (place, event, content, custom place); always layer-scoped. */
+    layerItemId: uuid("layer_item_id").references(() => layerItem.id, {
+      onDelete: "cascade",
+    }),
     userId: uuid("user_id")
       .notNull()
       .references(() => user.id),
@@ -1336,8 +1339,24 @@ export const placeReview = pgTable(
       t.status,
       t.createdAt,
     ),
+    uniqueIndex("place_review_layer_item_unique")
+      .on(t.layerItemId, t.userId)
+      .where(sql`${t.layerItemId} IS NOT NULL`),
+    index("place_review_layer_item_idx").on(
+      t.layerItemId,
+      t.status,
+      t.createdAt,
+    ),
     index("place_review_user_idx").on(t.userId),
     index("place_review_subject_idx").on(t.subjectId),
+    check(
+      "place_review_target_check",
+      sql`(${t.subjectId} IS NOT NULL) <> (${t.layerItemId} IS NOT NULL)`,
+    ),
+    check(
+      "place_review_item_scope_check",
+      sql`${t.layerItemId} IS NULL OR ${t.scopeKind} = 'layer'`,
+    ),
     check(
       "place_review_scope_check",
       sql`(${t.scopeKind} = 'layer' AND ${t.layerId} IS NOT NULL AND ${t.groupId} IS NULL) OR (${t.scopeKind} = 'group' AND ${t.groupId} IS NOT NULL AND ${t.layerId} IS NULL)`,
