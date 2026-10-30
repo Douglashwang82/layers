@@ -1656,6 +1656,7 @@ export function MapWorkspace({
                         placeId={point.placeId}
                         compact
                         preview
+                        photo
                         onLoad={() => {}}
                         onError={() => setTip(null)}
                       />

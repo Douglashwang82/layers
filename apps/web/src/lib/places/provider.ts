@@ -30,8 +30,16 @@ export type PlacesProvider = {
   ): Promise<Cleanup>;
   mountDetails(
     container: HTMLElement,
-    /** `preview`: a compact card limited to rating and type, without photos (map hover and every multi-place list). */
-    options: { placeId: string; compact: boolean; preview?: boolean },
+    /**
+     * `preview`: a compact card limited to rating and type (map hover and every multi-place list).
+     * `photo`: lead the card with the place's single media photo.
+     */
+    options: {
+      placeId: string;
+      compact: boolean;
+      preview?: boolean;
+      photo?: boolean;
+    },
     handlers: {
       onLoad: (place: ProviderPlace) => void;
       onError: () => void;
@@ -105,7 +113,7 @@ function loadGoogle(key: string, language: string) {
  * Details cards that already loaded in this page view, newest last. Reopening
  * the same place (for example clicking its marker again) reattaches the
  * rendered element instead of mounting a new one, which would repeat the
- * billed place and photo requests. Memory only: a reload starts empty.
+ * billed component load. Memory only: a reload starts empty.
  */
 const loadedDetails = new Map<
   string,
@@ -121,7 +129,7 @@ function keepDetails(key: string, element: HTMLElement, place: ProviderPlace) {
     loadedDetails.delete(old);
   }
 }
-/** Card contents: the presets minus gmp-place-media. The name always shows. */
+/** Card contents, listed explicitly so media shows only when asked for. The name always shows. */
 const previewContent = [
   "gmp-place-rating",
   "gmp-place-type",
@@ -217,9 +225,13 @@ function googleProvider(key: string, language: string): PlacesProvider {
         search.remove();
       };
     },
-    async mountDetails(container, { placeId, compact, preview }, handlers) {
+    async mountDetails(
+      container,
+      { placeId, compact, preview, photo },
+      handlers,
+    ) {
       await ready();
-      const key = `${placeId}:${preview ? "preview" : compact ? "compact" : "full"}`;
+      const key = `${placeId}:${preview ? "preview" : compact ? "compact" : "full"}${photo ? ":photo" : ""}`;
       const kept = loadedDetails.get(key);
       // A card shown elsewhere stays there; one detached, or in this same
       // container (a development double mount), is reattached without a new
@@ -243,12 +255,12 @@ function googleProvider(key: string, language: string): PlacesProvider {
       const request = document.createElement("gmp-place-details-place-request");
       request.setAttribute("place", placeId);
       details.appendChild(request);
-      // No card mounts gmp-place-media: the widget has no photo-count setting
-      // and loads the whole set (up to ten billed photo requests per place).
       // The standard and all-content presets include media, so every card
-      // lists its elements explicitly instead.
+      // lists its elements explicitly and adds gmp-place-media (one photo,
+      // lightbox off) only when asked. UI Kit bills per component load.
       if (preview) details.setAttribute("truncation-preferred", "");
       const config = document.createElement("gmp-place-content-config");
+      if (photo) config.appendChild(document.createElement("gmp-place-media"));
       for (const name of preview
         ? previewContent
         : compact
@@ -344,10 +356,11 @@ function fakeProvider(): PlacesProvider {
       queueMicrotask(() => handlers.onResults(places));
       return () => list.remove();
     },
-    async mountDetails(container, { placeId }, handlers) {
+    async mountDetails(container, { placeId, photo }, handlers) {
       const box = document.createElement("div");
       box.className = "fake-provider";
       box.textContent = `Test business ${placeId} · test provider data`;
+      if (photo) box.dataset.photo = "";
       container.appendChild(box);
       // Test places imported from links were never selected here; place them deterministically.
       const location =

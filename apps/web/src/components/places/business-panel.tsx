@@ -376,6 +376,7 @@ export function BusinessPanel({
             provider={provider}
             placeId={effectivePlaceId}
             compact={false}
+            photo
             onLoad={(place) => {
               setProviderState("ready");
               track("places_component_loaded", { type: "details" });
