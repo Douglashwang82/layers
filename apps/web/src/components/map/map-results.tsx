@@ -1,5 +1,5 @@
 "use client";
-import type { MouseEvent } from "react";
+import type { MouseEvent, ReactNode } from "react";
 import {
   CalendarDays,
   FileText,
@@ -163,6 +163,7 @@ export function ResultRow({
   events,
   timeZone = "America/Chicago",
   showNote = false,
+  extra,
 }: {
   item: MapItem;
   t: Copy;
@@ -176,6 +177,8 @@ export function ResultRow({
   timeZone?: string;
   /** Layer contents quote the curator's note under the title. */
   showNote?: boolean;
+  /** Content rendered below the row link, outside the select target. */
+  extra?: ReactNode;
 }) {
   const Icon = icons[item.type];
   const kind = markerKind(item);
@@ -243,6 +246,7 @@ export function ResultRow({
         t={t}
         className="row-tabelog"
       />
+      {extra}
     </li>
   );
 }

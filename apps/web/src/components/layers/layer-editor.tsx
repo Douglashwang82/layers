@@ -19,6 +19,7 @@ import type { LayerEvent } from "@taiwanhub/shared";
 import { GoogleLinksForm } from "./google-links-form";
 import { LayerGooglePlaces } from "./layer-google-places";
 import { LayerItemEvents } from "./layer-item-events";
+import { LayerItemReviewsByKey } from "./layer-item-reviews";
 import { MapImportLinks } from "./map-import-links";
 type Feedback = { tone: "success" | "error"; text: string } | null;
 type Draft = {
@@ -647,6 +648,13 @@ export function LayerEditor({
                     onChange={(next) => setKeyEvents(item.key, next)}
                   />
                 )}
+                <LayerItemReviewsByKey
+                  layerId={layer.id}
+                  itemKey={item.key}
+                  itemName={itemTitle(item, locale)}
+                  t={t}
+                  locale={locale}
+                />
               </li>
             ))}
           </ul>

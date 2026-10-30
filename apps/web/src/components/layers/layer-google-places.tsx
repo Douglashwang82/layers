@@ -9,6 +9,7 @@ import type { ExternalReference } from "@/features/map/external";
 import { getPlacesProvider } from "@/lib/places/provider";
 import type { Copy, Locale } from "@/lib/dictionary";
 import { LayerItemEvents } from "./layer-item-events";
+import { LayerItemReviewsByKey } from "./layer-item-reviews";
 type Feedback = { tone: "success" | "error"; text: string } | null;
 type Page = { references: ExternalReference[]; nextCursor: string | null };
 /**
@@ -150,6 +151,13 @@ export function LayerGooglePlaces({
                   onChange={(next) => onEvents?.(ref.canonicalKey, next)}
                 />
               )}
+              <LayerItemReviewsByKey
+                layerId={layer.id}
+                itemKey={ref.canonicalKey}
+                itemName={name}
+                t={t}
+                locale={locale}
+              />
             </li>
           );
         })}
