@@ -199,6 +199,7 @@ export default async function LayerPage({ params }: Props) {
             <LayerContentsList
               items={contents.items}
               slug={layer.slug}
+              layerId={layer.id}
               t={t}
               locale={locale}
             />
