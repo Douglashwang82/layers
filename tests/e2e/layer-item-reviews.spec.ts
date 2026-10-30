@@ -8,6 +8,7 @@ import { createAndSignIn } from "./fixtures";
 test("a layer item rating and comment is visible to another group member", async ({
   browser,
 }) => {
+  test.setTimeout(150_000);
   const stamp = Date.now();
   const ownerContext = await browser.newContext();
   const owner = await ownerContext.newPage();
@@ -105,5 +106,73 @@ test("a layer item rating and comment is visible to another group member", async
     .click();
   await expect(
     reloaded.locator("p", { hasText: "Too salty for me." }),
+  ).toBeVisible();
+  // The map pin hover card shows the reviewer avatars, comment count and rating.
+  // Needs the Mapbox renderer (a fake token is enough; all requests are mocked).
+  if (!process.env.NEXT_PUBLIC_MAPBOX_TOKEN) return;
+  await owner.route(/(\/\/|\.)mapbox\.com\//, async (route) => {
+    if (route.request().url().includes("/styles/"))
+      await route.fulfill({
+        json: {
+          version: 8,
+          glyphs:
+            "https://api.mapbox.com/fonts/v1/fixture/{fontstack}/{range}.pbf",
+          sources: {},
+          layers: [
+            {
+              id: "background",
+              type: "background",
+              paint: { "background-color": "#eee" },
+            },
+          ],
+        },
+      });
+    else if (route.request().url().includes("/fonts/"))
+      await route.fulfill({
+        contentType: "application/x-protobuf",
+        body: Buffer.alloc(0),
+      });
+    else await route.fulfill({ status: 200, body: "{}" });
+  });
+  await owner.goto(
+    layerUrl.replace("layerPanel=contents", "layerPanel=detail"),
+  );
+  await expect(owner.locator(".map-workspace")).toHaveAttribute(
+    "data-canvas",
+    "ready",
+    { timeout: 15000 },
+  );
+  await expect(owner.locator("canvas.mapboxgl-canvas")).toBeVisible();
+  await owner.getByRole("button", { name: "Apply to map" }).click();
+  await owner.getByRole("button", { name: "Fit layer" }).click();
+  await owner.waitForTimeout(1500);
+  const tooltip = owner.locator(".map-tooltip");
+  // Fit layer centres the map-area on the layer's pin; the 250ms hover dwell
+  // means each probe waits. Sweep a band around the visible area's centre.
+  await expect(async () => {
+    for (const y of [528, 514, 542]) {
+      for (let x = 700; x <= 1100; x += 14) {
+        await owner.mouse.move(x - 20, y);
+        await owner.mouse.move(x, y, { steps: 2 });
+        await owner.waitForTimeout(320);
+        if (
+          (await tooltip.isVisible()) &&
+          (await tooltip.innerText()).includes("Auntie Lin Noodles")
+        )
+          return;
+      }
+    }
+    throw new Error("pin tooltip did not appear");
+  }).toPass({ timeout: 60000 });
+  await expect(tooltip).toContainText("Auntie Lin Noodles");
+  const reviews = tooltip.locator(".tip-reviews");
+  await expect(reviews).toBeVisible();
+  await expect(reviews.locator(".tip-avatars")).toHaveAttribute(
+    "aria-label",
+    /^Reviewed by .*Reviewer (Ann|Ben)/,
+  );
+  await expect(reviews.getByRole("img", { name: "2 comments" })).toBeVisible();
+  await expect(
+    reviews.getByRole("img", { name: "3.0 average from 2 ratings" }),
   ).toBeVisible();
 });

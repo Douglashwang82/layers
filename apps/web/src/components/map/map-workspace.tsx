@@ -75,6 +75,11 @@ import { ActiveLayersPanel } from "./active-layers-panel";
 import { MapResults, TabelogLink } from "./map-results";
 import { tabelogLink } from "@/lib/tabelog";
 import { ItemPreview } from "./item-preview";
+import {
+  TipReviews,
+  tipReviewsWidth,
+  useMapReviewPreviews,
+} from "./tip-reviews";
 import { RoutePlanner, type PlannedStop } from "./route-planner";
 import {
   maxRouteStops,
@@ -469,11 +474,17 @@ export function MapWorkspace({
   const [listHoverKey, setListHoverKey] = useState<string | null>(null);
   const [tip, setTip] = useState<{
     key: string;
-    x: number;
+    /** Pointer x and the stage width, so the left edge can follow a late review column. */
+    pointerX: number;
+    stageWidth: number;
+    /** Card width without the review column. */
+    width: number;
     y: number;
     above?: boolean;
   } | null>(null);
   const tipTimer = useRef<number | undefined>(undefined);
+  const { previews: reviewPreviews, request: requestReviewPreviews } =
+    useMapReviewPreviews(queryKey);
   useEffect(() => () => window.clearTimeout(tipTimer.current), []);
   const stageBody = useRef<HTMLDivElement>(null);
   /* Business discovery: a separate mode and in-memory selection, lazily loading the provider. */
@@ -500,6 +511,7 @@ export function MapWorkspace({
   const onItemHover = (hover: { key: string; x: number; y: number } | null) => {
     window.clearTimeout(tipTimer.current);
     if (hover) {
+      requestReviewPreviews();
       // Keep the tooltip inside the map: clamp against the stage size at event
       // time. A Google place card is wider and taller, and flips above the
       // pointer near the bottom edge.
@@ -511,7 +523,9 @@ export function MapWorkspace({
       const above = hover.y + 14 + h > height && hover.y - 14 - h > 0;
       setTip({
         key: hover.key,
-        x: Math.max(8, Math.min(hover.x + 14, width - w - 14)),
+        pointerX: hover.x,
+        stageWidth: width,
+        width: w,
         // Above the pointer, `y` is the card's bottom edge.
         y: above ? hover.y - 14 : Math.max(8, hover.y + 14),
         above,
@@ -1636,39 +1650,54 @@ export function MapWorkspace({
                 const role = routeButton ? undefined : "tooltip";
                 // A Google place shows its own card: name, photo, rating, type.
                 const point = extraPoints.find((p) => p.key === tip.key);
+                const reviews = reviewPreviews[tip.key];
+                // Clamped at render: the review column may arrive after the card opens.
+                const left = Math.max(
+                  8,
+                  Math.min(
+                    tip.pointerX + 14,
+                    tip.stageWidth -
+                      tip.width -
+                      (reviews ? tipReviewsWidth : 0) -
+                      14,
+                  ),
+                );
                 if (point?.placeId && provider)
                   return (
                     <div
-                      className="map-tooltip map-place-tip"
+                      className={`map-tooltip map-place-tip${reviews ? " has-reviews" : ""}`}
                       role={point.tabelog ? undefined : role}
                       style={{
-                        left: tip.x,
+                        left,
                         top: tip.y,
-                        width: placeTipWidth,
+                        width: placeTipWidth + (reviews ? tipReviewsWidth : 0),
                         transform: tip.above ? "translateY(-100%)" : undefined,
                       }}
                       onMouseEnter={() => window.clearTimeout(tipTimer.current)}
                       onMouseLeave={() => setTip(null)}
                     >
-                      <ProviderDetails
-                        key={point.placeId}
-                        provider={provider}
-                        placeId={point.placeId}
-                        compact
-                        preview
-                        photo
-                        onLoad={() => {}}
-                        onError={() => setTip(null)}
-                      />
-                      {point.tabelog && (
-                        <TabelogLink
-                          name={point.tabelog.name}
-                          href={point.tabelog.url}
-                          t={t}
-                          className="tip-tabelog"
+                      <div className="tip-main">
+                        <ProviderDetails
+                          key={point.placeId}
+                          provider={provider}
+                          placeId={point.placeId}
+                          compact
+                          preview
+                          photo
+                          onLoad={() => {}}
+                          onError={() => setTip(null)}
                         />
-                      )}
-                      {routeButton}
+                        {point.tabelog && (
+                          <TabelogLink
+                            name={point.tabelog.name}
+                            href={point.tabelog.url}
+                            t={t}
+                            className="tip-tabelog"
+                          />
+                        )}
+                        {routeButton}
+                      </div>
+                      <TipReviews preview={reviews} t={t} />
                     </div>
                   );
                 const item = result.items.find((i) => i.key === tip.key);
@@ -1676,32 +1705,35 @@ export function MapWorkspace({
                 const kind = markerKind(item);
                 return (
                   <div
-                    className="map-tooltip"
+                    className={`map-tooltip${reviews ? " has-reviews" : ""}`}
                     role={tabelogLink(item) ? undefined : role}
                     style={{
-                      left: tip.x,
+                      left,
                       top: tip.y,
                     }}
                     onMouseEnter={() => window.clearTimeout(tipTimer.current)}
                     onMouseLeave={() => setTip(null)}
                   >
-                    <strong>{localizedName(item, locale)}</strong>
-                    <span>
-                      <i
-                        className="kind-dot"
-                        style={{ background: `var(--marker-${kind})` }}
-                        aria-hidden="true"
+                    <div className="tip-main">
+                      <strong>{localizedName(item, locale)}</strong>
+                      <span>
+                        <i
+                          className="kind-dot"
+                          style={{ background: `var(--marker-${kind})` }}
+                          aria-hidden="true"
+                        />
+                        {markerLabel(kind, t)}
+                        {item.category ? ` · ${item.category}` : ""}
+                      </span>
+                      <TabelogLink
+                        name={item.name}
+                        href={tabelogLink(item)}
+                        t={t}
+                        className="tip-tabelog"
                       />
-                      {markerLabel(kind, t)}
-                      {item.category ? ` · ${item.category}` : ""}
-                    </span>
-                    <TabelogLink
-                      name={item.name}
-                      href={tabelogLink(item)}
-                      t={t}
-                      className="tip-tabelog"
-                    />
-                    {routeButton}
+                      {routeButton}
+                    </div>
+                    <TipReviews preview={reviews} t={t} />
                   </div>
                 );
               })()}

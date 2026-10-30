@@ -34,7 +34,9 @@ type Ratings = Record<
 >;
 type Feedback = { tone: "success" | "error"; text: string } | null;
 
-const changed = "layer:item-reviews";
+/** Fired after a review write; listeners refetch ratings and previews. */
+export const reviewsChangedEvent = "layer:item-reviews";
+const changed = reviewsChangedEvent;
 type LayerData = [
   { ratings: Ratings },
   { items: { id: string; key: string }[] },

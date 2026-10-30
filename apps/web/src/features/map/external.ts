@@ -45,17 +45,49 @@ export async function listExternalReferences(
   cursor: number,
   now = new Date(),
 ) {
-  const empty = {
-    references: [] as ExternalReference[],
-    nextCursor: null as string | null,
-    totalAuthorizedReferences: 0,
+  const matching = await collectExternalReferences(state, city, actor, now);
+  const page = matching.slice(cursor, cursor + externalPageSize);
+  if (page.length) {
+    const picks = await pool.query<{ subject_id: string }>(
+      `SELECT subject_id FROM daily_pick WHERE city_id=$1 AND pick_date=$2 AND status='published' AND subject_id=ANY($3::uuid[])`,
+      [city.id, localDate(now, city.timezone), page.map((r) => r.subjectId)],
+    );
+    const picked = new Set(picks.rows.map((r) => r.subject_id));
+    for (const ref of page) ref.isDailyPick = picked.has(ref.subjectId);
+    if (flags.mapMvp) {
+      const locations = await placeLocations(page.map((r) => r.subjectId));
+      for (const ref of page) {
+        const cached = locations.get(ref.subjectId);
+        ref.location = cached ? { lat: cached.lat, lng: cached.lng } : null;
+        ref.types = cached?.types ?? null;
+      }
+    }
+  }
+  return {
+    references: page,
+    nextCursor:
+      cursor + externalPageSize < matching.length
+        ? String(cursor + externalPageSize)
+        : null,
+    totalAuthorizedReferences: matching.length,
     pageSize: externalPageSize,
     spatialFilter: "pending-provider-resolution" as const,
   };
+}
+/**
+ * Every external reference the map would list for this query, in order and
+ * unpaged, without per-page enrichment (Daily Pick badge, cached location).
+ */
+export async function collectExternalReferences(
+  state: MapState,
+  city: MapCity,
+  actor: Actor | null,
+  now = new Date(),
+): Promise<ExternalReference[]> {
   const types = state.types?.length ? state.types : ["place"];
   // External places are places; city-wide text search only covers the catalog.
-  if (!types.includes("place") || state.layers === "none") return empty;
-  if (state.scope === "city" && state.q) return empty;
+  if (!types.includes("place") || state.layers === "none") return [];
+  if (state.scope === "city" && state.q) return [];
   const { resolved } = await resolveLayers(state.layers, actor, city);
   const ordered: ExternalReference[] = [];
   const byId = new Map<string, ExternalReference>();
@@ -154,32 +186,7 @@ export async function listExternalReferences(
         `${r.localNote ?? ""} ${r.name ?? ""}`.toLowerCase().includes(q),
       )
     : ordered;
-  const page = matching.slice(cursor, cursor + externalPageSize);
-  if (page.length) {
-    const picks = await pool.query<{ subject_id: string }>(
-      `SELECT subject_id FROM daily_pick WHERE city_id=$1 AND pick_date=$2 AND status='published' AND subject_id=ANY($3::uuid[])`,
-      [city.id, localDate(now, city.timezone), page.map((r) => r.subjectId)],
-    );
-    const picked = new Set(picks.rows.map((r) => r.subject_id));
-    for (const ref of page) ref.isDailyPick = picked.has(ref.subjectId);
-    if (flags.mapMvp) {
-      const locations = await placeLocations(page.map((r) => r.subjectId));
-      for (const ref of page) {
-        const cached = locations.get(ref.subjectId);
-        ref.location = cached ? { lat: cached.lat, lng: cached.lng } : null;
-        ref.types = cached?.types ?? null;
-      }
-    }
-  }
-  return {
-    ...empty,
-    references: page,
-    nextCursor:
-      cursor + externalPageSize < matching.length
-        ? String(cursor + externalPageSize)
-        : null,
-    totalAuthorizedReferences: matching.length,
-  };
+  return matching;
 }
 /**
  * How many external places each resolved member layer contributes, by the

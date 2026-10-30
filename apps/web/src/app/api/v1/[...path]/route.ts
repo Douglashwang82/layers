@@ -30,6 +30,7 @@ import {
   listLayerItemRatings,
 } from "@/features/reviews/repository";
 import { deleteItemReview, writeItemReview } from "@/features/reviews/service";
+import { listMapReviewPreviews } from "@/features/reviews/map-previews";
 import { getActiveCity } from "@/lib/city";
 import { runMapQuery } from "@/features/map/query";
 import { resolveMapRequest } from "@/features/map/request";
@@ -189,6 +190,8 @@ async function handler(
               .parse(query.cursor ?? 0),
           ),
         );
+      if (id === "review-previews")
+        return ok(await listMapReviewPreviews(state, city, actor));
       const result = await runMapQuery(state, city, actor);
       if (id === "results") {
         const start = (state.page - 1) * mapPageSize;
