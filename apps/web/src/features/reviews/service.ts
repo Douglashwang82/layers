@@ -2,6 +2,8 @@ import type { PoolClient } from "pg";
 import {
   AppError,
   ownerWriteStatus,
+  layerItemReviewDeleteInput,
+  layerItemReviewInput,
   placeReviewDeleteInput,
   placeReviewInput,
   requireActor,
@@ -17,11 +19,19 @@ import {
   transaction,
 } from "@/features/place-subjects/service";
 import {
-  findOwnReview,
+  findSubjectById,
+  isBlocked,
+} from "@/features/place-subjects/repository";
+import {
+  findLayerItem,
+  findOwnTargetReview,
   getScopeAccess,
+  itemTarget,
   ownReviewView,
+  stripScope,
   subjectInLayer,
   type ReviewRow,
+  type ReviewTarget,
 } from "./repository";
 async function record(
   tx: PoolClient,
@@ -108,6 +118,106 @@ async function lockScope(
   return layer.rows[0].audience === "public";
 }
 /**
+ * Create or edit the actor's one review of a target in one scope. The caller
+ * has authorized the actor and holds the target and scope locks; this locks the
+ * review row, checks the revision, and writes content, history, the moderation
+ * request and analytics together.
+ */
+async function upsertReview(
+  tx: PoolClient,
+  a: Actor,
+  target: ReviewTarget,
+  scope: ReviewScope,
+  needsModeration: boolean,
+  input: {
+    stars: number | null;
+    body: string;
+    expectedRevision: number | null;
+  },
+) {
+  const existing = await findOwnTargetReview(tx, target, a.id, scope, true);
+  if ((existing?.revision ?? null) !== input.expectedRevision) throw conflict();
+  const status = ownerWriteStatus(
+    existing
+      ? { status: existing.status, deletionSource: existing.deletion_source }
+      : null,
+    needsModeration,
+  );
+  if (!status)
+    throw new AppError(
+      403,
+      "FORBIDDEN",
+      "A moderator removed this review; it cannot be restored.",
+    );
+  let row: ReviewRow;
+  if (!existing) {
+    const inserted = await tx.query<ReviewRow>(
+      `INSERT INTO place_review(subject_id,layer_item_id,user_id,scope_kind,layer_id,group_id,stars,body,status)
+       VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9) RETURNING *`,
+      [
+        "subjectId" in target ? target.subjectId : null,
+        "layerItemId" in target ? target.layerItemId : null,
+        a.id,
+        scope.kind,
+        scope.kind === "layer" ? scope.id : null,
+        scope.kind === "group" ? scope.id : null,
+        input.stars,
+        input.body,
+        status,
+      ],
+    );
+    row = inserted.rows[0];
+  } else {
+    const updated = await tx.query<ReviewRow>(
+      `UPDATE place_review SET stars=$2,body=$3,status=$4,deletion_source=NULL,moderated_by=NULL,moderated_at=NULL,revision=revision+1,updated_at=now() WHERE id=$1 RETURNING *`,
+      [existing.id, input.stars, input.body, status],
+    );
+    row = updated.rows[0];
+    await supersedeSubmissions(tx, row.id);
+  }
+  await snapshot(
+    tx,
+    row,
+    a.id,
+    !existing
+      ? "created"
+      : existing.status === "deleted"
+        ? "resubmitted"
+        : "edited",
+  );
+  if (status === "pending") await queueSubmission(tx, a.id, row);
+  await record(
+    tx,
+    a.id,
+    existing ? "place_review_edited" : "place_review_created",
+    { scope: scope.kind, rated: input.stars !== null, status },
+  );
+  return ownReviewView(row)!;
+}
+/** Owner soft-delete. Repeating it on an already author-deleted review changes nothing. */
+async function softDelete(
+  tx: PoolClient,
+  a: Actor,
+  target: ReviewTarget,
+  scope: ReviewScope,
+  expectedRevision: number,
+) {
+  const existing = await findOwnTargetReview(tx, target, a.id, scope, true);
+  if (!existing)
+    throw new AppError(404, "NOT_FOUND", "This review is unavailable.");
+  if (existing.status === "deleted") return ownReviewView(existing)!;
+  if (existing.revision !== expectedRevision) throw conflict();
+  const updated = await tx.query<ReviewRow>(
+    `UPDATE place_review SET status='deleted',deletion_source='author',revision=revision+1,updated_at=now() WHERE id=$1 RETURNING *`,
+    [existing.id],
+  );
+  const row = updated.rows[0];
+  await snapshot(tx, row, a.id, "deleted");
+  await supersedeSubmissions(tx, row.id);
+  await record(tx, a.id, "place_review_deleted", { scope: row.scope_kind });
+  return ownReviewView(row)!;
+}
+/**
  * Create or edit the actor's one review of this subject in one scope. A null
  * expectedRevision creates; an existing review requires its current revision.
  * Content, history, moderation request and analytics commit together.
@@ -129,77 +239,16 @@ export async function writeReview(
       input.selectionGrant,
     );
     const needsModeration = await lockScope(tx, a, subject, input.scope);
-    const existing = await findOwnReview(
+    return upsertReview(
       tx,
-      subject.id,
-      a.id,
+      a,
+      { subjectId: subject.id },
       input.scope,
-      true,
-    );
-    if ((existing?.revision ?? null) !== input.expectedRevision)
-      throw conflict();
-    const status = ownerWriteStatus(
-      existing
-        ? { status: existing.status, deletionSource: existing.deletion_source }
-        : null,
       needsModeration,
+      input,
     );
-    if (!status)
-      throw new AppError(
-        403,
-        "FORBIDDEN",
-        "A moderator removed this review; it cannot be restored.",
-      );
-    let row: ReviewRow;
-    if (!existing) {
-      const inserted = await tx.query<ReviewRow>(
-        `INSERT INTO place_review(subject_id,user_id,scope_kind,layer_id,group_id,stars,body,status)
-         VALUES($1,$2,$3,$4,$5,$6,$7,$8) RETURNING *`,
-        [
-          subject.id,
-          a.id,
-          input.scope.kind,
-          input.scope.kind === "layer" ? input.scope.id : null,
-          input.scope.kind === "group" ? input.scope.id : null,
-          input.stars,
-          input.body,
-          status,
-        ],
-      );
-      row = inserted.rows[0];
-    } else {
-      const updated = await tx.query<ReviewRow>(
-        `UPDATE place_review SET stars=$2,body=$3,status=$4,deletion_source=NULL,moderated_by=NULL,moderated_at=NULL,revision=revision+1,updated_at=now() WHERE id=$1 RETURNING *`,
-        [existing.id, input.stars, input.body, status],
-      );
-      row = updated.rows[0];
-      await supersedeSubmissions(tx, row.id);
-    }
-    await snapshot(
-      tx,
-      row,
-      a.id,
-      !existing
-        ? "created"
-        : existing.status === "deleted"
-          ? "resubmitted"
-          : "edited",
-    );
-    if (status === "pending") await queueSubmission(tx, a.id, row);
-    await record(
-      tx,
-      a.id,
-      existing ? "place_review_edited" : "place_review_created",
-      {
-        scope: input.scope.kind,
-        rated: input.stars !== null,
-        status,
-      },
-    );
-    return ownReviewView(row)!;
   });
 }
-/** Owner soft-delete. Repeating it on an already author-deleted review changes nothing. */
 export async function deleteReview(
   actor: Actor | null,
   subjectId: string,
@@ -207,27 +256,93 @@ export async function deleteReview(
 ) {
   const a = requireActor(actor);
   const input = placeReviewDeleteInput.parse(body);
+  return transaction(async (tx) =>
+    softDelete(tx, a, { subjectId }, input.scope, input.expectedRevision),
+  );
+}
+/**
+ * Resolve a layer item the actor may view. Lock order matches writeReview:
+ * the subject (for a place-subject item), the layer row, then the item, so a
+ * concurrent publish or item removal is serialized. Returns the review target
+ * and whether the layer moderates new reviews.
+ */
+async function lockItem(
+  tx: PoolClient,
+  actor: Actor,
+  layerId: string,
+  itemId: string,
+) {
+  const notFound = () =>
+    new AppError(404, "NOT_FOUND", "This layer or item is unavailable.");
+  const scope: ReviewScope = { kind: "layer", id: layerId };
+  if (!(await getScopeAccess(scope, actor))) throw notFound();
+  const peek = await findLayerItem(tx, layerId, itemId);
+  if (!peek) throw notFound();
+  if (peek.subject_id) {
+    await tx.query("SELECT id FROM place_subject WHERE id=$1 FOR UPDATE", [
+      peek.subject_id,
+    ]);
+    const subject = await findSubjectById(tx, peek.subject_id);
+    if (!subject || isBlocked(subject)) throw notFound();
+  }
+  const layer = await tx.query<{ audience: string }>(
+    "SELECT audience FROM layer WHERE id=$1 FOR SHARE",
+    [layerId],
+  );
+  if (!layer.rows[0]) throw notFound();
+  const item = await findLayerItem(tx, layerId, itemId, true);
+  if (!item || item.subject_id !== peek.subject_id) throw notFound();
+  return {
+    scope,
+    target: itemTarget(item),
+    needsModeration: layer.rows[0].audience === "public",
+  };
+}
+/** Create or edit the actor's one review of a layer item in that layer. */
+export async function writeItemReview(
+  actor: Actor | null,
+  layerId: string,
+  itemId: string,
+  body: unknown,
+) {
+  const a = requireActor(actor);
+  const input = layerItemReviewInput.parse(body);
+  if (!flags.placeReviewWrites)
+    throw new AppError(404, "DISABLED", "Reviews are unavailable.");
   return transaction(async (tx) => {
-    const existing = await findOwnReview(
-      tx,
-      subjectId,
-      a.id,
-      input.scope,
-      true,
+    const locked = await lockItem(tx, a, layerId, itemId);
+    return stripScope(
+      await upsertReview(
+        tx,
+        a,
+        locked.target,
+        locked.scope,
+        locked.needsModeration,
+        input,
+      ),
     );
-    if (!existing)
-      throw new AppError(404, "NOT_FOUND", "This review is unavailable.");
-    if (existing.status === "deleted") return ownReviewView(existing)!;
-    if (existing.revision !== input.expectedRevision) throw conflict();
-    const updated = await tx.query<ReviewRow>(
-      `UPDATE place_review SET status='deleted',deletion_source='author',revision=revision+1,updated_at=now() WHERE id=$1 RETURNING *`,
-      [existing.id],
+  });
+}
+/** Author soft-delete of the actor's review of a layer item. */
+export async function deleteItemReview(
+  actor: Actor | null,
+  layerId: string,
+  itemId: string,
+  body: unknown,
+) {
+  const a = requireActor(actor);
+  const input = layerItemReviewDeleteInput.parse(body);
+  return transaction(async (tx) => {
+    const locked = await lockItem(tx, a, layerId, itemId);
+    return stripScope(
+      await softDelete(
+        tx,
+        a,
+        locked.target,
+        locked.scope,
+        input.expectedRevision,
+      ),
     );
-    const row = updated.rows[0];
-    await snapshot(tx, row, a.id, "deleted");
-    await supersedeSubmissions(tx, row.id);
-    await record(tx, a.id, "place_review_deleted", { scope: row.scope_kind });
-    return ownReviewView(row)!;
   });
 }
 /**

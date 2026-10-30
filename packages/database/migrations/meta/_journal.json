@@ -204,6 +204,20 @@
       "when": 1793077416312,
       "tag": "0028_flippant_sheva_callister",
       "breakpoints": true
+    },
+    {
+      "idx": 29,
+      "version": "7",
+      "when": 1793336062238,
+      "tag": "0029_overconfident_gabe_jones",
+      "breakpoints": true
+    },
+    {
+      "idx": 30,
+      "version": "7",
+      "when": 1793336845508,
+      "tag": "0030_lovely_grim_reaper",
+      "breakpoints": true
     }
   ]
 }

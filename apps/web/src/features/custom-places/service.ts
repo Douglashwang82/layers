@@ -3,6 +3,7 @@ import {
   geocodeAddress,
   GeocoderError,
   pool,
+  retireLayerItemReviews,
 } from "@taiwanhub/database";
 import type { PoolClient } from "pg";
 import { z } from "zod";
@@ -392,6 +393,15 @@ export async function deleteCustomPlace(actor: Actor | null, id: string) {
     await tx.query(
       "UPDATE custom_place SET status='deleted',updated_at=now() WHERE id=$1",
       [id],
+    );
+    const items = await tx.query<{ id: string }>(
+      "SELECT id FROM layer_item WHERE custom_place_id=$1 ORDER BY id FOR UPDATE",
+      [id],
+    );
+    await retireLayerItemReviews(
+      tx,
+      items.rows.map((r) => r.id),
+      a.id,
     );
     const removed = await tx.query<{ layer_id: string }>(
       "DELETE FROM layer_item WHERE custom_place_id=$1 RETURNING layer_id",
