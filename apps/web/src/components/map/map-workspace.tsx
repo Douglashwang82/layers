@@ -854,7 +854,7 @@ export function MapWorkspace({
         scroll: false,
       });
     }
-    setTab("layers");
+    openLayersTab();
     setMode("layers");
     setDetailHidden(true);
     setPanelOpen(true);
@@ -875,6 +875,11 @@ export function MapWorkspace({
       /* ignore */
     }
   };
+  // The list view has no tabs, so managing layers returns to the map view.
+  function openLayersTab() {
+    if (listView && !layerPanel) setView("map");
+    setTab("layers");
+  }
   /* New day notice for rolling layers */
   const [newDay, setNewDay] = useState(false);
   useEffect(() => {
@@ -1213,7 +1218,7 @@ export function MapWorkspace({
               <button
                 type="button"
                 className="button secondary small"
-                onClick={() => setTab("layers")}
+                onClick={openLayersTab}
               >
                 {t.yourLayers}
               </button>
@@ -1386,7 +1391,7 @@ export function MapWorkspace({
       <button
         type="button"
         className="layer-chip manage"
-        onClick={() => setTab("layers")}
+        onClick={openLayersTab}
       >
         {t.manageLayers}
       </button>
@@ -1977,6 +1982,8 @@ export function MapWorkspace({
               </>
             ) : mode === "business" && discoveryPanel && !mvp ? (
               <div className="panel-body">{discoveryPanel}</div>
+            ) : listView ? (
+              <div className="panel-body">{resultsPanel}</div>
             ) : (
               <>
                 <div
@@ -2017,7 +2024,7 @@ export function MapWorkspace({
                   !!layerPanel ||
                   routeInPanel ||
                   detailInPanel ||
-                  tab !== "results"
+                  (!listView && tab !== "results")
                 }
               >
                 {externalReferences}
