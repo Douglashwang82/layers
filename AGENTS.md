@@ -36,6 +36,8 @@ Read documentation relevant to the task:
 
 Docs are organized by scope under `docs/`: `docs/plans/` (implementation plans and design proposals), `docs/guides/` (how-to and architecture-direction guides), `docs/reference/` (stable contracts and specs), `docs/adr/` (accepted architecture decisions), and `docs/design/` (design system assets). `docs/dev-notes.md` stays at the top level.
 
+Claude Code team tooling lives in `.claude/`: subagents (`agents/`), workflow skills such as `ship-feature` and `verify` (`skills/`), and hook scripts (`hooks/`) for formatting, a typecheck stop gate, secret scanning, and a remote-database guard.
+
 Verify executable details against `package.json`, source code, and `.github/workflows/ci.yml`; distinguish planned features in design/roadmap documents from implemented behavior. Before changing Next.js code, read the relevant installed documentation under `apps/web/node_modules/next/dist/docs/`, as required by the nested guide. For external APIs, consult current official provider documentation and the installed SDK types rather than guessing APIs or model identifiers.
 
 ## Setup and commands
