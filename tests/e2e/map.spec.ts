@@ -8,6 +8,8 @@ async function blockMapProvider(page: Page) {
 test("map home: default layer, selection with Back, filters and layer toggles", async ({
   page,
 }) => {
+  // The sidebar lists results only without a map, as in CI (no token).
+  await blockMapProvider(page);
   await page.goto("/");
   // A fresh session starts with the list collapsed; opening it keeps everything else.
   await openMapList(page);
@@ -82,6 +84,8 @@ test("map home: default layer, selection with Back, filters and layer toggles", 
 test("library Apply adds to the current set; duplicates render once with membership count", async ({
   page,
 }) => {
+  // The sidebar lists results only without a map, as in CI (no token).
+  await blockMapProvider(page);
   await page.goto("/?layers=discover-houston&types=place");
   // The workspace remembers the session's map state once hydrated.
   await page.waitForFunction(() =>
@@ -140,6 +144,8 @@ test("library Apply adds to the current set; duplicates render once with members
 test("sign-in return keeps the selected item; personal layer creation, add, apply and My saves", async ({
   page,
 }) => {
+  // The sidebar lists results only without a map, as in CI (no token).
+  await blockMapProvider(page);
   await page.goto("/?types=place");
   await openMapList(page);
   await page

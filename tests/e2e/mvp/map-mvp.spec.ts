@@ -84,7 +84,8 @@ test("a member builds a layer from Google Maps links and attaches an event", asy
   const places = page.locator(".mvp-places .external-references li");
   await expect(places).toHaveCount(2);
   await expect(places.first()).toContainText("Test business fake-link-");
-  await page.getByRole("button", { name: "Manage layers" }).click();
+  // The header button shows the Layers panel with or without a map.
+  await page.getByRole("button", { name: /^Layers \d/ }).click();
   await expect(
     page.getByRole("checkbox", { name: new RegExp(title) }),
   ).toBeChecked();

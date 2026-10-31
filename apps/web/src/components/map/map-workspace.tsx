@@ -680,6 +680,8 @@ export function MapWorkspace({
   const fallback = !token || canvasStatus === "failed";
   const visible =
     !!layerPanel || panelVisible({ open: panelOpen, listView, fallback });
+  // The sidebar is the Layers panel; results only list when there is no map to show them.
+  const showResults = listView || fallback;
   const savedScroll = useRef(0);
   const wasDetail = useRef(false);
   useEffect(() => {
@@ -1210,13 +1212,15 @@ export function MapWorkspace({
         <div className="actions">
           {authenticated ? (
             <>
-              <button
-                type="button"
-                className="button secondary small"
-                onClick={() => setTab("layers")}
-              >
-                {t.yourLayers}
-              </button>
+              {showResults && (
+                <button
+                  type="button"
+                  className="button secondary small"
+                  onClick={() => setTab("layers")}
+                >
+                  {t.yourLayers}
+                </button>
+              )}
               <Link className="button small" href="/layers/new">
                 {t.createFromGoogle}
               </Link>
@@ -1977,8 +1981,12 @@ export function MapWorkspace({
               </>
             ) : mode === "business" && discoveryPanel && !mvp ? (
               <div className="panel-body">{discoveryPanel}</div>
+            ) : !showResults ? (
+              <div className="panel-body">
+                {appliedSlugs.length === 0 && emptyState}
+                {layersPanel}
+              </div>
             ) : tab === "layers" ? (
-              // No tab bar: the sidebar is the place list, and Manage layers opens this.
               <div className="panel-body">
                 <button
                   type="button"
@@ -2001,6 +2009,7 @@ export function MapWorkspace({
                   !!layerPanel ||
                   routeInPanel ||
                   detailInPanel ||
+                  !showResults ||
                   tab !== "results"
                 }
               >
