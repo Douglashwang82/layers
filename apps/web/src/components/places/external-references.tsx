@@ -1,5 +1,5 @@
 "use client";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   googleMarkerKind,
   withinBounds,
@@ -11,32 +11,22 @@ import type { LayerAvailability } from "@/features/map/query";
 import { LayerSection, groupByLayer } from "@/components/map/layer-section";
 import { NextEvent, TabelogLink } from "@/components/map/map-results";
 import { googleTabelogLink } from "@/lib/tabelog";
-import type { LatLng, PlacesProvider } from "@/lib/places/provider";
+import type { LatLng } from "@/lib/places/provider";
 import type { ExternalReference } from "@/features/map/external";
 import type { ExtraPoint } from "@/components/map/map-canvas";
-import { ProviderDetails } from "./provider-slot";
+import { GoogleMapsLink } from "./google-maps-link";
 import { LocalNote, isUrl } from "./local-note";
-type Row = ExternalReference & {
-  state: "loading" | "resolved" | "unavailable";
-  location: LatLng | null;
-};
+type Row = ExternalReference & { location: LatLng | null };
+
 type Page = {
   references: ExternalReference[];
   nextCursor: string | null;
   totalAuthorizedReferences: number;
 };
-/** At most three provider detail loads run at once. */
-const concurrency = 3;
-/**
- * Authorized external places for the applied layers. The server knows only
- * provider IDs, so rows resolve their location through visible provider
- * components, a bounded page at a time. Rows and pins share one view model:
- * an out-of-area point leaves both, and an unresolved row is listed as
- * awaiting location, never pinned at a made-up coordinate.
- */
+/** Local summaries and valid cached pins; browsing never mounts provider cards. */
 export function ExternalReferences({
-  provider,
   queryKey,
+  locatedPlaces,
   area,
   selectedSubjectId,
   t,
@@ -50,8 +40,8 @@ export function ExternalReferences({
   reload = 0,
   layers,
 }: {
-  provider: PlacesProvider | null;
   queryKey: string;
+  locatedPlaces: Record<string, LatLng>;
   area: Bounds | undefined;
   selectedSubjectId: string | null;
   t: Copy;
@@ -61,12 +51,9 @@ export function ExternalReferences({
   events?: Record<string, LayerEvent[]>;
   locale?: Locale;
   timeZone?: string;
-  /** Load every page as soon as the previous one settles (map MVP: all pins, not a page). */
+  /** Load every local-data page in map MVP. */
   autoLoad?: boolean;
-  /**
-   * Reports how many rows still wait for their provider component. Those
-   * components load only while on screen, so a hidden list never locates.
-   */
+  /** Reports list-only places so a map without their pins still exposes the list. */
   onPending?: (count: number) => void;
   reload?: number;
   /** Applied layers; when given, rows are grouped under one section each. */
@@ -77,43 +64,62 @@ export function ExternalReferences({
   const [total, setTotal] = useState(0);
   const [error, setError] = useState(false);
   const seq = useRef(0);
-  const load = (cursor: string | null) => {
-    const id = ++seq.current;
-    const sep = queryKey ? "&" : "?";
-    fetch(
-      `/api/v1/map/external-references${queryKey}${cursor ? `${sep}cursor=${cursor}` : ""}`,
-    )
-      .then((r) => r.json())
-      .then((json: { data?: Page }) => {
-        if (id !== seq.current || !json.data) return;
-        const page = json.data;
-        setRows((current) => [
-          ...(cursor ? current : []),
-          // A cached location pins the place at once; the card still loads when shown.
-          ...page.references.map((ref) => ({
-            ...ref,
-            state: (ref.location
-              ? "resolved"
-              : provider && ref.providerPlaceId
-                ? "loading"
-                : "unavailable") as Row["state"],
-            location: ref.location ?? null,
-          })),
-        ]);
-        setNext(page.nextCursor);
-        setTotal(page.totalAuthorizedReferences);
-        setError(false);
-      })
-      .catch(() => {
-        if (id === seq.current) setError(true);
-      });
-  };
+  const load = useCallback(
+    (cursor: string | null) => {
+      const id = ++seq.current;
+      const sep = queryKey ? "&" : "?";
+      fetch(
+        `/api/v1/map/external-references${queryKey}${cursor ? `${sep}cursor=${cursor}` : ""}`,
+      )
+        .then((r) => {
+          if (!r.ok) throw new Error("external-references");
+          return r.json();
+        })
+        .then((json: { data?: Page }) => {
+          if (id !== seq.current) return;
+          if (!json.data) throw new Error("external-references");
+          const page = json.data;
+          setRows((current) => [
+            ...(cursor ? current : []),
+            // Missing coordinates never start a provider request.
+            ...page.references.map((ref) => ({
+              ...ref,
+              location: ref.location ?? null,
+            })),
+          ]);
+          setNext(page.nextCursor);
+          setTotal(page.totalAuthorizedReferences);
+          setError(false);
+        })
+        .catch(() => {
+          if (id === seq.current) setError(true);
+        });
+    },
+    [queryKey],
+  );
   useEffect(() => {
+    setRows([]);
+    setNext(null);
     load(null);
     // A new query replaces the page; stale responses are ignored by `seq`.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [queryKey, provider, reload]);
-  const settled = rows.filter((r) => r.state !== "loading").length;
+    return () => {
+      // This is a request generation, not a DOM ref.
+      // eslint-disable-next-line react-hooks/exhaustive-deps
+      seq.current++;
+    };
+  }, [load, reload]);
+  const locatedRows = useMemo(
+    () =>
+      rows.map((row) => ({
+        ...row,
+        location:
+          row.location ??
+          (row.providerPlaceId ? locatedPlaces[row.providerPlaceId] : null) ??
+          null,
+      })),
+    [rows, locatedPlaces],
+  );
+  const settled = locatedRows.filter((r) => r.location).length;
   const pendingRef = useRef(onPending);
   useEffect(() => {
     pendingRef.current = onPending;
@@ -121,28 +127,27 @@ export function ExternalReferences({
   useEffect(() => {
     pendingRef.current?.(rows.length - settled);
   }, [rows.length, settled]);
-  const allSettled = rows.length > 0 && settled === rows.length;
   const loadRef = useRef(load);
   useEffect(() => {
     loadRef.current = load;
   });
   useEffect(() => {
-    if (autoLoad && next && allSettled) loadRef.current(next);
-  }, [autoLoad, next, allSettled]);
+    if (autoLoad && next) loadRef.current(next);
+  }, [autoLoad, next]);
   const visible = useMemo(
     () =>
-      rows.filter(
+      locatedRows.filter(
         (r) =>
           !area ||
           !r.location ||
           withinBounds(r.location.lat, r.location.lng, area),
       ),
-    [rows, area],
+    [locatedRows, area],
   );
   const points = useMemo<ExtraPoint[]>(
     () =>
       visible
-        .filter((r) => r.state === "resolved" && r.location)
+        .filter((r) => r.location)
         .map((r) => {
           const url = googleTabelogLink(r);
           return {
@@ -162,19 +167,21 @@ export function ExternalReferences({
     [visible],
   );
   const pointsRef = useRef(onPoints);
+  const reportedPoints = useRef<string | null>(null);
   useEffect(() => {
     pointsRef.current = onPoints;
   });
   useEffect(() => {
+    // Parent camera/layout updates may recreate equivalent bounds. Publishing
+    // identical points again would feed another parent render back into this effect.
+    const signature = JSON.stringify(points);
+    if (signature === reportedPoints.current) return;
+    reportedPoints.current = signature;
     pointsRef.current(points);
   }, [points]);
   useEffect(() => () => pointsRef.current([]), []);
-  const update = (subjectId: string, patch: Partial<Row>) =>
-    setRows((list) =>
-      list.map((r) => (r.subjectId === subjectId ? { ...r, ...patch } : r)),
-    );
   if (!rows.length && !error) return null;
-  const renderRow = (row: Row, index: number, prefix = "") => (
+  const renderRow = (row: Row, prefix = "") => (
     <li
       key={prefix + row.subjectId}
       className={`external-row ${row.subjectId === selectedSubjectId ? "selected" : ""}`}
@@ -189,29 +196,10 @@ export function ExternalReferences({
         onSelect(row, row.location);
       }}
     >
-      {provider &&
-        row.providerPlaceId &&
-        row.state !== "unavailable" &&
-        index < settled + concurrency && (
-          <ProviderDetails
-            provider={provider}
-            placeId={row.providerPlaceId}
-            compact
-            preview
-            onLoad={(place) =>
-              update(row.subjectId, {
-                state: place.location ? "resolved" : "unavailable",
-                location: place.location,
-              })
-            }
-            onError={() => update(row.subjectId, { state: "unavailable" })}
-          />
-        )}
-      {row.state === "unavailable" && (
-        <p className="fine-print">{t.externalUnavailable}</p>
-      )}
-      {row.state !== "resolved" && (
-        <span className="chip">{t.awaitingLocation}</span>
+      <h3>{row.name || t.routeGooglePlace}</h3>
+      {!row.location && <span className="chip">{t.awaitingLocation}</span>}
+      {row.providerPlaceId && (
+        <GoogleMapsLink placeId={row.providerPlaceId} name={row.name} t={t} />
       )}
       {row.isDailyPick && <span className="badge">{t.dailyPick}</span>}
       <NextEvent
@@ -244,7 +232,7 @@ export function ExternalReferences({
     layers: row.layers,
   }));
   const { groups, rest } = groupByLayer(indexed, layers);
-  const pending = visible.filter((r) => r.state !== "resolved").length;
+  const pending = visible.filter((r) => !r.location).length;
   return (
     <section className="external-references" aria-label={t.externalBusinesses}>
       <p className="fine-print" role="status">
@@ -258,7 +246,7 @@ export function ExternalReferences({
           <button
             type="button"
             className="text-button"
-            onClick={() => load(null)}
+            onClick={() => load(rows.length ? next : null)}
           >
             {t.retry}
           </button>
@@ -274,20 +262,16 @@ export function ExternalReferences({
               count={rows.length}
             >
               <ul className="result-list">
-                {rows.map((r) => renderRow(r.row, r.index, `${layer.slug}:`))}
+                {rows.map((r) => renderRow(r.row, `${layer.slug}:`))}
               </ul>
             </LayerSection>
           ))}
           {rest.length > 0 && (
-            <ul className="result-list">
-              {rest.map((r) => renderRow(r.row, r.index))}
-            </ul>
+            <ul className="result-list">{rest.map((r) => renderRow(r.row))}</ul>
           )}
         </>
       ) : (
-        <ul className="result-list">
-          {visible.map((row, index) => renderRow(row, index))}
-        </ul>
+        <ul className="result-list">{visible.map((row) => renderRow(row))}</ul>
       )}
       {next && !autoLoad && (
         <button

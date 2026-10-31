@@ -18,7 +18,7 @@ import { pickDateLabel, pickText } from "@/lib/daily-pick";
 import { track } from "@/lib/track";
 import { getPlacesProvider, type LatLng } from "@/lib/places/provider";
 import { subjectApi } from "@/lib/places/api";
-import { ProviderDetails } from "@/components/places/provider-slot";
+import { RequestedProviderDetails } from "@/components/places/requested-provider-details";
 /**
  * Today's Daily Pick: identity, the approved description, the recorded reasons
  * and only the practical facts the listing supports. Works without the map.
@@ -208,15 +208,22 @@ export function DailyPickCard({
         <h4>{t.dailyPickWhy}</h4>
         <p>{reason}</p>
         <h4>{t.dailyPickDetails}</h4>
-        {provider && pick.providerPlaceId && !providerUnavailable ? (
-          <ProviderDetails
+        {provider && pick.providerPlaceId ? (
+          <RequestedProviderDetails
+            t={t}
             provider={provider}
             placeId={pick.providerPlaceId}
             compact={false}
-            onLoad={(place) => setProviderLocation(place.location)}
+            onLoad={(place) => {
+              setProviderUnavailable(false);
+              setProviderLocation(place.location);
+            }}
             onError={() => setProviderUnavailable(true)}
           />
         ) : (
+          <p className="fine-print">{t.externalUnavailable}</p>
+        )}
+        {providerUnavailable && (
           <p className="fine-print">{t.externalUnavailable}</p>
         )}
         <p className="fine-print">{t.dailyPickOpenNote}</p>

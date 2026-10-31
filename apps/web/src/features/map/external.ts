@@ -24,7 +24,7 @@ export type ExternalReference = {
   layers: string[];
   cityReviewStatus: "unreviewed" | "approved";
   isDailyPick?: boolean;
-  /** Cached Google coordinates (map MVP, at most 30 days old), for the pin. */
+  /** Cached Google coordinates (at most 30 days old), for the pin. */
   location?: { lat: number; lng: number } | null;
   /** Cached Google place types, fetched and expired with the coordinates. */
   types?: string[] | null;
@@ -34,9 +34,8 @@ export type ExternalReference = {
  * date context as the map query, or the actor's own saves. The server stores
  * no provider business fields, so it cannot search or sort these by them:
  * text search covers LocalLink-authored notes and pasted-link names only.
- * Location is resolved
- * client-side through the provider component, except that the map MVP adds
- * cached coordinates (at most 30 days old) so pins need no component load.
+ * Browsing reads cached coordinates only (at most 30 days old); missing
+ * locations stay list-only and never trigger provider resolution.
  */
 export async function listExternalReferences(
   state: MapState,
@@ -54,7 +53,7 @@ export async function listExternalReferences(
     );
     const picked = new Set(picks.rows.map((r) => r.subject_id));
     for (const ref of page) ref.isDailyPick = picked.has(ref.subjectId);
-    if (flags.mapMvp) {
+    {
       const locations = await placeLocations(page.map((r) => r.subjectId));
       for (const ref of page) {
         const cached = locations.get(ref.subjectId);
@@ -71,7 +70,7 @@ export async function listExternalReferences(
         : null,
     totalAuthorizedReferences: matching.length,
     pageSize: externalPageSize,
-    spatialFilter: "pending-provider-resolution" as const,
+    spatialFilter: "cached-locations" as const,
   };
 }
 /**

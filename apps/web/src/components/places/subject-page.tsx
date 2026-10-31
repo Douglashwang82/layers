@@ -5,7 +5,7 @@ import type { Copy, Locale } from "@/lib/dictionary";
 import { getPlacesProvider } from "@/lib/places/provider";
 import { subjectApi } from "@/lib/places/api";
 import { BusinessPanel, type PlaceFlags } from "./business-panel";
-import { ProviderDetails } from "./provider-slot";
+import { RequestedProviderDetails } from "./requested-provider-details";
 /** Client shell for /place-subjects/{id}: the provider is created only in the browser. */
 export function SubjectPage({
   subjectId,
@@ -42,8 +42,8 @@ export function SubjectPage({
   );
 }
 /**
- * Owner-only saved external businesses. Details load through the visible
- * provider component, three at a time; unavailable ones stay removable.
+ * Owner-only saved businesses. Each provider card requires explicit intent;
+ * unavailable places stay removable.
  */
 export function SavedExternalList({
   items,
@@ -67,16 +67,13 @@ export function SavedExternalList({
   );
   const [settled, setSettled] = useState<Record<string, boolean>>({});
   const [removing, setRemoving] = useState<string | null>(null);
-  const done = Object.keys(settled).length;
   return (
     <ul className="saved-external">
-      {items.map((item, index) => (
+      {items.map((item) => (
         <li key={item.subjectId}>
-          {provider &&
-          item.available &&
-          item.providerPlaceId &&
-          index < done + 3 ? (
-            <ProviderDetails
+          {provider && item.available && item.providerPlaceId ? (
+            <RequestedProviderDetails
+              t={t}
               provider={provider}
               placeId={item.providerPlaceId}
               compact

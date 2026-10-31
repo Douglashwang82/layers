@@ -196,27 +196,25 @@ test("daily pick: saving from the card and the detail stay in agreement", async 
   await page.goto(`/?city=${city.slug}&layers=${layer}`);
   await openMapList(page);
   const card = page.getByRole("region", { name: "Daily Pick" });
+  // The card and detail share one panel: save before opening the detail.
+  await card.getByRole("button", { name: "Save", exact: true }).click();
+  await expect(
+    card.getByRole("button", { name: "Saved", exact: true }),
+  ).toHaveAttribute("aria-pressed", "true");
   await card.getByRole("button", { name: "Show on map" }).click();
   const detail = page.locator(".item-preview");
   await expect(
     detail.getByRole("heading", { name: pickName, level: 2 }),
   ).toBeVisible();
   await expect(
-    detail.getByRole("button", { name: "Save", exact: true }),
-  ).toBeVisible();
-  // Card → detail.
-  await card.getByRole("button", { name: "Save", exact: true }).click();
-  await expect(
-    card.getByRole("button", { name: "Saved", exact: true }),
-  ).toHaveAttribute("aria-pressed", "true");
-  await expect(
     detail.getByRole("button", { name: "Saved", exact: true }),
   ).toBeVisible();
-  // Detail → card.
+  // Detail → card: return to results before checking the card.
   await detail.getByRole("button", { name: "Saved", exact: true }).click();
   await expect(
     detail.getByRole("button", { name: "Save", exact: true }),
   ).toBeVisible();
+  await detail.getByRole("button", { name: "Back to results" }).click();
   await expect(
     card.getByRole("button", { name: "Save", exact: true }),
   ).toHaveAttribute("aria-pressed", "false");

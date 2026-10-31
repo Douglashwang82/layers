@@ -61,7 +61,6 @@ import { getPlacesProvider, type ProviderPlace } from "@/lib/places/provider";
 import { BusinessDiscovery } from "@/components/places/business-discovery";
 import { BusinessPanel } from "@/components/places/business-panel";
 import { ExternalReferences } from "@/components/places/external-references";
-import { ProviderDetails } from "@/components/places/provider-slot";
 import { MapToolbar } from "./map-toolbar";
 import {
   markerCssVars,
@@ -124,6 +123,7 @@ type BusinessSelection = {
   subjectId: string | null;
   location: { lat: number; lng: number } | null;
   temporary: boolean;
+  name?: string | null;
 };
 function keyOf(state: MapState, includeCity: boolean) {
   return serializeMapQuery(
@@ -496,6 +496,10 @@ export function MapWorkspace({
   const [mode, setMode] = useState<"layers" | "business">("layers");
   const [business, setBusiness] = useState<BusinessSelection | null>(null);
   const [searchPoints, setSearchPoints] = useState<ExtraPoint[]>([]);
+  const [locatedPlaces, setLocatedPlaces] = useState<
+    Record<string, { lat: number; lng: number }>
+  >({});
+  const [pendingExternal, setPendingExternal] = useState(0);
   const [externalPoints, setExternalPoints] = useState<ExtraPoint[]>([]);
   const extraPoints = useMemo(() => {
     const points = [...externalPoints, ...searchPoints];
@@ -629,6 +633,7 @@ export function MapWorkspace({
       {
         key,
         placeId: point.placeId ?? null,
+        name: point.label,
         subjectId: key.startsWith("subject:") ? key.slice(8) : null,
         location: { lat: point.lat, lng: point.lng },
         temporary: point.kind === "search",
@@ -681,7 +686,7 @@ export function MapWorkspace({
   const visible =
     !!layerPanel || panelVisible({ open: panelOpen, listView, fallback });
   // The sidebar is the Layers panel; results only list when there is no map to show them.
-  const showResults = listView || fallback;
+  const showResults = listView || fallback || (mvp && pendingExternal > 0);
   const savedScroll = useRef(0);
   const wasDetail = useRef(false);
   useEffect(() => {
@@ -752,18 +757,22 @@ export function MapWorkspace({
     mvp && authenticated && appliedSlugs.length === 0 ? "layers" : "results",
   );
   /**
-   * Google place cards locate their pins only while on screen, so when an
-   * MVP map has places still waiting, the Results tab opens once per query;
-   * located pins stay after the panel closes.
+   * Expose list-only places once per query instead of silently hiding them
+   * when their cached coordinates are missing or expired.
    */
-  const [pendingExternal, setPendingExternal] = useState(0);
   const revealedFor = useRef<string | null>(null);
   useEffect(() => {
-    if (!mvp || !pendingExternal || revealedFor.current === queryKey) return;
+    if (
+      !mvp ||
+      layerPanel ||
+      !pendingExternal ||
+      revealedFor.current === queryKey
+    )
+      return;
     revealedFor.current = queryKey;
     setTab("results");
     setPanelOpen(true);
-  }, [mvp, pendingExternal, queryKey]);
+  }, [mvp, layerPanel, pendingExternal, queryKey]);
   const [limit, setLimit] = useState(20);
   const [panelHeight, setPanelHeight] = useState(0);
   const [panelRight, setPanelRight] = useState(0);
@@ -947,6 +956,7 @@ export function MapWorkspace({
       key={business.key}
       provider={provider}
       placeId={business.placeId}
+      name={business.name}
       subjectId={business.subjectId}
       temporary={business.temporary}
       authenticated={authenticated}
@@ -959,7 +969,10 @@ export function MapWorkspace({
       locale={locale}
       onClose={closeBusiness}
       onLocation={(place) => {
-        if (!place.location || business.location) return;
+        if (!place.location) return;
+        const location = place.location;
+        setLocatedPlaces((current) => ({ ...current, [place.id]: location }));
+        if (business.location) return;
         setBusiness((b) =>
           b && b.key === business.key ? { ...b, location: place.location } : b,
         );
@@ -1317,7 +1330,7 @@ export function MapWorkspace({
   const externalReferences = (
     <ExternalReferences
       reload={force}
-      provider={provider}
+      locatedPlaces={locatedPlaces}
       queryKey={queryKey}
       area={state.area}
       selectedSubjectId={business?.subjectId ?? null}
@@ -1333,6 +1346,7 @@ export function MapWorkspace({
         selectBusiness({
           key: ref.canonicalKey,
           placeId: ref.providerPlaceId,
+          name: ref.name,
           subjectId: ref.subjectId,
           location,
           temporary: false,
@@ -1674,7 +1688,7 @@ export function MapWorkspace({
                       14,
                   ),
                 );
-                if (point?.placeId && provider)
+                if (point)
                   return (
                     <div
                       className={`map-tooltip map-place-tip${tip.above ? " tip-above" : ""}`}
@@ -1688,16 +1702,7 @@ export function MapWorkspace({
                       onMouseEnter={() => window.clearTimeout(tipTimer.current)}
                       onMouseLeave={() => setTip(null)}
                     >
-                      <ProviderDetails
-                        key={point.placeId}
-                        provider={provider}
-                        placeId={point.placeId}
-                        compact
-                        preview
-                        photo
-                        onLoad={() => {}}
-                        onError={() => setTip(null)}
-                      />
+                      <strong>{point.label || t.routeGooglePlace}</strong>
                       {point.tabelog && (
                         <TabelogLink
                           name={point.tabelog.name}

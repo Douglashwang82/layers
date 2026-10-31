@@ -24,10 +24,6 @@ import {
 import { createGroup } from "../../apps/web/src/features/groups/service";
 import { listExternalReferences } from "../../apps/web/src/features/map/external";
 import { placeLocations } from "../../apps/web/src/features/google-links/locations";
-import {
-  fakeResolverFetch,
-  fetchPlaceLocation,
-} from "../../apps/web/src/features/google-links/resolver";
 import { runMapQuery } from "../../apps/web/src/features/map/query";
 import { mvpMapState } from "../../apps/web/src/features/map/request";
 import { flags } from "../../apps/web/src/lib/config";
@@ -448,8 +444,7 @@ describe("the MVP map", () => {
       flags.mapMvp = true;
     }
   });
-  it("caches Google coordinates for pins for at most 30 days", async () => {
-    // The fake server key locates `fake-link-` IDs and finds no other place.
+  it("reads valid cached pins without resolving missing or expired locations", async () => {
     const located = `fake-link-${run}a`;
     const layer = (
       await createLayerFromGoogle(alice, {
@@ -458,73 +453,47 @@ describe("the MVP map", () => {
         providerPlaceIds: [located, placeId(40)],
       })
     ).layer.slug;
-    const expected = (await fetchPlaceLocation(located, {
-      fetch: fakeResolverFetch,
-      apiKey: "fake",
-    }))!;
-    expect(expected).toEqual({
-      lat: expect.any(Number),
-      lng: expect.any(Number),
-      types: expect.arrayContaining(["restaurant"]),
-    });
-    const { types, ...pin } = expected;
-    const list = () =>
-      listExternalReferences(state([layer]), city, alice, 0).then((r) =>
-        Object.fromEntries(
-          r.references.map((ref) => [ref.providerPlaceId, ref.location]),
-        ),
-      );
-    expect(await list()).toEqual({
-      [located]: pin,
-      [placeId(40)]: null,
-    });
-    const stored = await pool.query(
-      "SELECT latitude,longitude,types,location_fetched_at FROM place_provider_reference WHERE provider_place_id=$1",
-      [located],
-    );
-    expect(stored.rows[0]).toMatchObject({
-      latitude: expected.lat,
-      longitude: expected.lng,
-      types,
-    });
-    expect(stored.rows[0].location_fetched_at).toBeInstanceOf(Date);
-    // Past 30 days the value is cleared, even with lookups unavailable...
-    await pool.query(
-      "UPDATE place_provider_reference SET location_fetched_at=now()-interval '31 days' WHERE provider_place_id=$1",
-      [located],
-    );
+    const list = () => listExternalReferences(state([layer]), city, alice, 0);
+    // Even with the fake server key configured, browsing never fills a missing cache.
+    expect(
+      (await list()).references.every((ref) => ref.location === null),
+    ).toBe(true);
     const subject = await subjectOf(located);
-    expect((await placeLocations([subject], null)).size).toBe(0);
+    await pool.query(
+      "UPDATE place_provider_reference SET latitude=29.7,longitude=-95.5,types=NULL,location_fetched_at=now() WHERE subject_id=$1",
+      [subject],
+    );
+    const cached = (await list()).references.find(
+      (r) => r.subjectId === subject,
+    )!;
+    expect(cached.location).toEqual({ lat: 29.7, lng: -95.5 });
+    expect(cached.types).toEqual([]); // Missing types never cause a provider lookup.
+    flags.mapMvp = false;
+    try {
+      expect(
+        (await list()).references.find((r) => r.subjectId === subject)
+          ?.location,
+      ).toEqual(cached.location);
+    } finally {
+      flags.mapMvp = true;
+    }
+    await pool.query(
+      "UPDATE place_provider_reference SET location_fetched_at=now()-interval '31 days' WHERE subject_id=$1",
+      [subject],
+    );
+    expect((await placeLocations([subject])).size).toBe(0);
+    expect(
+      (await list()).references.every((ref) => ref.location === null),
+    ).toBe(true);
     const cleared = await pool.query(
-      "SELECT latitude,types,location_fetched_at FROM place_provider_reference WHERE provider_place_id=$1",
-      [located],
+      "SELECT latitude,types,location_fetched_at FROM place_provider_reference WHERE subject_id=$1",
+      [subject],
     );
     expect(cleared.rows[0]).toEqual({
       latitude: null,
       types: null,
       location_fetched_at: null,
     });
-    // ...and looked up again the next time the place is listed.
-    expect((await list())[located]).toEqual(pin);
-    // A pin cached before types were fetched is looked up once more for them.
-    await pool.query(
-      "UPDATE place_provider_reference SET types=NULL WHERE provider_place_id=$1",
-      [located],
-    );
-    await list();
-    const refetched = await pool.query(
-      "SELECT types FROM place_provider_reference WHERE provider_place_id=$1",
-      [located],
-    );
-    expect(refetched.rows[0].types).toEqual(types);
-    // With the flag off, references carry no cached location.
-    flags.mapMvp = false;
-    try {
-      const refs = await listExternalReferences(state([layer]), city, alice, 0);
-      expect(refs.references.every((r) => r.location === undefined)).toBe(true);
-    } finally {
-      flags.mapMvp = true;
-    }
   });
   it("ignores search, area, dates and non-place types from the URL", async () => {
     const parsed = parseMapQuery({

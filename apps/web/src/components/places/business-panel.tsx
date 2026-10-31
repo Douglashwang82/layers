@@ -14,7 +14,8 @@ import {
   type ReviewScopeSummary,
 } from "@/lib/places/api";
 import { track } from "@/lib/track";
-import { ProviderDetails } from "./provider-slot";
+import { GoogleMapsLink } from "./google-maps-link";
+import { RequestedProviderDetails } from "./requested-provider-details";
 import { ReviewEditor, scopeLabel } from "./review-editor";
 type Feedback = { tone: "success" | "error"; text: string } | null;
 type SubjectDetail = {
@@ -78,6 +79,7 @@ export function RatingLine({
 export function BusinessPanel({
   provider,
   placeId,
+  name,
   subjectId: initialSubjectId = null,
   temporary,
   authenticated,
@@ -89,6 +91,7 @@ export function BusinessPanel({
 }: {
   provider: PlacesProvider | null;
   placeId: string | null;
+  name?: string | null;
   subjectId?: string | null;
   temporary: boolean;
   authenticated: boolean;
@@ -104,8 +107,8 @@ export function BusinessPanel({
   const [scopes, setScopes] = useState<ReviewScopeSummary[] | null>(null);
   const [groups, setGroups] = useState<ReviewScopeSummary[]>([]);
   const [providerState, setProviderState] = useState<
-    "loading" | "ready" | "failed"
-  >(provider && placeId ? "loading" : "failed");
+    "idle" | "ready" | "failed"
+  >(provider && placeId ? "idle" : "failed");
   const [feedback, setFeedback] = useState<Feedback>(null);
   const [busy, setBusy] = useState<string | null>(null);
   const [layers, setLayers] = useState<EditableLayer[] | null>(null);
@@ -358,6 +361,7 @@ export function BusinessPanel({
   return (
     <article className="business-panel" aria-label={t.businessResults}>
       <div className="business-head">
+        <h2>{name || t.routeGooglePlace}</h2>
         {temporary && <span className="eyebrow">{t.temporaryResult}</span>}
         {onClose && (
           <button
@@ -372,7 +376,8 @@ export function BusinessPanel({
       </div>
       <section className="provider-region">
         {provider && effectivePlaceId ? (
-          <ProviderDetails
+          <RequestedProviderDetails
+            t={t}
             provider={provider}
             placeId={effectivePlaceId}
             compact={false}
@@ -387,12 +392,9 @@ export function BusinessPanel({
               track("places_component_failed", { type: "details" });
             }}
           />
+        ) : effectivePlaceId ? (
+          <GoogleMapsLink placeId={effectivePlaceId} name={name} t={t} />
         ) : null}
-        {providerState === "loading" && (
-          <p className="fine-print" role="status">
-            {t.businessLoading}
-          </p>
-        )}
         {providerState === "failed" && (
           <p className="fine-print" role="status">
             {t.businessDetailsUnavailable}

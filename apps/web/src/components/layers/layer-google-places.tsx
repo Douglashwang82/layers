@@ -1,27 +1,23 @@
 "use client";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useState } from "react";
 import { Trash2 } from "lucide-react";
 import type { LayerEvent } from "@taiwanhub/shared";
 import { api, StatusMessage } from "@/components/actions";
-import { ProviderDetails } from "@/components/places/provider-slot";
+import { GoogleMapsLink } from "@/components/places/google-maps-link";
 import { LocalNote } from "@/components/places/local-note";
 import type { ExternalReference } from "@/features/map/external";
-import { getPlacesProvider } from "@/lib/places/provider";
 import type { Copy, Locale } from "@/lib/dictionary";
 import { LayerItemEvents } from "./layer-item-events";
 import { LayerItemReviewsByKey } from "./layer-item-reviews";
 type Feedback = { tone: "success" | "error"; text: string } | null;
 type Page = { references: ExternalReference[]; nextCursor: string | null };
 /**
- * The Google places in one layer: for its editors a provider preview per
- * place, its events and removal; read-only, just the previews. The server
- * knows only place IDs, so the names and addresses shown come from the
- * Places UI Kit.
+ * Layer contents use local link names, notes and events. Opening the editor
+ * or a read-only layer never loads provider cards.
  */
 export function LayerGooglePlaces({
   layer,
   city,
-  providerKey,
   events = [],
   onEvents,
   reload = 0,
@@ -44,10 +40,6 @@ export function LayerGooglePlaces({
   t: Copy;
   locale: Locale;
 }) {
-  const provider = useMemo(
-    () => getPlacesProvider(providerKey ?? undefined, locale),
-    [providerKey, locale],
-  );
   const [refs, setRefs] = useState<ExternalReference[]>([]);
   const [pending, setPending] = useState<string | null>(null);
   const [feedback, setFeedback] = useState<Feedback>(null);
@@ -111,17 +103,13 @@ export function LayerGooglePlaces({
           return (
             <li key={ref.subjectId} className="result-row">
               <div className="google-place-row">
-                {provider && ref.providerPlaceId ? (
-                  <ProviderDetails
-                    provider={provider}
+                <h4>{ref.name || t.routeGooglePlace}</h4>
+                {ref.providerPlaceId && (
+                  <GoogleMapsLink
                     placeId={ref.providerPlaceId}
-                    compact
-                    preview
-                    onLoad={() => {}}
-                    onError={() => {}}
+                    name={ref.name}
+                    t={t}
                   />
-                ) : (
-                  <p className="fine-print">{t.externalUnavailable}</p>
                 )}
                 <LocalNote note={ref.localNote} t={t} />
                 {!readOnly && (

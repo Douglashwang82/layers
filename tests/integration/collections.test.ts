@@ -250,7 +250,7 @@ describe("external reference projection", () => {
     const result = await listExternalReferences(state({}), city, alice, 0);
     expect(result).toMatchObject({
       pageSize: 12,
-      spatialFilter: "pending-provider-resolution",
+      spatialFilter: "cached-locations",
       totalAuthorizedReferences: 1,
       nextCursor: null,
     });

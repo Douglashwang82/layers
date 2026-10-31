@@ -22,6 +22,7 @@ test("find a business, save it, review it in a group, and reopen it", async ({
   await page.getByLabel("Search for a business by name").fill("台灣牛肉麵");
   await page.getByRole("button", { name: "Select (test provider)" }).click();
   await expect(page.getByText("Search result — not saved")).toBeVisible();
+  await page.getByRole("button", { name: "Load Google details" }).click();
   await expect(page.getByText(/Test business fake-/).first()).toBeVisible();
   await expect(page.getByText("LocalLink community")).toBeVisible();
   // Browsing created nothing: the lookup says unknown until an explicit save.

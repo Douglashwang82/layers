@@ -83,7 +83,18 @@ test("a member builds a layer from Google Maps links and attaches an event", asy
   await expect(page.getByRole("searchbox")).toHaveCount(0);
   const places = page.locator(".mvp-places .external-references li");
   await expect(places).toHaveCount(2);
-  await expect(places.first()).toContainText("Test business fake-link-");
+  await expect(places.first()).toContainText("Tiger Den");
+  const backToResults = page.getByRole("button", { name: "Back to results" });
+  if (await backToResults.isVisible()) await backToResults.click();
+  await expect(page.locator(".fake-provider")).toHaveCount(0);
+  await expect(
+    places.first().getByRole("link", { name: "Open in Google Maps" }),
+  ).toHaveAttribute("href", /query_place_id=/);
+  await places.first().getByRole("button", { name: "Open place page" }).click();
+  await expect(page.locator(".business-panel .fake-provider")).toHaveCount(0);
+  await page.getByRole("button", { name: "Load Google details" }).click();
+  await expect(page.locator(".business-panel .fake-provider")).toHaveCount(1);
+  await page.getByRole("button", { name: "Close business details" }).click();
   // The header button shows the Layers panel with or without a map.
   await page.getByRole("button", { name: /^Layers \d/ }).click();
   await expect(
@@ -93,6 +104,7 @@ test("a member builds a layer from Google Maps links and attaches an event", asy
   await page.goto(`/?layers=${slug}&layerPanel=contents&layer=${slug}`);
   const googlePlaces = page.locator(".google-places > li");
   await expect(googlePlaces).toHaveCount(2);
+  await expect(page.locator(".google-places .fake-provider")).toHaveCount(0);
   await page
     .getByLabel("Google Maps or Instagram links")
     .fill("https://maps.google.com/?q=Boba+Corner");
@@ -152,4 +164,90 @@ test("a member builds a layer from Google Maps links and attaches an event", asy
   await openMapList(page);
   await expect(places).toHaveCount(4);
   await expect(places.first()).toContainText("Night market");
+});
+
+test("large layers page through local summaries without loading provider cards", async ({
+  page,
+}) => {
+  const browserErrors: string[] = [];
+  page.on("pageerror", (error) => browserErrors.push(error.message));
+  page.on("console", (message) => {
+    if (
+      message.type() === "error" &&
+      message.text().includes("Maximum update depth")
+    )
+      browserErrors.push(message.text());
+  });
+  await page.setViewportSize({ width: 390, height: 844 });
+  await createAndSignIn(
+    page,
+    "Budget Tester",
+    `budget-${Date.now()}@example.test`,
+  );
+  const response = await page.request.post("/api/v1/layers/from-google", {
+    data: {
+      title: `Budget ${Date.now()}`,
+      city: "houston",
+      providerPlaceIds: ["fake-link-budget"],
+    },
+  });
+  expect(response.ok()).toBeTruthy();
+  const { data } = await response.json();
+  const slug = data.layer.slug;
+  const refs = Array.from({ length: 65 }, (_, index) => ({
+    subjectId: crypto.randomUUID(),
+    providerPlaceId:
+      index === 0 ? "unavailable-place" : `fake-link-budget-${index}`,
+    name: index === 0 ? null : `Local place ${index}`,
+    localNote: `Local note ${index}`,
+    layers: [slug],
+    cityReviewStatus: "approved",
+    location: index % 2 ? { lat: 29.76, lng: -95.36 } : null,
+  })).map((ref) => ({ ...ref, canonicalKey: `subject:${ref.subjectId}` }));
+  const cursors: number[] = [];
+  await page.route("**/api/v1/map/external-references?**", async (route) => {
+    const cursor = Number(
+      new URL(route.request().url()).searchParams.get("cursor") ?? 0,
+    );
+    cursors.push(cursor);
+    await route.fulfill({
+      json: {
+        data: {
+          references: refs.slice(cursor, cursor + 60),
+          nextCursor: cursor === 0 ? "60" : null,
+          totalAuthorizedReferences: refs.length,
+        },
+      },
+    });
+  });
+  await page.goto(`/?layers=${slug}`);
+  await openMapList(page);
+  const rows = page.locator(".external-references li.external-row");
+  await expect(rows).toHaveCount(65);
+  expect(cursors).toContain(60);
+  await rows.last().scrollIntoViewIfNeeded();
+  await expect(rows.last()).toContainText("Local place 64");
+  await expect(page.locator(".fake-provider")).toHaveCount(0);
+  await rows.first().getByRole("button", { name: "Open place page" }).click();
+  const panel = page.locator(".business-panel");
+  await expect(
+    panel.getByRole("button", { name: "Load Google details" }),
+  ).toBeVisible();
+  await expect(panel.locator(".fake-provider")).toHaveCount(0);
+  await panel.getByRole("button", { name: "Load Google details" }).click();
+  await expect(
+    panel.getByText("Business details are unavailable right now."),
+  ).toBeVisible();
+  await expect(
+    panel.getByRole("button", { name: "Try again", exact: true }),
+  ).toBeVisible();
+  await expect(
+    panel.getByRole("link", { name: "Open in Google Maps" }),
+  ).toHaveAttribute("href", /query_place_id=unavailable-place/);
+  expect(browserErrors).toEqual([]);
+  await page.reload();
+  await openMapList(page);
+  await expect(rows).toHaveCount(65);
+  await expect(page.locator(".fake-provider")).toHaveCount(0);
+  expect(browserErrors).toEqual([]);
 });
