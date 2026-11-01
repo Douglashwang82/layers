@@ -251,3 +251,22 @@ test("large layers page through local summaries without loading provider cards",
   await expect(page.locator(".fake-provider")).toHaveCount(0);
   expect(browserErrors).toEqual([]);
 });
+test("a member with no layers sees the first-run starter", async ({ page }) => {
+  await createAndSignIn(
+    page,
+    "Starter Member",
+    `starter-${Date.now()}@example.test`,
+  );
+  await page.goto("/");
+  await openMapList(page);
+  const starter = page.locator(".first-run-starter");
+  await expect(
+    starter.getByRole("heading", { name: "Start your map" }),
+  ).toBeVisible();
+  await expect(
+    starter.getByText("You don't have any layers yet. Pick one of these to begin."),
+  ).toBeVisible();
+  await expect(
+    starter.getByRole("link", { name: "Start a layer from Google Maps links" }),
+  ).toBeVisible();
+});
