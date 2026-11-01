@@ -139,7 +139,13 @@ export default async function LayerPage({ params }: Props) {
               t={t}
             />
           )}
-          <ShareLayerButton layer={layer} t={t} />
+          <ShareLayerButton
+            layer={layer}
+            access={access}
+            layerWrites={flags.layerWrites}
+            locale={locale}
+            t={t}
+          />
           {layer.rule?.kind === "daily_pick" && (
             <Link
               className="button secondary"
