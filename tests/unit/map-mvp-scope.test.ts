@@ -36,6 +36,11 @@ describe("system layers under the map MVP", () => {
       isDisabledSystemLayer({ ownerKind: "system", rule: null }, true),
     ).toBe(true);
   });
+  it("disables another city's Daily Pick but keeps the active city's", () => {
+    const pick = { ...system("daily_pick"), cityId: "houston" };
+    expect(isDisabledSystemLayer(pick, true, "houston")).toBe(false);
+    expect(isDisabledSystemLayer(pick, true, "taipei")).toBe(true);
+  });
   it("never disables user or group layers, nor anything outside the MVP", () => {
     expect(isDisabledSystemLayer({ ownerKind: "user", rule: null }, true)).toBe(
       false,

@@ -17,8 +17,9 @@ import type { Actor } from "../../packages/shared/src";
 
 /* Read-only link-view sharing: token lifecycle, dead states and payload safety. */
 const owner: Actor = { id: crypto.randomUUID(), role: "USER" },
-  other: Actor = { id: crypto.randomUUID(), role: "USER" };
-const users = [owner, other];
+  other: Actor = { id: crypto.randomUUID(), role: "USER" },
+  admin: Actor = { id: crypto.randomUUID(), role: "ADMIN" };
+const users = [owner, other, admin];
 const tokenOf = (url: string) => url.split("/shared/")[1];
 let layerId: string;
 let groupId: string | null = null;
@@ -197,5 +198,54 @@ describe("view-only layer share links", () => {
       [groupId, owner.id],
     );
     expect(await loadSharedLayer(groupToken)).toBeNull();
+  });
+  it("is not manageable by an admin who does not own the layer", async () => {
+    await expect(createShareLink(admin, layerId)).rejects.toMatchObject({
+      status: expect.any(Number),
+    });
+  });
+  it("lists only catalog events that have not ended", async () => {
+    const client = await pool.connect();
+    const ids: string[] = [];
+    try {
+      for (const [label, end] of [
+        ["past", "now() - interval '1 day'"],
+        ["future", "now() + interval '1 day'"],
+      ] as const) {
+        const id = crypto.randomUUID();
+        const made = await client.query(
+          `CREATE TEMP TABLE ev_copy AS SELECT * FROM event WHERE status='approved' LIMIT 1`,
+        );
+        void made;
+        const count = await client.query(
+          "SELECT count(*)::int AS n FROM ev_copy",
+        );
+        if (!count.rows[0].n) {
+          await client.query("DROP TABLE ev_copy");
+          return; // no seeded event to copy from
+        }
+        await client.query(
+          `UPDATE ev_copy SET id=$1, slug=$2, name=$3, start_time=${end} - interval '1 hour', end_time=${end}`,
+          [id, `share-${id}`, `Share ${label} event`],
+        );
+        await client.query("INSERT INTO event SELECT * FROM ev_copy");
+        await client.query("DROP TABLE ev_copy");
+        ids.push(id);
+        await client.query(
+          "INSERT INTO layer_item(layer_id,event_id,position) VALUES($1,$2,50)",
+          [layerId, id],
+        );
+      }
+    } finally {
+      client.release();
+    }
+    try {
+      const token = tokenOf((await createShareLink(owner, layerId)).url);
+      const names = (await loadSharedLayer(token))?.places.map((p) => p.name);
+      expect(names).toContain("Share future event");
+      expect(names).not.toContain("Share past event");
+    } finally {
+      await pool.query("DELETE FROM event WHERE id=ANY($1::uuid[])", [ids]);
+    }
   });
 });

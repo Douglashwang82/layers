@@ -255,11 +255,17 @@ export async function requireEditableLayer(id: string, actor: Actor) {
  */
 /** Under the map MVP every system layer is off except the Daily Pick. */
 export function isDisabledSystemLayer(
-  layer: Pick<LayerRecord, "ownerKind" | "rule">,
+  layer: Pick<LayerRecord, "ownerKind" | "rule"> & { cityId?: string },
   mapMvp = flags.mapMvp,
+  activeCityId?: string,
 ) {
+  if (!mapMvp || layer.ownerKind !== "system") return false;
+  if (layer.rule?.kind !== "daily_pick") return true;
+  // The Daily Pick is per-city: another city's pick is not this city's.
   return (
-    mapMvp && layer.ownerKind === "system" && layer.rule?.kind !== "daily_pick"
+    activeCityId !== undefined &&
+    layer.cityId !== undefined &&
+    layer.cityId !== activeCityId
   );
 }
 export async function resolveLayers(
@@ -287,7 +293,7 @@ export async function resolveLayers(
       unavailable.push(slug);
       continue;
     }
-    if (isDisabledSystemLayer(layer)) {
+    if (isDisabledSystemLayer(layer, flags.mapMvp, city.id)) {
       disabled.push(slug);
       continue;
     }
