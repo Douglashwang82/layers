@@ -250,9 +250,18 @@ export async function requireEditableLayer(id: string, actor: Actor) {
  * without titles or counts; other-city layers are reported so the UI can
  * explain why they were hidden (not under the map MVP, where a layer shows
  * in every city). While the map MVP is on, system layers are
- * disabled: they are dropped silently (`disabled`) so an old link or a
- * remembered preference never loads them.
+ * disabled except the Daily Pick: they are dropped silently (`disabled`) so an
+ * old link or a remembered preference never loads them.
  */
+/** Under the map MVP every system layer is off except the Daily Pick. */
+export function isDisabledSystemLayer(
+  layer: Pick<LayerRecord, "ownerKind" | "rule">,
+  mapMvp = flags.mapMvp,
+) {
+  return (
+    mapMvp && layer.ownerKind === "system" && layer.rule?.kind !== "daily_pick"
+  );
+}
 export async function resolveLayers(
   slugs: string[],
   actor: Actor | null,
@@ -278,7 +287,7 @@ export async function resolveLayers(
       unavailable.push(slug);
       continue;
     }
-    if (flags.mapMvp && layer.ownerKind === "system") {
+    if (isDisabledSystemLayer(layer)) {
       disabled.push(slug);
       continue;
     }
@@ -363,21 +372,47 @@ export async function listMapLibrary(
   actor: Actor,
   city: { id: string; slug: string; name: string; timezone: string },
 ) {
-  const scopes = await Promise.all(
-    (["mine", "groups", "following"] as const).map((scope) =>
-      listLibrary(scope, actor, city),
+  const [scopes, dailyPick] = await Promise.all([
+    Promise.all(
+      (["mine", "groups", "following"] as const).map((scope) =>
+        listLibrary(scope, actor, city),
+      ),
     ),
-  );
+    cityDailyPickLayer(actor, city),
+  ]);
   const seen = new Set<string>();
-  return scopes
-    .flat()
-    .filter(
-      ({ layer }) =>
-        layer.lifecycle !== "archived" &&
-        layer.cityId === city.id &&
-        !seen.has(layer.slug) &&
-        !!seen.add(layer.slug),
-    );
+  return [...scopes.flat(), ...dailyPick].filter(
+    ({ layer }) =>
+      layer.lifecycle !== "archived" &&
+      layer.cityId === city.id &&
+      !seen.has(layer.slug) &&
+      !!seen.add(layer.slug),
+  );
+}
+/**
+ * The city's active Daily Pick system layer, for the map picker. Library
+ * queries drop system layers under the MVP, so it is fetched on its own; a
+ * city without one yields nothing (never invented).
+ */
+async function cityDailyPickLayer(
+  actor: Actor,
+  city: { id: string },
+): Promise<LayerWithAccess[]> {
+  const result = await pool.query<Record<string, unknown>>(
+    `SELECT ${columns} ${from} WHERE l.owner_kind='system' AND l.rule->>'kind'='daily_pick' AND l.city_id=$1 AND l.lifecycle='active' AND l.review_status='approved' ORDER BY l.updated_at DESC LIMIT 1`,
+    [city.id],
+  );
+  const [memberships, following] = await Promise.all([
+    getMemberships(actor.id),
+    followingSet(actor.id),
+  ]);
+  return result.rows
+    .map(record)
+    .map((layer) => ({
+      layer,
+      access: accessFor(layer, actor, memberships, following.has(layer.id)),
+    }))
+    .filter((entry) => entry.access.view);
 }
 /** Layers the actor can add items to, for the Add-to-layer picker. */
 export async function listEditableLayers(actor: Actor) {

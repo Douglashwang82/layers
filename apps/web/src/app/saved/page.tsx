@@ -10,6 +10,9 @@ import { listSavedExternalPlaces } from "@/features/map/external";
 import { SavedExternalList } from "@/components/places/subject-page";
 import { listSavedContent } from "@/features/content/repository";
 import { FileText } from "lucide-react";
+import { catalogMetadata } from "@/lib/catalog-metadata";
+/** Legacy catalog: not indexed under the map MVP. */
+export const generateMetadata = catalogMetadata;
 /**
  * Saves stay authoritative in their own tables; a layer made from them is a
  * separate creation.

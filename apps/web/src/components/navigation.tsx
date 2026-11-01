@@ -35,18 +35,27 @@ export function isActiveRoute(pathname: string, href: string) {
       : pathname === base || pathname.startsWith(base + "/"),
   );
 }
+/**
+ * Primary destinations. The map MVP drops the legacy saved-places catalog page
+ * (it stays reachable by URL, just unlinked).
+ */
+export function navigationHrefs(mvp: boolean) {
+  return ["/", "/layers", ...(mvp ? [] : ["/saved"]), "/profile"];
+}
 export function Navigation({
   t,
   locale,
   cities,
   city,
   mapHome = false,
+  mvp = false,
 }: {
   t: Copy;
   locale: Locale;
   cities: { id: string; slug: string; name: string }[];
   city: string;
   mapHome?: boolean;
+  mvp?: boolean;
 }) {
   const pathname = usePathname();
   const router = useRouter();
@@ -78,12 +87,14 @@ export function Navigation({
     document.addEventListener("pointerdown", close);
     return () => document.removeEventListener("pointerdown", close);
   }, [mapPage]);
-  const nav = [
+  const allNav = [
     ["/", t.mapNav, MapIcon],
     ["/layers", t.layers, Layers],
     ["/saved", t.saved, Bookmark],
     ["/profile", t.profile, UserRound],
   ] as const;
+  const hrefs = navigationHrefs(mvp);
+  const nav = allNav.filter(([href]) => hrefs.includes(href));
   const current = (href: string) =>
     isActiveRoute(pathname, href) ? ("page" as const) : undefined;
   const nextLanguage = locale === "en" ? "繁體中文" : "English";
@@ -186,7 +197,7 @@ export function Navigation({
               Local<span>Link</span>
             </Link>
             <nav className="desktop-nav" aria-label={t.mainNav}>
-              {nav.slice(0, 3).map(([href, label]) => (
+              {nav.filter(([href]) => href !== "/profile").map(([href, label]) => (
                 <Link key={href} href={navHref(href)} aria-current={current(href)} scroll={!mapPage}>
                   {label}
                 </Link>

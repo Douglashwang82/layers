@@ -11,6 +11,9 @@ import { SubmissionForm } from "@/components/submission-form";
 import { ContentForm } from "@/components/content/content-form";
 import { getActiveCity } from "@/lib/city";
 import { flags } from "@/lib/config";
+import { catalogMetadata } from "@/lib/catalog-metadata";
+/** Legacy catalog: not indexed under the map MVP. */
+export const generateMetadata = catalogMetadata;
 export default async function SubmitPage({
   params,
   searchParams,

@@ -141,6 +141,7 @@ export async function insertLayer(
   await record(tx, a.id, "layer_created", {
     layerId: id,
     owner: groupId ? "group" : "user",
+    audience: groupId ? "group" : "private",
   });
   return {
     id,
@@ -272,6 +273,12 @@ export async function addLayerItem(
       await record(tx, a.id, "layer_item_added", {
         layerId: found.layer.id,
         type: ref.type,
+        owner: found.layer.ownerKind,
+        // The actor's role on the layer: owner, editor, or a plain user.
+        role:
+          found.access.role === "owner" || found.access.role === "editor"
+            ? found.access.role
+            : "user",
       });
     const key = target.column === "place_id" ? `place:${target.id}` : input.key;
     return { added, key };

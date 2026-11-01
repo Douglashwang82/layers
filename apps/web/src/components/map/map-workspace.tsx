@@ -754,7 +754,13 @@ export function MapWorkspace({
   const [sheet, setSheet] = useState<Sheet>("half");
   // An empty MVP map opens on the member's layers: loading one is the first step.
   const [tab, setTab] = useState<"layers" | "results">(() =>
-    mvp && authenticated && appliedSlugs.length === 0 ? "layers" : "results",
+    mvp &&
+    authenticated &&
+    appliedSlugs.length === 0 &&
+    // A member with no layers of their own opens on the first-run starter.
+    (library ?? []).some((l) => l.ownerKind !== "system")
+      ? "layers"
+      : "results",
   );
   /**
    * Expose list-only places once per query instead of silently hiding them
@@ -1217,8 +1223,36 @@ export function MapWorkspace({
       )}
     </div>
   );
+  // First run: a signed-in member with no layers of their own gets a starter.
+  const dailyPickSlug =
+    (library ?? []).find((l) => l.ownerKind === "system")?.slug ?? null;
+  const firstRun =
+    mvp &&
+    authenticated &&
+    library != null &&
+    !library.some((l) => l.ownerKind !== "system");
   const emptyState =
-    mvp && appliedSlugs.length === 0 ? (
+    firstRun && appliedSlugs.length === 0 ? (
+      <div className="empty first-run-starter">
+        <h3>{t.starterTitle}</h3>
+        <p>{t.starterBody}</p>
+        <div className="actions">
+          {dailyPickSlug && (
+            <button
+              type="button"
+              className="button secondary small"
+              onClick={() => toggleLayer(dailyPickSlug, true)}
+            >
+              {t.starterSeePick}
+            </button>
+          )}
+          <Link className="button small" href="/layers/new">
+            {t.starterStartLayer}
+          </Link>
+        </div>
+        <p className="fine-print">{t.starterJoinGroup}</p>
+      </div>
+    ) : mvp && appliedSlugs.length === 0 ? (
       <div className="empty">
         <h3>{t.mvpEmptyTitle}</h3>
         <p>{authenticated ? t.mvpEmptyBody : t.signInForLayers}</p>
@@ -1304,6 +1338,7 @@ export function MapWorkspace({
       t={t}
       locale={locale}
       authenticated={authenticated}
+      addToLayer={mvp && layerWrites}
       onShow={select}
       onChanged={() => {
         // Authoritative refresh: the card's saved state and any open detail for the same place.
