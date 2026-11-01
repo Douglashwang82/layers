@@ -74,6 +74,7 @@ import { ActiveLayersPanel } from "./active-layers-panel";
 import { MapResults, TabelogLink } from "./map-results";
 import { tabelogLink } from "@/lib/tabelog";
 import { ItemPreview } from "./item-preview";
+import { PlaceAttachments } from "./place-attachments";
 import {
   TipReviews,
   tipReviewsHeight,
@@ -1409,6 +1410,30 @@ export function MapWorkspace({
       </ul>
     </section>
   ) : null;
+  // Add events and tips to the selected place right here, per layer holding it.
+  const attachKey = business?.key ?? selected?.key ?? null;
+  const attachments =
+    authenticated && attachKey && !business?.temporary ? (
+      <PlaceAttachments
+        key={`attach:${attachKey}`}
+        placeKey={attachKey}
+        placeName={
+          business
+            ? (business.name ?? t.routeGooglePlace)
+            : selected
+              ? localizedName(selected, locale)
+              : ""
+        }
+        layers={panelLayers}
+        events={selectedEvents ?? []}
+        city={city}
+        layerWrites={layerWrites}
+        tips={!business}
+        t={t}
+        locale={locale}
+        onEventsChanged={() => setForce((n) => n + 1)}
+      />
+    ) : null;
   const layerChips = (
     <div className="layer-chips" role="group" aria-label={t.onYourMap}>
       {[
@@ -2017,6 +2042,7 @@ export function MapWorkspace({
               <>
                 {routeAction}
                 {attachedEvents}
+                {attachments}
                 {businessPanel ?? preview}
               </>
             ) : mode === "business" && discoveryPanel && !mvp ? (

@@ -2001,6 +2001,31 @@ body[data-map-theme="dark"]:has(.map-workspace) .provider-slot > * {
   font-size: 13px;
   color: var(--th-muted);
 }
+.place-attachments {
+  display: grid;
+  gap: var(--th-space-2);
+  padding: var(--th-space-3) var(--th-space-3) 0;
+}
+.place-attachment {
+  display: grid;
+  gap: var(--th-space-1);
+  border: 1px solid var(--th-divider);
+  border-radius: var(--th-radius-input);
+  padding: var(--th-space-2);
+}
+.place-attachment h3 {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin: 0;
+  font-size: 14px;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+.place-attachment .layer-item-events,
+.place-attachment .layer-item-reviews {
+  padding: 0;
+}
 .layer-item-events .event-list li {
   grid-template-columns: minmax(0, 1fr) auto;
 }

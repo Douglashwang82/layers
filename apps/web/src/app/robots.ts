@@ -10,7 +10,6 @@ export default function robots(): MetadataRoute.Robots {
         "/profile",
         "/saved",
         "/api/",
-        "/submit/",
         // Shared layer links carry a secret token in the path.
         "/shared/",
         ...(flags.mapMvp ? ["/search"] : []),

@@ -81,6 +81,10 @@ export type MapItem = {
 };
 export type LayerAvailability = {
   slug: string;
+  /** Layer id, for the item event/tip APIs; absent when unavailable. */
+  id?: string;
+  /** Whether the viewer may edit the layer (attach events); never an authorization check. */
+  canEdit?: boolean;
   title: string;
   titleChinese: string;
   ownerKind: LayerRecord["ownerKind"];
@@ -610,10 +614,12 @@ export async function runMapQuery(
       counts.set(slug, (counts.get(slug) ?? 0) + n);
   const availability: LayerAvailability[] = [];
   const describe = (
-    { layer }: LayerWithAccess,
+    { layer, access }: LayerWithAccess,
     status: LayerAvailability["status"],
   ): LayerAvailability => ({
     slug: layer.slug,
+    id: layer.id,
+    canEdit: access.edit,
     title: layer.title,
     titleChinese: layer.titleChinese,
     ownerKind: layer.ownerKind,

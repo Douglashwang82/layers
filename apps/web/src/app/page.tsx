@@ -107,8 +107,10 @@ export default async function HomePage({
       places={placesClientConfig()}
       library={
         library &&
-        library.map(({ layer }) => ({
+        library.map(({ layer, access }) => ({
           slug: layer.slug,
+          id: layer.id,
+          canEdit: access.edit,
           title: layer.title,
           titleChinese: layer.titleChinese,
           ownerKind: layer.ownerKind,

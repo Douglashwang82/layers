@@ -245,34 +245,22 @@ Map home, layer writes, products, organizations, submissions, and local posts ca
 
 **Result:** Your organization preference is stored. The legacy home feed includes followed-organization events; the map home centers on layers. Following does not send an email notification or add you to a collaborative group.
 
-### U19 — Submit a place, event, or product sighting
+### U19 — Add a place to a layer from the map
 
-**Who:** Members, with submissions and the relevant feature enabled.
+**Who:** Members who can edit the layer. **Where:** The map home.
 
-| Submission       | Entry                                                         | Information to prepare                                                                                                                                                   |
-| ---------------- | ------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| Place            | `/submit/place` or the catalog contribution link              | Name, optional Chinese name, description, category, city, neighborhood, street address, latitude, longitude.                                                             |
-| Event            | `/submit/event`                                               | Place-style details plus an existing organizer, venue, future start/end time, and optional capacity. End must follow start.                                              |
-| Product sighting | Product's **I found this** link or `/submit/product-sighting` | Existing product, approved grocery store or shop (categories Grocery, Asian Grocery or Shop), date observed, optional price and image. The date cannot be in the future. |
+There are no separate submission pages. Places join a layer from the map: paste a Google Maps link into the layer, or use **Add to layer** on a place's details. See U23 for layer editing.
 
-1. Enter the facts you know and confirm the selected city/store/organizer.
-2. For place/event coordinates, replace the form's default Houston coordinates with the actual location. The form does not geocode the address for you.
-3. For event times, check the browser time zone displayed by the form.
-4. Optionally provide an image URL or upload a JPEG, PNG, or WebP image up to 5 MB. Wait for upload success before submitting.
-5. Submit and keep the pending-review confirmation. On failure, correct the fields and retry; the form retains your input.
+### U20 — Attach an event or a tip to a place on the map
 
-**Result:** The contribution awaits moderation before public discovery. These forms do not create a new product or organization. Use U21 to inspect submission status.
+**Who:** Members. Events need edit rights on the layer; tips (ratings and comments) need the layer's review permission. **Where:** The map home, on a selected place.
 
-### U20 — Share a local tip or announcement
+1. Show a layer on the map and select one of its places (a pin or a list row).
+2. In the details panel, find **Events and tips in <layer>** for each shown layer that holds the place.
+3. Open **Events** and select **Add event**. Enter a name, start time and optional end time and note. Times are in the layer city's time zone. Save. You can edit or delete events here too.
+4. Open **Ratings and comments** to rate the place and leave a tip, or edit or delete your own.
 
-**Who:** Members, with submissions and local content enabled. **Where:** `/submit/content` or the profile's share-tip link.
-
-1. Enter a title and body, optionally a Chinese title, source link, and image URL.
-2. Link one existing place or event, or choose an explicit location status: exact, approximate neighborhood, citywide, online, or unspecified.
-3. Supply coordinates only for an unlinked exact location. Optionally enter a validity period.
-4. Submit, then open the new post from the confirmation.
-
-**Result:** An ordinary member's post is pending; the author can inspect it while public discovery waits for approval. Moderator/admin-authored posts are immediately approved. Linked posts use the linked item's location. Citywide, online, approximate, and unspecified posts do not get fabricated map coordinates. The form accepts an image URL but has no file-upload control of its own.
+**Result:** The event shows at that place for everyone who can view the layer. A reviewed public layer goes back to review after an event change. Tips are scoped to the layer. Layer viewers without edit rights see events but cannot add them.
 
 ### U21 — Report a problem and review your contributions
 

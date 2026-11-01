@@ -968,6 +968,8 @@ export const en = {
   eventDeleted: "Event deleted.",
   noEvents: "No events yet.",
   eventTimesNote: "Times are in {city}’s time zone ({zone}).",
+  placeInLayer: "Events and tips in {layer}",
+  placeEventsInLayer: "Events in {layer}",
 };
 export type Copy = typeof en;
 export const zh: Copy = {
@@ -1876,6 +1878,8 @@ export const zh: Copy = {
   eventDeleted: "活動已刪除。",
   noEvents: "還沒有活動。",
   eventTimesNote: "時間以{city}的時區顯示（{zone}）。",
+  placeInLayer: "「{layer}」中的活動與小提示",
+  placeEventsInLayer: "「{layer}」中的活動",
 };
 export function localized(
   item: { name: string; nameChinese: string },

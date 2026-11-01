@@ -209,7 +209,7 @@ Remove the sticker, generic avatar stack, floating script text, and field-notes 
 
 Reuse `getHomeFeed`, `featuredPlaces`, `upcomingEvents`, `recentProductSightings`, and `followedOrganizationEvents`. Do not derive fake total counts from the small home feed arrays. Do not add “near you” distance unless the product has a reliable location and distance source.
 
-The home CTA currently points to `/submit/place` unconditionally. In the redesign, apply the same `flags.submissions` visibility rule used elsewhere. Resolve the selected city consistently before showing its name; remove literal city names only when the matching city data is available.
+The `/submit/*` pages were removed (2026-11-01); members attach events and tips to places in the map view instead. Resolve the selected city consistently before showing its name; remove literal city names only when the matching city data is available.
 
 **Acceptance:** at 375 × 812 with normal text size, users can reach search and see the start of useful discovery content without scrolling past a large decorative image. At large text sizes, prioritize correct reflow over fitting an arbitrary fold.
 

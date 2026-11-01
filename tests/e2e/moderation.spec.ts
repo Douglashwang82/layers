@@ -8,37 +8,37 @@ test("event contribution stays private until an admin approves it", async ({
   const email = `moderation-${Date.now()}@example.test`;
   const name = `Community supper ${Date.now()}`;
   await createAndSignIn(page, "Moderation Test", email);
-  await page.goto("/submit/event");
-  await page.getByLabel("Name / title").fill(name);
-  await page
-    .getByLabel("Description", { exact: true })
-    .fill("A fictional dinner for the automated browser test.");
-  await page
-    .getByRole("combobox", { name: "Category", exact: true })
-    .selectOption("Food");
-  await page.getByLabel("Neighborhood", { exact: true }).fill("Midtown");
-  await page.getByLabel("Address", { exact: true }).fill("100 Demo Lane");
-  await page
-    .getByRole("combobox", { name: "Organizer", exact: true })
-    .selectOption("00000000-0000-4000-8000-000000004000");
-  await page.getByLabel("Venue", { exact: true }).fill("Demo Kitchen");
-  const start = new Date(Date.now() + 3 * 86400000).toISOString().slice(0, 16);
-  const end = new Date(Date.now() + 3 * 86400000 + 7200000)
-    .toISOString()
-    .slice(0, 16);
-  await page.getByLabel("Start time", { exact: true }).fill(start);
-  await page.getByLabel("End time", { exact: true }).fill(end);
-  await page.getByRole("button", { name: "Submit", exact: true }).click();
-  await expect(page.getByRole("status")).toHaveText(
-    "Thanks! Your submission is pending community moderation.",
+  // Contributions are API-only now (the /submit pages were removed); the
+  // moderation queue and approval flow are what this test covers.
+  const pool = new Pool({ connectionString: process.env.DATABASE_URL });
+  const city = await pool.query<{ id: string }>(
+    "SELECT id FROM city WHERE slug='houston'",
   );
+  const startTime = new Date(Date.now() + 3 * 86400000);
+  const created = await page.request.post("/api/v1/events", {
+    data: {
+      name,
+      nameChinese: "",
+      description: "A fictional dinner for the automated browser test.",
+      cityId: city.rows[0].id,
+      neighborhood: "Midtown",
+      address: "100 Demo Lane",
+      latitude: 29.74,
+      longitude: -95.38,
+      category: "Food",
+      organizerId: "00000000-0000-4000-8000-000000004000",
+      venue: "Demo Kitchen",
+      startTime: startTime.toISOString(),
+      endTime: new Date(startTime.getTime() + 7200000).toISOString(),
+    },
+  });
+  expect(created.status()).toBe(201);
   const search = await page.request.get(
     "/api/v1/events?q=" + encodeURIComponent(name),
   );
   expect((await search.json()).data.total).toBe(0);
   const denied = await page.request.post("/api/v1/admin", { data: {} });
   expect(denied.status()).toBe(403);
-  const pool = new Pool({ connectionString: process.env.DATABASE_URL });
   try {
     await pool.query('UPDATE "user" SET role=$1 WHERE email=$2', [
       "ADMIN",

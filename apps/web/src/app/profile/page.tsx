@@ -72,21 +72,6 @@ export default async function Profile() {
           <Link className="settings-row" href="/membership">
             {t.membershipTitle} <span aria-hidden="true">→</span>
           </Link>
-          {flags.submissions && (
-            <>
-              <Link className="settings-row" href="/submit/place">
-                {t.submitPlace} <span aria-hidden="true">→</span>
-              </Link>
-              <Link className="settings-row" href="/submit/event">
-                {t.submitEvent} <span aria-hidden="true">→</span>
-              </Link>
-              {flags.content && (
-                <Link className="settings-row" href="/submit/content">
-                  {t.shareTip} <span aria-hidden="true">→</span>
-                </Link>
-              )}
-            </>
-          )}
           {isModerator(actor.role) && (
             <Link className="settings-row" href="/admin">
               {t.admin} <span aria-hidden="true">→</span>

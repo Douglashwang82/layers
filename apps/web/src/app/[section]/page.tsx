@@ -361,17 +361,6 @@ export default async function CatalogPage({
           )}
         </nav>
       )}
-      {flags.submissions && (kind === "places" || kind === "events") && (
-        <div className="contribute-row">
-          <p className="muted">{t.join}</p>
-          <Link
-            className="button secondary"
-            href={kind === "places" ? "/submit/place" : "/submit/event"}
-          >
-            {kind === "places" ? t.submitPlace : t.submitEvent}
-          </Link>
-        </div>
-      )}
     </div>
   );
 }
