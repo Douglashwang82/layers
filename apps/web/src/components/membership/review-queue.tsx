@@ -8,6 +8,7 @@ type Nomination = {
   note: string | null;
   revision: number;
   nominatorName: string | null;
+  source?: string;
   createdAt: string;
 };
 function ReviewRow({
@@ -43,6 +44,9 @@ function ReviewRow({
     <li className="settings-row" style={{ flexDirection: "column", alignItems: "stretch", gap: "0.5rem" }}>
       {nomination.nominatorName && (
         <span>{format(t.membershipNominatedBy, { name: nomination.nominatorName })}</span>
+      )}
+      {nomination.source === "group_owner" && (
+        <span>{t.membershipInvitedByGroupOwner}</span>
       )}
       {nomination.note && <p>{nomination.note}</p>}
       <textarea

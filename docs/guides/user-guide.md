@@ -357,9 +357,11 @@ Map home, layer writes, products, organizations, submissions, and local posts ca
 **Who:** Owner sends; invited admitted member accepts. **Where:** Group members panel and `/groups/join/<token>`.
 
 1. As owner, enter the person's account email and choose viewer or editor.
-2. Create the invitation and copy the generated link to share yourself. The group UI does not automatically email it.
-3. The recipient signs in using the invited email, opens the link, and selects **Accept invitation**.
-4. If the person has no LocalLink membership, nominate them through `/membership` first; complete membership admission separately.
+2. Create the invitation. The result tells you what happened:
+   - **Emailed / join link:** the person has no LocalLink membership yet, so the invitation also admits them. We email them a LocalLink invitation (or show a join link to send yourself if email is unavailable). When they finish joining they are added to the group automatically with the invited role; no second step. You can have at most 10 outstanding membership invitations.
+   - **Already a member:** copy the group link and send it. The recipient signs in using the invited email, opens the link, and selects **Accept invitation**.
+   - **Pending, paused, or limit reached:** the group invitation is still created; send the group link once the person has an account (a pending nomination, a full or closed batch, paused invitations, or your 10-invitation limit).
+3. Revoking the group invitation also withdraws the unredeemed membership invitation it caused.
 
 **Result:** The accepted account receives the invited group role. Wrong-email, expired, and revoked links cannot grant access. A shared layer URL alone cannot substitute for this invitation.
 

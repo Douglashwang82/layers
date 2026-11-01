@@ -32,7 +32,12 @@ import {
   type MailErrorCode,
 } from "@taiwanhub/shared/mail";
 import { auth, codeDelivery } from "@/lib/auth";
-import { membershipMode, membershipIssuancePaused, appUrl } from "@/lib/config";
+import {
+  membershipMode,
+  membershipIssuancePaused,
+  appUrl,
+  flags,
+} from "@/lib/config";
 import { requireReviewer, requireAdmin } from "./access";
 import { generateOpaqueToken, hashToken } from "./crypto";
 import { enforceCodeSendLimits, enforceJoinContextLimit } from "./rate-limit";
@@ -596,6 +601,211 @@ export async function adminDirectInvite(actor: Actor | null, body: unknown) {
     return { invitationId: invitation.rows[0].id, delivery: "email" as const };
   });
 }
+/** Outstanding owner-issued invitations one group owner may have at once. */
+export const GROUP_OWNER_INVITATION_QUOTA = 10;
+export type GroupOwnerInvitationResult =
+  | {
+      membership:
+        "member" | "not_required" | "pending" | "unavailable" | "quota";
+    }
+  | {
+      membership: "invited";
+      delivery: "email" | "manual";
+      joinLink?: string;
+    };
+/**
+ * Group owners admit the people they invite. Runs inside the caller's
+ * transaction; a racing owner claiming the same email rolls back to the
+ * savepoint without losing the caller's group invite.
+ */
+export async function issueGroupOwnerInvitation(
+  tx: PoolClient,
+  input: { email: string; ownerId: string; groupInviteId: string },
+): Promise<GroupOwnerInvitationResult> {
+  if (membershipMode !== "invite_only") return { membership: "not_required" };
+  if (membershipIssuancePaused) return { membership: "unavailable" };
+  const email = normalizeEmail(input.email);
+  await tx.query("SAVEPOINT group_owner_invitation");
+  try {
+    const result = await issueWithinSavepoint(tx, email, input);
+    await tx.query("RELEASE SAVEPOINT group_owner_invitation");
+    return result;
+  } catch (e) {
+    const err = e as { code?: string; constraint?: string };
+    if (
+      err.code === "23505" &&
+      err.constraint === "membership_nomination_open_email"
+    ) {
+      await tx.query("ROLLBACK TO SAVEPOINT group_owner_invitation");
+      return { membership: "pending" };
+    }
+    throw e;
+  }
+}
+async function issueWithinSavepoint(
+  tx: PoolClient,
+  email: string,
+  input: { ownerId: string; groupInviteId: string },
+): Promise<GroupOwnerInvitationResult> {
+  const open = await tx.query(
+    `SELECT 1 FROM membership_nomination WHERE email_normalized = $1 AND status IN ('pending_review','needs_info','approved')`,
+    [email],
+  );
+  if (open.rows[0]) return { membership: "pending" };
+  const batch = await tx.query<{ id: string; capacity: number }>(
+    `SELECT id, capacity FROM membership_batch WHERE status = 'open' LIMIT 1 FOR UPDATE`,
+  );
+  const openBatch = batch.rows[0];
+  if (!openBatch) return { membership: "unavailable" };
+  const seats = await getBatchSeats(openBatch.id, tx);
+  if (
+    !batchHasCapacity(openBatch.capacity, seats.redeemed, seats.active_issued)
+  )
+    return { membership: "unavailable" };
+  const outstanding = await tx.query<{ count: number }>(
+    `SELECT count(*)::int AS count
+     FROM membership_invitation i
+     JOIN membership_nomination n ON n.id = i.nomination_id
+     WHERE n.source = 'group_owner' AND n.nominator_id = $1
+       AND i.status = 'issued' AND i.expires_at > now()`,
+    [input.ownerId],
+  );
+  if (outstanding.rows[0].count >= GROUP_OWNER_INVITATION_QUOTA)
+    return { membership: "quota" };
+  const nomination = await tx.query<{ id: string }>(
+    `INSERT INTO membership_nomination(email_normalized, nominator_id, source, status, approved_by, approved_at)
+     VALUES ($1,$2,'group_owner','approved',$2, now())
+     RETURNING id`,
+    [email, input.ownerId],
+  );
+  let delivery: "email" | "manual" = "email";
+  try {
+    resolveMailer();
+  } catch {
+    delivery = "manual";
+  }
+  const token = generateOpaqueToken();
+  const invitation = await tx.query<{ id: string; expires_at: Date }>(
+    `INSERT INTO membership_invitation(nomination_id, batch_id, delivery, token_hash, expires_at)
+     VALUES ($1,$2,$3,$4, now() + interval '14 days')
+     RETURNING id, expires_at`,
+    [nomination.rows[0].id, openBatch.id, delivery, hashToken(token)],
+  );
+  await tx.query(
+    `UPDATE group_invite SET membership_invitation_id = $1 WHERE id = $2`,
+    [invitation.rows[0].id, input.groupInviteId],
+  );
+  await audit(tx, {
+    actorId: input.ownerId,
+    action: "membership_group_owner_invite",
+    nominationId: nomination.rows[0].id,
+    invitationId: invitation.rows[0].id,
+  });
+  if (delivery === "manual")
+    return {
+      membership: "invited",
+      delivery,
+      joinLink: `${appUrl}/join#invite=${token}`,
+    };
+  await enqueueInvitationMail(
+    tx,
+    email,
+    `invitation:${invitation.rows[0].id}:v1`,
+    token,
+    invitation.rows[0].expires_at,
+  );
+  return { membership: "invited", delivery };
+}
+/**
+ * Revoking a group invite withdraws the platform invitation it caused, but only
+ * while that invitation is still unredeemed and was issued by a group owner.
+ * Locks invitation then nomination, the same order as the join flow.
+ */
+export async function revokeOwnerIssuedInvitation(
+  tx: PoolClient,
+  invitationId: string,
+  actorId: string,
+) {
+  const invitation = await tx.query<{ nomination_id: string; status: string }>(
+    `SELECT nomination_id, status FROM membership_invitation WHERE id = $1 FOR UPDATE`,
+    [invitationId],
+  );
+  const row = invitation.rows[0];
+  if (!row) return false;
+  const nomination = await tx.query<{ source: string }>(
+    `SELECT source FROM membership_nomination WHERE id = $1 FOR UPDATE`,
+    [row.nomination_id],
+  );
+  if (row.status !== "issued" || nomination.rows[0]?.source !== "group_owner")
+    return false;
+  await tx.query(
+    `UPDATE membership_invitation SET status = 'revoked', revoked_by = $1, revoked_at = now() WHERE id = $2`,
+    [actorId, invitationId],
+  );
+  await tx.query(
+    `UPDATE membership_nomination SET status = 'closed', updated_at = now() WHERE id = $1 AND status = 'approved'`,
+    [row.nomination_id],
+  );
+  await tx.query(
+    `UPDATE mail_outbox SET status = 'superseded' WHERE dedupe_key LIKE $1 AND status = 'queued'`,
+    [`invitation:${invitationId}:v%`],
+  );
+  await audit(tx, {
+    actorId,
+    action: "membership_invitation_revoked",
+    invitationId,
+    nominationId: row.nomination_id,
+    reason: "group_invite_revoked",
+  });
+  return true;
+}
+/** Accept every open group invitation addressed to this email (admission auto-joins). */
+async function acceptGroupInvitesForAdmission(
+  tx: PoolClient,
+  userId: string,
+  email: string,
+): Promise<string | undefined> {
+  if (!flags.layerWrites) return undefined;
+  const accepted = await tx.query<{
+    group_id: string;
+    role: string;
+    slug: string;
+  }>(
+    `UPDATE group_invite gi SET accepted_at = now()
+     FROM "group" g
+     WHERE g.id = gi.group_id AND lower(trim(gi.email)) = $1
+       AND gi.accepted_at IS NULL AND gi.revoked_at IS NULL AND gi.expires_at > now()
+     RETURNING gi.group_id, gi.role, g.slug`,
+    [normalizeEmail(email)],
+  );
+  for (const row of accepted.rows) {
+    await tx.query(
+      `INSERT INTO group_member(group_id,user_id,role) VALUES($1,$2,$3) ON CONFLICT (group_id,user_id) DO NOTHING`,
+      [row.group_id, userId, row.role],
+    );
+    await tx.query(
+      `INSERT INTO analytics_event(user_id, name, properties) VALUES ($1,'group_joined',$2)`,
+      [
+        userId,
+        JSON.stringify({
+          groupId: row.group_id,
+          role: row.role,
+          via: "membership",
+        }),
+      ],
+    );
+  }
+  if (accepted.rows[0]) return accepted.rows[0].slug;
+  // Retry path: an earlier attempt already accepted; send them to that group.
+  const prior = await tx.query<{ slug: string }>(
+    `SELECT g.slug FROM group_invite gi JOIN "group" g ON g.id = gi.group_id
+     JOIN group_member m ON m.group_id = gi.group_id AND m.user_id = $2
+     WHERE lower(trim(gi.email)) = $1 AND gi.accepted_at IS NOT NULL
+     ORDER BY gi.accepted_at DESC LIMIT 1`,
+    [normalizeEmail(email), userId],
+  );
+  return prior.rows[0]?.slug;
+}
 export async function listReviewers(actor: Actor | null) {
   requireAdmin(actor);
   return repoListReviewers();
@@ -904,12 +1114,23 @@ export async function joinEmailComplete(
   const userId = otpResult.response.user.id;
   try {
     const outcome = await transaction(async (tx) => {
-      const { context, invitation } = await loadJoinContext(secret, tx, {
+      const {
+        context,
+        invitation,
+        email: invitedEmail,
+      } = await loadJoinContext(secret, tx, {
         allowRedeemed: true,
         lock: true,
       });
       if (invitation.status === "redeemed") {
-        if (invitation.redeemed_by === userId) return { alreadyJoined: true };
+        if (invitation.redeemed_by === userId) {
+          const groupSlug = await acceptGroupInvitesForAdmission(
+            tx,
+            userId,
+            invitedEmail,
+          );
+          return { alreadyJoined: true, groupSlug };
+        }
         throw new AppError(
           409,
           "INVITE_ALREADY_REDEEMED",
@@ -938,7 +1159,12 @@ export async function joinEmailComplete(
           targetUserId: userId,
           reason: "already_member",
         });
-        return { alreadyMember: true };
+        const groupSlug = await acceptGroupInvitesForAdmission(
+          tx,
+          userId,
+          invitedEmail,
+        );
+        return { alreadyMember: true, groupSlug };
       }
       await tx.query(
         `INSERT INTO membership_admission(user_id, source, invitation_id, terms_version, terms_accepted_at)
@@ -972,7 +1198,12 @@ export async function joinEmailComplete(
         `INSERT INTO analytics_event(user_id, name, properties) VALUES ($1,'membership_joined','{}')`,
         [userId],
       );
-      return { joined: true };
+      const groupSlug = await acceptGroupInvitesForAdmission(
+        tx,
+        userId,
+        invitedEmail,
+      );
+      return { joined: true, groupSlug };
     });
     forwardHeaders(otpResult.headers);
     return outcome;

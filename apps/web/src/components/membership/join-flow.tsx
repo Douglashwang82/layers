@@ -76,8 +76,16 @@ export function JoinFlow({ t, locale }: { t: Copy; locale: Locale }) {
     setError("");
     setBusy(true);
     try {
-      await api("membership/join/email/complete", "POST", { otp });
-      router.push(safeDestination(context?.returnTo));
+      const outcome = (await api("membership/join/email/complete", "POST", {
+        otp,
+      })) as { groupSlug?: string } | undefined;
+      const destination = safeDestination(context?.returnTo);
+      // An invited group wins over the default landing page only.
+      router.push(
+        destination === "/" && outcome?.groupSlug
+          ? `/groups/${encodeURIComponent(outcome.groupSlug)}`
+          : destination,
+      );
       router.refresh();
     } catch {
       setError(t.joinOtpInvalid);
