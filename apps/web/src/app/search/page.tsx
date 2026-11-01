@@ -6,6 +6,9 @@ import { getActiveCity } from "@/lib/city";
 import { CardGrid, EmptyState, SectionHeading } from "@/components/cards";
 import { flags } from "@/lib/config";
 import { trackEvent } from "@/lib/analytics";
+import { catalogMetadata } from "@/lib/catalog-metadata";
+/** Legacy catalog: not indexed under the map MVP. */
+export const generateMetadata = catalogMetadata;
 export default async function SearchPage({
   searchParams,
 }: {

@@ -15,6 +15,9 @@ import { CardGrid, EmptyState } from "@/components/cards";
 import { MapView } from "@/components/map-view";
 import { flags } from "@/lib/config";
 import { serializeMapQuery } from "@taiwanhub/shared";
+import { catalogMetadata } from "@/lib/catalog-metadata";
+/** Legacy catalog: not indexed under the map MVP. */
+export const generateMetadata = catalogMetadata;
 const pageSize = 12;
 const neighborhoods = [
   "Bellaire",

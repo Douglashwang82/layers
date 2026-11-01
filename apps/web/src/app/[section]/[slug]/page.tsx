@@ -56,7 +56,9 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
       description: item.description,
       images: [item.image],
     },
-    ...(item.isDemo ? { robots: { index: false, follow: true } } : {}),
+    ...(item.isDemo || flags.mapMvp
+      ? { robots: { index: false, follow: true } }
+      : {}),
   };
 }
 const timeOf = (value: string, locale: string) =>
