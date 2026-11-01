@@ -38,6 +38,8 @@ Docs are organized by scope under `docs/`: `docs/plans/` (implementation plans a
 
 Claude Code team tooling lives in `.claude/`: subagents (`agents/`), workflow skills such as `ship-feature` and `verify` (`skills/`), and hook scripts (`hooks/`) for formatting, a typecheck stop gate, secret scanning, and a remote-database guard.
 
+Codex shares those source files through `.agents/skills/`, `.codex/agents/`, and `.codex/hooks.json`; read [.codex/compatibility.md](.codex/compatibility.md) when using them. Keep discovery entrypoints aligned when shared skills or agents are added, removed, renamed, or have their descriptions changed.
+
 Verify executable details against `package.json`, source code, and `.github/workflows/ci.yml`; distinguish planned features in design/roadmap documents from implemented behavior. Before changing Next.js code, read the relevant installed documentation under `apps/web/node_modules/next/dist/docs/`, as required by the nested guide. For external APIs, consult current official provider documentation and the installed SDK types rather than guessing APIs or model identifiers.
 
 ## Setup and commands

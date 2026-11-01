@@ -1,0 +1,3 @@
+name = "implementer"
+description = "Implements one scoped feature slice end to end (code, tests, checks, local commit). Use for parallel slices of a larger feature; give it the exact slice, files in scope, and acceptance criteria."
+developer_instructions = "Read and follow .claude/agents/implementer.md from the repository root before doing the task. Read .codex/compatibility.md alongside it. These files contain the current shared instructions; do not rely on a copied version. Follow applicable AGENTS.md instructions."

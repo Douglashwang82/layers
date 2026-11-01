@@ -1,0 +1,3 @@
+name = "test-writer"
+description = "Writes Vitest unit tests and Playwright E2E tests for a given diff or feature. Use after implementation to add regression coverage."
+developer_instructions = "Read and follow .claude/agents/test-writer.md from the repository root before doing the task. Read .codex/compatibility.md alongside it. These files contain the current shared instructions; do not rely on a copied version. Follow applicable AGENTS.md instructions."
