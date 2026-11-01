@@ -578,6 +578,17 @@ export const en = {
   inviteLink: "Invitation link",
   inviteCreated:
     "Invitation created. Send this link to {email}; it expires in 14 days and works only for that account.",
+  inviteMembershipEmailed:
+    "Invitation created. We emailed {email} a LocalLink invitation; once they join they are added to this group automatically.",
+  inviteMembershipManual:
+    "Invitation created. Send {email} this LocalLink join link; once they join they are added to this group automatically. It expires in 14 days.",
+  inviteMembershipPending:
+    "{email} already has a pending LocalLink nomination. Send them this group link; they can accept it once they are admitted.",
+  inviteMembershipUnavailable:
+    "Invitation created, but new LocalLink invitations are paused right now. Send {email} this group link once they have an account.",
+  inviteMembershipQuota:
+    "Invitation created, but you have reached the limit of 10 outstanding LocalLink invitations. Send {email} this group link once they have an account.",
+  membershipInvitedByGroupOwner: "Invited by group owner",
   pendingInvites: "Pending invitations",
   revoke: "Revoke",
   removeMember: "Remove",
@@ -1486,6 +1497,17 @@ export const zh: Copy = {
   inviteLink: "邀請連結",
   inviteCreated:
     "已建立邀請。請把連結傳給 {email}；連結 14 天後失效，且只有該帳號可以使用。",
+  inviteMembershipEmailed:
+    "已建立邀請。我們已寄出 LocalLink 邀請給 {email}；對方加入後會自動進入此群組。",
+  inviteMembershipManual:
+    "已建立邀請。請把此 LocalLink 加入連結傳給 {email}；對方加入後會自動進入此群組。連結 14 天後失效。",
+  inviteMembershipPending:
+    "{email} 已有待處理的 LocalLink 推薦。請傳送此群組連結給對方，獲准加入後即可接受。",
+  inviteMembershipUnavailable:
+    "已建立邀請，但目前暫停發送新的 LocalLink 邀請。待 {email} 有帳號後，請傳送此群組連結。",
+  inviteMembershipQuota:
+    "已建立邀請，但你未使用的 LocalLink 邀請已達 10 個上限。待 {email} 有帳號後，請傳送此群組連結。",
+  membershipInvitedByGroupOwner: "由群組擁有者邀請",
   pendingInvites: "待接受的邀請",
   revoke: "撤銷",
   removeMember: "移除",
