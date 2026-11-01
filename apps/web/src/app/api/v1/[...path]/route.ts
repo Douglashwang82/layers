@@ -25,6 +25,7 @@ import {
   type Kind,
 } from "@taiwanhub/shared";
 import { currentActor } from "@/lib/session";
+import { handleMessagingRoute } from "@/features/messaging/router";
 import {
   listItemReviews,
   listLayerItemRatings,
@@ -148,6 +149,10 @@ async function handler(
       const actor = await currentActor();
       const query = Object.fromEntries(request.nextUrl.searchParams);
       return handleMembershipRoute(request, path.slice(1), actor, query);
+    }
+    if (resource === "messaging") {
+      const actor = await currentActor();
+      return await handleMessagingRoute(request, path.slice(1), actor);
     }
     if (resource === "admin" && id === "place-subjects") {
       const actor = await currentActor();

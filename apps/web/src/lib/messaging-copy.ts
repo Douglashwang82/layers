@@ -1,0 +1,76 @@
+/** Web copy for /profile/connections ("Send places from chat"). */
+export const messagingEn = {
+  title: "Send places from chat",
+  intro:
+    "Connect LINE or Instagram, then send a Google Maps link to our official account. The place is added to the layer you choose.",
+  back: "Account",
+  line: "LINE",
+  instagram: "Instagram",
+  notConfigured: "Not available yet.",
+  notConnected: "Not connected",
+  pending: "Waiting for your confirmation",
+  connected: "Connected",
+  connect: "Connect",
+  newCode: "Get a new code",
+  codeHelp: (app: string) =>
+    `Send this code to our ${app} account within 10 minutes:`,
+  openChat: (app: string) => `Open ${app}`,
+  pendingHelp:
+    "A chat sent your code. Confirm only if that was you; otherwise get a new code.",
+  confirm: "Confirm",
+  disconnect: "Disconnect",
+  destination: "Where sent places go",
+  inbox: "Inbox (private, created on first send)",
+  groupLayer: "Group",
+  privateLayer: "Private",
+  groupWarning: "Group members will see places you send to this layer.",
+  saved: "Saved.",
+  recent: "Recently sent",
+  recentEmpty: "Nothing sent yet.",
+  outcome: {
+    added: "Added",
+    duplicate: "Already in the layer",
+    not_found: "No place found",
+    failed: "Failed",
+    received: "Received",
+  } as Record<string, string>,
+  working: "Working…",
+};
+export type MessagingCopy = Omit<typeof messagingEn, "outcome"> & {
+  outcome: Record<string, string>;
+};
+export const messagingZh: MessagingCopy = {
+  title: "從聊天傳送地點",
+  intro:
+    "連結 LINE 或 Instagram 後，把 Google 地圖連結傳給我們的官方帳號，地點就會加進你選的圖層。",
+  back: "帳號",
+  line: "LINE",
+  instagram: "Instagram",
+  notConfigured: "尚未開放。",
+  notConnected: "未連結",
+  pending: "等待你確認",
+  connected: "已連結",
+  connect: "連結",
+  newCode: "取得新代碼",
+  codeHelp: (app: string) => `請在 10 分鐘內把這組代碼傳給我們的 ${app} 帳號：`,
+  openChat: (app: string) => `開啟 ${app}`,
+  pendingHelp: "有聊天傳來了你的代碼。確定是你本人再按確認；否則請取得新代碼。",
+  confirm: "確認",
+  disconnect: "解除連結",
+  destination: "傳來的地點放在",
+  inbox: "收件匣（私人，第一次傳送時建立）",
+  groupLayer: "群組",
+  privateLayer: "私人",
+  groupWarning: "群組成員會看到你傳到這個圖層的地點。",
+  saved: "已儲存。",
+  recent: "最近傳送",
+  recentEmpty: "還沒有傳送紀錄。",
+  outcome: {
+    added: "已加入",
+    duplicate: "已在圖層中",
+    not_found: "找不到地點",
+    failed: "失敗",
+    received: "已收到",
+  },
+  working: "處理中…",
+};

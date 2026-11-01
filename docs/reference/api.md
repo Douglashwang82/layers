@@ -23,6 +23,43 @@ The URL becomes the newly added layer item's note. Duplicate imports preserve
 existing notes and memberships. Layer edit permissions and transaction rules
 are unchanged. See [worker setup](../guides/instagram-caption-extraction.md).
 
+## Send places from chat
+
+Behind `FEATURE_CHAT_CAPTURE` (plus the map MVP and layer writes); see
+[setup](../guides/chat-capture-setup.md). Session endpoints, all for the
+signed-in member:
+
+- `GET /api/v1/messaging/connections`: per channel (`line`, `instagram`)
+  `configured`, `status` (`none`, `pending_confirm`, `active`),
+  `defaultLayerId`, `chatUrl`; the member's non-public editable `layers`; and
+  the 30-day `recent` list. Never returns platform user IDs.
+- `POST /api/v1/messaging/connections/{channel}/code` (201): a single-use
+  `LL-XXXX-XXXX` code valid for ten minutes; earlier unused codes stop working.
+  Ten codes per hour.
+- `POST /api/v1/messaging/connections/{channel}/confirm`: activates the binding
+  that the code created when it was sent from the chat.
+- `PATCH /api/v1/messaging/connections/{channel}` with
+  `{ "defaultLayerId": uuid | null }`: where sent places go. The layer must be
+  editable and not public; `null` means the private Inbox, created on first send.
+- `DELETE /api/v1/messaging/connections/{channel}`: disconnect.
+
+Webhooks (no session; signature verified over the raw body, 256 KB cap,
+acknowledged with 200 and processed after the response, idempotent per event
+ID):
+
+- `POST /api/webhooks/line`: `x-line-signature`. Handles 1:1 text messages,
+  `follow` and `unfollow` (unfollow disconnects). Group and room chats are
+  ignored.
+- `GET /api/webhooks/instagram`: `hub.mode=subscribe` handshake; echoes
+  `hub.challenge` when `hub.verify_token` matches.
+- `POST /api/webhooks/instagram`: `X-Hub-Signature-256`. Handles text and
+  shared-post attachments; echoes are ignored.
+
+A message's Google Maps links (up to three) go through the same resolver,
+budget and import as `/google-links/resolve` and `/layers/{id}/google-places`,
+as the bound member. Instagram post links are only reported, never added,
+because caption matches need review.
+
 ## Common conventions
 
 Success: `{ "data": ... }`. Error: `{ "error": { "code": "...", "message": "..." } }`. Auth endpoints retain Better Auth's native response shape. Images/preferences use a message on errors. HTTP 400 validation, 401 unauthenticated, 403 forbidden, 404 missing/disabled, 409 capacity/ended conflicts, 413 oversized, 429 throttled, 500 unexpected failure.

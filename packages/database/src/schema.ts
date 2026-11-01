@@ -1921,3 +1921,100 @@ export const externalApiCall = pgTable(
     index("external_api_call_provider_idx").on(t.provider, t.createdAt),
   ],
 );
+/**
+ * "Send places from chat" (docs/plans/dm-link-to-layer-design.md): a LINE or
+ * Instagram sender bound to a member. Sender IDs are stored only as a keyed
+ * HMAC; replies use the reply token (LINE) or the sender ID carried by each
+ * webhook event (Instagram), so the raw ID is never kept.
+ */
+export const messagingLink = pgTable(
+  "messaging_link",
+  {
+    id: id(),
+    userId: uuid("user_id")
+      .notNull()
+      .references(() => user.id, { onDelete: "cascade" }),
+    channel: text("channel").notNull(),
+    externalIdHash: text("external_id_hash").notNull(),
+    status: text("status").notNull().default("pending_confirm"),
+    defaultLayerId: uuid("default_layer_id").references(() => layer.id, {
+      onDelete: "set null",
+    }),
+    inboxLayerId: uuid("inbox_layer_id").references(() => layer.id, {
+      onDelete: "set null",
+    }),
+    lastUsedAt: timestamp("last_used_at", { withTimezone: true }),
+    ...timestamps(),
+  },
+  (t) => [
+    check(
+      "messaging_link_channel_check",
+      sql`${t.channel} IN ('line','instagram')`,
+    ),
+    check(
+      "messaging_link_status_check",
+      sql`${t.status} IN ('active','pending_confirm')`,
+    ),
+    uniqueIndex("messaging_link_external_unique").on(
+      t.channel,
+      t.externalIdHash,
+    ),
+    uniqueIndex("messaging_link_user_channel_unique").on(t.userId, t.channel),
+  ],
+);
+/** One-time connect codes, stored hashed; single use, ten minutes. */
+export const messagingLinkAttempt = pgTable(
+  "messaging_link_attempt",
+  {
+    id: id(),
+    userId: uuid("user_id")
+      .notNull()
+      .references(() => user.id, { onDelete: "cascade" }),
+    channel: text("channel").notNull(),
+    secretHash: text("secret_hash").notNull(),
+    expiresAt: timestamp("expires_at", { withTimezone: true }).notNull(),
+    consumedAt: timestamp("consumed_at", { withTimezone: true }),
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .defaultNow()
+      .notNull(),
+  },
+  (t) => [
+    check(
+      "messaging_link_attempt_channel_check",
+      sql`${t.channel} IN ('line','instagram')`,
+    ),
+    uniqueIndex("messaging_link_attempt_secret_unique").on(t.secretHash),
+    index("messaging_link_attempt_user_idx").on(t.userId),
+  ],
+);
+/**
+ * One row per inbound webhook message: makes redelivery idempotent and keeps
+ * the outcome for the "Recently sent" list. Only canonical URLs are kept,
+ * never the message text.
+ */
+export const messagingReceipt = pgTable(
+  "messaging_receipt",
+  {
+    id: id(),
+    userId: uuid("user_id").references(() => user.id, { onDelete: "cascade" }),
+    channel: text("channel").notNull(),
+    eventId: text("event_id").notNull(),
+    sourceUrl: text("source_url"),
+    layerId: uuid("layer_id").references(() => layer.id, {
+      onDelete: "set null",
+    }),
+    outcome: text("outcome").notNull().default("received"),
+    added: integer("added").notNull().default(0),
+    receivedAt: timestamp("received_at", { withTimezone: true })
+      .defaultNow()
+      .notNull(),
+  },
+  (t) => [
+    check(
+      "messaging_receipt_channel_check",
+      sql`${t.channel} IN ('line','instagram')`,
+    ),
+    uniqueIndex("messaging_receipt_event_unique").on(t.channel, t.eventId),
+    index("messaging_receipt_user_idx").on(t.userId, t.receivedAt),
+  ],
+);

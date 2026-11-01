@@ -9,11 +9,14 @@ import { ProfileForm } from "@/components/profile-form";
 import { SignOut } from "@/components/auth-form";
 import { isModerator } from "@taiwanhub/shared";
 import { flags } from "@/lib/config";
+import { messagingEn, messagingZh } from "@/lib/messaging-copy";
+import { chatCaptureEnabled } from "@/features/messaging/service";
 export default async function Profile() {
   const actor = await currentActor();
   if (!actor) redirect("/sign-in?next=/profile");
-  const importCopy =
-    (await getLocale()) === "zh-TW" ? mapImportZh : mapImportEn;
+  const locale = await getLocale();
+  const importCopy = locale === "zh-TW" ? mapImportZh : mapImportEn;
+  const chatCopy = locale === "zh-TW" ? messagingZh : messagingEn;
   const [t, cities, result] = await Promise.all([
     getCopy(),
     getCities(),
@@ -42,6 +45,11 @@ export default async function Profile() {
           {flags.layerWrites && flags.layerCustomPlaces && (
             <Link className="settings-row" href="/map-import">
               {importCopy.title} <span aria-hidden="true">→</span>
+            </Link>
+          )}
+          {chatCaptureEnabled() && (
+            <Link className="settings-row" href="/profile/connections">
+              {chatCopy.title} <span aria-hidden="true">→</span>
             </Link>
           )}
           {flags.layerCustomPlaces && (

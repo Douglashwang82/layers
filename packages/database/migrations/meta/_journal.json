@@ -225,6 +225,13 @@
       "when": 1793498186650,
       "tag": "0031_nebulous_excalibur",
       "breakpoints": true
+    },
+    {
+      "idx": 32,
+      "version": "7",
+      "when": 1793518476213,
+      "tag": "0032_quick_madrox",
+      "breakpoints": true
     }
   ]
 }

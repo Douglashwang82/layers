@@ -962,3 +962,44 @@ a.settings-row:hover {
   font-size: 13px;
   color: var(--th-muted);
 }
+/* Send places from chat (/profile/connections) */
+.messaging-connections {
+  display: grid;
+  gap: 16px;
+  max-width: 640px;
+}
+.messaging-channel h2 {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 8px;
+}
+.messaging-status {
+  font-size: 14px;
+  font-weight: 500;
+  color: var(--th-muted);
+}
+.messaging-status[data-status="active"] {
+  color: var(--th-success, inherit);
+}
+.messaging-connect {
+  display: grid;
+  gap: 12px;
+  justify-items: start;
+}
+.messaging-code {
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 24px;
+  letter-spacing: 0.08em;
+  user-select: all;
+}
+.messaging-recent {
+  display: grid;
+  gap: 10px;
+  padding: 0;
+  list-style: none;
+}
+.messaging-url {
+  color: var(--th-muted);
+  overflow-wrap: anywhere;
+}

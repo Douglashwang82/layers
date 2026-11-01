@@ -1,5 +1,6 @@
 import { defineConfig } from "@playwright/test";
 import base from "./playwright.config";
+import { messagingServerEnv } from "./tests/e2e/mvp/messaging-env";
 /*
  * Browser tests for the map MVP (docs/plans/layer-mvp-google-links-plan.md).
  * The flag changes the whole map, so these run against their own dev server
@@ -21,6 +22,8 @@ export default defineConfig({
       ...server.env,
       FEATURE_MAP_MVP: "true",
       GOOGLE_MAPS_LINK_API_KEY: "fake",
+      // Send places from chat: test-only channel secrets, replies captured to files.
+      ...messagingServerEnv(),
     },
   },
 });

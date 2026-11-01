@@ -27,6 +27,8 @@ export const flags = {
    * non-place types are off; layers are built from Google Maps links.
    */
   mapMvp: process.env.FEATURE_MAP_MVP === "true",
+  /** Send places from chat: LINE/Instagram DMs add Google Maps links to a layer (docs/plans/dm-link-to-layer-design.md). */
+  chatCapture: process.env.FEATURE_CHAT_CAPTURE === "true",
   /* Daily restaurant recommendation, version 2
      (docs/plans/daily-restaurant-recommendation-implementation-plan.md).
      All off unless explicitly enabled; each requires the Phase 0 provider/
