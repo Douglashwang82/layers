@@ -41,7 +41,10 @@ test("a member builds a layer from Google Maps links and attaches an event", asy
     page.getByRole("heading", { name: "Your layers" }),
   ).toBeVisible();
   await page
-    .getByRole("link", { name: "Create a layer from Google Maps" })
+    // A member with no layers gets the first-run starter's link instead.
+    .getByRole("link", {
+      name: /Create a layer from Google Maps|Start a layer from Google Maps links/,
+    })
     .first()
     .click();
   await expect(
@@ -264,7 +267,9 @@ test("a member with no layers sees the first-run starter", async ({ page }) => {
     starter.getByRole("heading", { name: "Start your map" }),
   ).toBeVisible();
   await expect(
-    starter.getByText("You don't have any layers yet. Pick one of these to begin."),
+    starter.getByText(
+      "You don't have any layers yet. Pick one of these to begin.",
+    ),
   ).toBeVisible();
   await expect(
     starter.getByRole("link", { name: "Start a layer from Google Maps links" }),
