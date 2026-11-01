@@ -567,12 +567,21 @@ export const groupInvite = pgTable(
     expiresAt: timestamp("expires_at", { withTimezone: true }).notNull(),
     acceptedAt: timestamp("accepted_at", { withTimezone: true }),
     revokedAt: timestamp("revoked_at", { withTimezone: true }),
+    membershipInvitationId: uuid("membership_invitation_id").references(
+      (): AnyPgColumn => membershipInvitation.id,
+      { onDelete: "set null" },
+    ),
     createdBy: uuid("created_by")
       .notNull()
       .references(() => user.id, { onDelete: "cascade" }),
     ...timestamps(),
   },
-  (t) => [index("group_invite_group_idx").on(t.groupId)],
+  (t) => [
+    index("group_invite_group_idx").on(t.groupId),
+    index("group_invite_membership_invitation_idx").on(
+      t.membershipInvitationId,
+    ),
+  ],
 );
 export const contentPost = pgTable(
   "content_post",
@@ -965,6 +974,31 @@ export const membershipBatch = pgTable(
     check("membership_batch_capacity_positive", sql`${t.capacity} > 0`),
   ],
 );
+export const layerShareLink = pgTable(
+  "layer_share_link",
+  {
+    id: id(),
+    layerId: uuid("layer_id")
+      .notNull()
+      .references(() => layer.id, { onDelete: "cascade" }),
+    tokenHash: text("token_hash").unique().notNull(),
+    createdBy: uuid("created_by").references(() => user.id, {
+      onDelete: "set null",
+    }),
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .defaultNow()
+      .notNull(),
+    revokedAt: timestamp("revoked_at", { withTimezone: true }),
+    revokedBy: uuid("revoked_by").references(() => user.id, {
+      onDelete: "set null",
+    }),
+  },
+  (t) => [
+    uniqueIndex("layer_share_link_one_active")
+      .on(t.layerId)
+      .where(sql`${t.revokedAt} IS NULL`),
+  ],
+);
 export const membershipNomination = pgTable(
   "membership_nomination",
   {
@@ -972,7 +1006,7 @@ export const membershipNomination = pgTable(
     emailNormalized: text("email_normalized").notNull(),
     nominatorId: uuid("nominator_id").references(() => user.id),
     source: text("source", {
-      enum: ["member", "admin_direct", "operator_bootstrap"],
+      enum: ["member", "admin_direct", "operator_bootstrap", "group_owner"],
     }).notNull(),
     note: text("note"),
     status: text("status", {

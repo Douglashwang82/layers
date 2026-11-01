@@ -218,6 +218,13 @@
       "when": 1793336845508,
       "tag": "0030_lovely_grim_reaper",
       "breakpoints": true
+    },
+    {
+      "idx": 31,
+      "version": "7",
+      "when": 1793498186650,
+      "tag": "0031_nebulous_excalibur",
+      "breakpoints": true
     }
   ]
 }
