@@ -24,6 +24,11 @@ const nextConfig: NextConfig = {
           },
         ],
       },
+      // The secret share token is in these URLs; the last matching rule wins.
+      {
+        source: "/shared/:path*",
+        headers: [{ key: "Referrer-Policy", value: "no-referrer" }],
+      },
     ];
   },
 };

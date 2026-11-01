@@ -1,5 +1,5 @@
 "use client";
-import { useContext, useState } from "react";
+import { useContext, useEffect, useState } from "react";
 import { LayerWorkspaceContext } from "./workspace-navigation";
 import { LayerLink as Link } from "./workspace-navigation";
 import { useLayerRouter as useRouter } from "./workspace-navigation";
@@ -22,7 +22,7 @@ import {
 } from "@taiwanhub/shared";
 import { api, StatusMessage } from "@/components/actions";
 import type { LayerRecord, LayerAccess } from "@/features/layers/repository";
-import { type Copy, type Locale, format } from "@/lib/dictionary";
+import { type Copy, type Locale, dateLabel, format } from "@/lib/dictionary";
 import { mapSessionKey } from "@/lib/map-session";
 import { track } from "@/lib/track";
 import { layerTitle } from "@/lib/layer-labels";
@@ -167,9 +167,15 @@ export function FollowLayerButton({
 /** Copy a link whose audience is explicitly displayed. The link never grants membership. */
 export function ShareLayerButton({
   layer,
+  access,
+  layerWrites,
+  locale,
   t,
 }: {
   layer: LayerRecord;
+  access: LayerAccess;
+  layerWrites: boolean;
+  locale: Locale;
   t: Copy;
 }) {
   const [feedback, setFeedback] = useState<{
@@ -204,6 +210,116 @@ export function ShareLayerButton({
         <Link2 size={16} aria-hidden="true" />
         {t.copyLink}
       </button>
+      <StatusMessage feedback={feedback} />
+      {layerWrites && access.manage && layer.ownerKind !== "system" && (
+        <ViewOnlyLink layerId={layer.id} locale={locale} t={t} />
+      )}
+    </div>
+  );
+}
+/** Owner control for the read-only link. The raw link is visible only right after it is made. */
+function ViewOnlyLink({
+  layerId,
+  locale,
+  t,
+}: {
+  layerId: string;
+  locale: Locale;
+  t: Copy;
+}) {
+  const [status, setStatus] = useState<{
+    active: boolean;
+    createdAt: string | null;
+  } | null>(null);
+  const [fresh, setFresh] = useState<string | null>(null);
+  const [pending, setPending] = useState(false);
+  const [feedback, setFeedback] = useState<{
+    tone: "success" | "error";
+    text: string;
+  } | null>(null);
+  useEffect(() => {
+    let live = true;
+    api(`layers/${layerId}/share-link`, "GET")
+      .then((s) => live && setStatus(s))
+      .catch(() => live && setStatus({ active: false, createdAt: null }));
+    return () => {
+      live = false;
+    };
+  }, [layerId]);
+  async function create() {
+    setPending(true);
+    setFeedback(null);
+    try {
+      const result = await api(`layers/${layerId}/share-link`, "POST");
+      setStatus({ active: true, createdAt: result.createdAt });
+      setFresh(result.url);
+      try {
+        await navigator.clipboard.writeText(result.url);
+        setFeedback({ tone: "success", text: t.shareLinkCopiedOnce });
+        track("layer_share_link_copied", { audience: "view_only" });
+      } catch {
+        setFeedback({ tone: "error", text: t.shareFailed });
+      }
+    } catch (e) {
+      setFeedback({ tone: "error", text: (e as Error).message });
+    } finally {
+      setPending(false);
+    }
+  }
+  async function turnOff() {
+    setPending(true);
+    setFeedback(null);
+    try {
+      await api(`layers/${layerId}/share-link`, "DELETE");
+      setStatus({ active: false, createdAt: null });
+      setFresh(null);
+      setFeedback({ tone: "success", text: t.shareLinkOffDone });
+    } catch (e) {
+      setFeedback({ tone: "error", text: (e as Error).message });
+    } finally {
+      setPending(false);
+    }
+  }
+  if (!status) return null;
+  return (
+    <div className="view-only-link">
+      <p className="fine-print">
+        {status.active && status.createdAt
+          ? format(t.shareLinkOn, {
+              date: dateLabel(status.createdAt, locale),
+            })
+          : t.shareLinkOff}
+      </p>
+      <div className="actions">
+        <button
+          type="button"
+          className="button secondary small"
+          disabled={pending}
+          aria-busy={pending || undefined}
+          onClick={create}
+        >
+          {status.active ? t.shareLinkReset : t.shareLinkCreate}
+        </button>
+        {status.active && (
+          <button
+            type="button"
+            className="button secondary small"
+            disabled={pending}
+            onClick={turnOff}
+          >
+            {t.shareLinkTurnOff}
+          </button>
+        )}
+      </div>
+      {status.active && <p className="fine-print">{t.shareLinkResetNote}</p>}
+      {fresh && (
+        <input
+          readOnly
+          value={fresh}
+          aria-label={t.shareLinkLabel}
+          onFocus={(e) => e.currentTarget.select()}
+        />
+      )}
       <StatusMessage feedback={feedback} />
     </div>
   );

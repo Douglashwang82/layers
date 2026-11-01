@@ -52,6 +52,11 @@ import {
   publishLayer,
 } from "@/features/layers/service";
 import {
+  createShareLink,
+  getShareLinkStatus,
+  revokeShareLink,
+} from "@/features/layers/share-links";
+import {
   createLayerEvent,
   deleteLayerEvent,
   listLayerEvents,
@@ -234,6 +239,8 @@ async function handler(
     }
     if (method === "GET" && resource === "layers") {
       const { city } = await getActiveCity(query.city);
+      if (id && action === "share-link")
+        return ok(await getShareLinkStatus(actor, id));
       if (id) {
         const found = await getLayer(id, actor);
         if (!found)
@@ -633,6 +640,10 @@ async function handler(
           (method === "POST" || method === "DELETE")
         )
           return ok(await followLayer(a, id, method === "POST"));
+        if (id && action === "share-link" && method === "POST")
+          return ok(await createShareLink(a, id), 201);
+        if (id && action === "share-link" && method === "DELETE")
+          return ok(await revokeShareLink(a, id));
         if (
           id &&
           action === "publish" &&
