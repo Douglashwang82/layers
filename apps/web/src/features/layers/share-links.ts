@@ -60,7 +60,13 @@ async function requireManagedLayer(actor: Actor | null, idOrSlug: string) {
   const found = await getLayer(idOrSlug, a);
   if (!found)
     throw new AppError(404, "NOT_FOUND", "This layer is unavailable.");
-  if (!found.access.manage || found.layer.ownerKind === "system")
+  // Real ownership only (user-layer owner or group owner), never a broader
+  // manage grant: the link is judged against the creator's ownership at view time.
+  if (
+    !found.access.manage ||
+    found.access.role !== "owner" ||
+    found.layer.ownerKind === "system"
+  )
     throw new AppError(
       403,
       "FORBIDDEN",
@@ -270,7 +276,7 @@ async function loadSharedPlaces(layer: LayerRecord): Promise<SharedPlace[]> {
      LEFT JOIN place sp ON sp.id=s.catalog_place_id AND sp.status='approved'
      LEFT JOIN LATERAL (SELECT r.display_name,r.provider_place_id FROM place_provider_reference r WHERE r.subject_id=s.id AND r.state='current' LIMIT 1) ref ON true
      LEFT JOIN custom_place cp ON cp.id=i.custom_place_id AND cp.status='active'
-     LEFT JOIN event ev ON ev.id=i.event_id AND ev.status='approved'
+     LEFT JOIN event ev ON ev.id=i.event_id AND ev.status='approved' AND ev.end_time>now()
      WHERE i.layer_id=$1
        AND (i.valid_from IS NULL OR i.valid_from<=now())
        AND (i.valid_until IS NULL OR i.valid_until>now())

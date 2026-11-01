@@ -491,6 +491,12 @@ export async function reissueInvitation(
       `DELETE FROM membership_join_context WHERE invitation_id = $1`,
       [invitationId],
     );
+    // Keep group invites riding on this invitation usable for as long as it is.
+    await tx.query(
+      `UPDATE group_invite SET expires_at = $2
+       WHERE membership_invitation_id = $1 AND accepted_at IS NULL AND revoked_at IS NULL`,
+      [invitationId, updated.rows[0].expires_at],
+    );
     await audit(tx, {
       actorId: a.id,
       action: "membership_invitation_reissued",
@@ -717,27 +723,60 @@ async function issueWithinSavepoint(
   return { membership: "invited", delivery };
 }
 /**
- * Revoking a group invite withdraws the platform invitation it caused, but only
- * while that invitation is still unredeemed and was issued by a group owner.
- * Locks invitation then nomination, the same order as the join flow.
+ * Revoking a group invite revokes that group_invite and, only when it was the
+ * last live invite riding on the group-owner platform invitation, the
+ * invitation too. If another live invite for the same email exists, it is
+ * re-linked to the invitation so it is not stranded.
+ * Lock order: invitation, nomination, then group_invite (same as the join flow).
  */
 export async function revokeOwnerIssuedInvitation(
   tx: PoolClient,
   invitationId: string,
   actorId: string,
+  groupInvite: { id: string; groupId: string },
 ) {
   const invitation = await tx.query<{ nomination_id: string; status: string }>(
     `SELECT nomination_id, status FROM membership_invitation WHERE id = $1 FOR UPDATE`,
     [invitationId],
   );
   const row = invitation.rows[0];
-  if (!row) return false;
-  const nomination = await tx.query<{ source: string }>(
-    `SELECT source FROM membership_nomination WHERE id = $1 FOR UPDATE`,
-    [row.nomination_id],
+  const nomination = row
+    ? await tx.query<{ source: string; email_normalized: string }>(
+        `SELECT source, email_normalized FROM membership_nomination WHERE id = $1 FOR UPDATE`,
+        [row.nomination_id],
+      )
+    : null;
+  const guarded = await tx.query<{ email: string }>(
+    `SELECT email FROM group_invite
+     WHERE id = $1 AND group_id = $2 AND revoked_at IS NULL AND accepted_at IS NULL
+     FOR UPDATE`,
+    [groupInvite.id, groupInvite.groupId],
   );
-  if (row.status !== "issued" || nomination.rows[0]?.source !== "group_owner")
-    return false;
+  if (!guarded.rows[0]) return { revoked: false };
+  await tx.query(`UPDATE group_invite SET revoked_at = now() WHERE id = $1`, [
+    groupInvite.id,
+  ]);
+  if (
+    !row ||
+    row.status !== "issued" ||
+    nomination?.rows[0]?.source !== "group_owner"
+  )
+    return { revoked: true };
+  const other = await tx.query<{ id: string }>(
+    `SELECT id FROM group_invite
+     WHERE id <> $1 AND lower(trim(email)) = lower(trim($2))
+       AND accepted_at IS NULL AND revoked_at IS NULL AND expires_at > now()
+     ORDER BY (membership_invitation_id = $3) DESC NULLS LAST, id
+     FOR UPDATE`,
+    [groupInvite.id, guarded.rows[0].email, invitationId],
+  );
+  if (other.rows[0]) {
+    await tx.query(
+      `UPDATE group_invite SET membership_invitation_id = $1 WHERE id = ANY($2::uuid[]) AND membership_invitation_id IS DISTINCT FROM $1`,
+      [invitationId, other.rows.map((r) => r.id)],
+    );
+    return { revoked: true };
+  }
   await tx.query(
     `UPDATE membership_invitation SET status = 'revoked', revoked_by = $1, revoked_at = now() WHERE id = $2`,
     [actorId, invitationId],
@@ -757,13 +796,14 @@ export async function revokeOwnerIssuedInvitation(
     nominationId: row.nomination_id,
     reason: "group_invite_revoked",
   });
-  return true;
+  return { revoked: true };
 }
 /** Accept every open group invitation addressed to this email (admission auto-joins). */
 async function acceptGroupInvitesForAdmission(
   tx: PoolClient,
   userId: string,
   email: string,
+  invitationId: string,
 ): Promise<string | undefined> {
   if (!flags.layerWrites) return undefined;
   const accepted = await tx.query<{
@@ -774,9 +814,10 @@ async function acceptGroupInvitesForAdmission(
     `UPDATE group_invite gi SET accepted_at = now()
      FROM "group" g
      WHERE g.id = gi.group_id AND lower(trim(gi.email)) = $1
-       AND gi.accepted_at IS NULL AND gi.revoked_at IS NULL AND gi.expires_at > now()
+       AND gi.accepted_at IS NULL AND gi.revoked_at IS NULL
+       AND (gi.expires_at > now() OR gi.membership_invitation_id = $2)
      RETURNING gi.group_id, gi.role, g.slug`,
-    [normalizeEmail(email)],
+    [normalizeEmail(email), invitationId],
   );
   for (const row of accepted.rows) {
     await tx.query(
@@ -1128,6 +1169,7 @@ export async function joinEmailComplete(
             tx,
             userId,
             invitedEmail,
+            invitation.id,
           );
           return { alreadyJoined: true, groupSlug };
         }
@@ -1163,6 +1205,7 @@ export async function joinEmailComplete(
           tx,
           userId,
           invitedEmail,
+          invitation.id,
         );
         return { alreadyMember: true, groupSlug };
       }
@@ -1202,6 +1245,7 @@ export async function joinEmailComplete(
         tx,
         userId,
         invitedEmail,
+        invitation.id,
       );
       return { joined: true, groupSlug };
     });

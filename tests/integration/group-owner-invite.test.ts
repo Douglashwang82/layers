@@ -23,6 +23,7 @@ const emails: string[] = [];
 const batchIds: string[] = [];
 let groupId: string;
 let groupSlug: string;
+let groupBId: string;
 function testEmail(prefix: string) {
   const email = `${prefix}-${crypto.randomUUID()}@group-owner-test.example`;
   emails.push(email);
@@ -79,6 +80,13 @@ beforeAll(async () => {
   });
   groupId = created.group.id;
   groupSlug = created.group.slug;
+  const createdB = await createGroup(owner, {
+    name: `Owner invite B ${crypto.randomUUID()}`,
+    nameChinese: "邀請測試B",
+    description: "Group owner invite test B",
+    city: "houston",
+  });
+  groupBId = createdB.group.id;
 });
 afterAll(async () => {
   const joined = (
@@ -88,7 +96,9 @@ afterAll(async () => {
     )
   ).rows.map((r) => r.id);
   const all = [...userIds, ...joined];
-  await pool.query(`DELETE FROM "group" WHERE id = $1`, [groupId]);
+  await pool.query(`DELETE FROM "group" WHERE id = ANY($1::uuid[])`, [
+    [groupId, groupBId],
+  ]);
   await pool.query(
     `DELETE FROM membership_admission WHERE user_id = ANY($1::uuid[])`,
     [all],
@@ -260,6 +270,81 @@ describe("one-step group invite", () => {
       "invited",
       "pending",
     ]);
+    await updateBatch(admin, batchId, { status: "closed" });
+  });
+  it("keeps a second group's invite usable when the first is revoked", async () => {
+    const batchId = await openBatch(5);
+    const email = testEmail("twogroups");
+    const a = await inviteMember(owner, groupId, { email, role: "viewer" });
+    const b = await inviteMember(owner, groupBId, { email, role: "editor" });
+    expect(a.membership).toBe("invited");
+    expect(b.membership).toBe("pending");
+    const invitation = await invitationFor(a.id);
+    await expect(revokeInvite(owner, groupId, a.id)).resolves.toEqual({
+      revoked: true,
+    });
+    const kept = await invitationFor(b.id);
+    expect(kept.id).toBe(invitation.id);
+    expect(kept.status).toBe("issued");
+    await expect(revokeInvite(owner, groupBId, b.id)).resolves.toEqual({
+      revoked: true,
+    });
+    expect((await invitationFor(b.id)).status).toBe("revoked");
+    await updateBatch(admin, batchId, { status: "closed" });
+  });
+  it("does not touch the invitation when the group invite is not revocable", async () => {
+    const batchId = await openBatch(5);
+    const result = await inviteMember(owner, groupId, {
+      email: testEmail("notrevocable"),
+      role: "viewer",
+    });
+    await pool.query(
+      `UPDATE group_invite SET accepted_at = now() WHERE id = $1`,
+      [result.id],
+    );
+    await expect(revokeInvite(owner, groupId, result.id)).resolves.toEqual({
+      revoked: false,
+    });
+    expect((await invitationFor(result.id)).status).toBe("issued");
+    await updateBatch(admin, batchId, { status: "closed" });
+  });
+  it("extends linked group invites on reissue and honors them after expiry", async () => {
+    const batchId = await openBatch(5);
+    const email = testEmail("reissue");
+    const result = await inviteMember(owner, groupId, {
+      email,
+      role: "viewer",
+    });
+    const invitation = await invitationFor(result.id);
+    await pool.query(
+      `UPDATE membership_invitation SET delivery = 'manual' WHERE id = $1`,
+      [invitation.id],
+    );
+    await pool.query(
+      `UPDATE group_invite SET expires_at = now() - interval '1 hour' WHERE id = $1`,
+      [result.id],
+    );
+    const reissued = await reissueInvitation(owner, invitation.id);
+    if (reissued.delivery !== "manual") throw new Error("expected manual");
+    const extended = await pool.query<{ ok: boolean }>(
+      `SELECT abs(extract(epoch FROM g.expires_at - i.expires_at)) < 0.01 AS ok FROM group_invite g
+       JOIN membership_invitation i ON i.id = g.membership_invitation_id WHERE g.id = $1`,
+      [result.id],
+    );
+    expect(extended.rows[0].ok).toBe(true);
+    // Even if the group invite lapsed again, redeeming the linked invitation accepts it.
+    await pool.query(
+      `UPDATE group_invite SET expires_at = now() - interval '1 hour' WHERE id = $1`,
+      [result.id],
+    );
+    const context = await createJoinContext({ token: reissued.token });
+    await joinEmailStart(context.secret, { acceptTerms: true });
+    const outcome = await joinEmailComplete(
+      context.secret,
+      { otp: await extractOtp(email) },
+      () => {},
+    );
+    expect(outcome).toMatchObject({ joined: true, groupSlug });
     await updateBatch(admin, batchId, { status: "closed" });
   });
 });

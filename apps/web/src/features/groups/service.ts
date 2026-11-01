@@ -152,7 +152,11 @@ export async function revokeInvite(
   );
   const invitationId = linked.rows[0]?.membership_invitation_id ?? null;
   return transaction(async (tx) => {
-    if (invitationId) await revokeOwnerIssuedInvitation(tx, invitationId, a.id);
+    if (invitationId)
+      return revokeOwnerIssuedInvitation(tx, invitationId, a.id, {
+        id: inviteId,
+        groupId: group.id,
+      });
     const result = await tx.query(
       "UPDATE group_invite SET revoked_at=now() WHERE id=$1 AND group_id=$2 AND revoked_at IS NULL AND accepted_at IS NULL",
       [inviteId, group.id],
