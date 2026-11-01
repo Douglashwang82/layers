@@ -15,7 +15,7 @@ test("owner shares a layer by view-only link, a signed-out visitor reads it, tur
   const email = `share-link-${Date.now()}@example.test`;
   await createAndSignIn(page, "Share Link Owner", email);
   try {
-    await page.goto("/?layers=none&view=list&layerPanel=new");
+    await page.goto("/?layers=none&view=list&layerPanel=new&blank=1");
     const screen = page.locator(".layer-workspace-screen");
     const title = `Shared collection ${Date.now()}`;
     await screen.getByLabel("Title", { exact: true }).fill(title);
@@ -56,8 +56,12 @@ test("owner shares a layer by view-only link, a signed-out visitor reads it, tur
       await expect(
         visitor.getByRole("heading", { name: title, level: 1 }),
       ).toBeVisible();
-      await expect(visitor.getByText("Shared by Share Link Owner")).toBeVisible();
-      await expect(visitor.getByRole("heading", { name: placeName })).toBeVisible();
+      await expect(
+        visitor.getByText("Shared by Share Link Owner"),
+      ).toBeVisible();
+      await expect(
+        visitor.getByRole("heading", { name: placeName }),
+      ).toBeVisible();
       await expect(
         visitor.getByText("This is a view-only copy shared by link."),
       ).toBeVisible();
@@ -68,9 +72,9 @@ test("owner shares a layer by view-only link, a signed-out visitor reads it, tur
         "Turn off link",
       ]) {
         await expect(
-          visitor.getByRole("button", { name }).or(
-            visitor.getByRole("link", { name }),
-          ),
+          visitor
+            .getByRole("button", { name })
+            .or(visitor.getByRole("link", { name })),
         ).toHaveCount(0);
       }
 
@@ -78,7 +82,9 @@ test("owner shares a layer by view-only link, a signed-out visitor reads it, tur
       await screen
         .getByRole("button", { name: "Turn off link", exact: true })
         .click();
-      await expect(screen.getByText("View-only link turned off.")).toBeVisible();
+      await expect(
+        screen.getByText("View-only link turned off."),
+      ).toBeVisible();
       await visitor.reload();
       await expect(
         visitor.getByRole("heading", {

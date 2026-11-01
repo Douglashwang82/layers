@@ -57,11 +57,9 @@ import {
   type ExtraPoint,
   type MapCanvasHandle,
 } from "./map-canvas";
-import { getPlacesProvider, type ProviderPlace } from "@/lib/places/provider";
-import { BusinessDiscovery } from "@/components/places/business-discovery";
+import { getPlacesProvider } from "@/lib/places/provider";
 import { BusinessPanel } from "@/components/places/business-panel";
 import { ExternalReferences } from "@/components/places/external-references";
-import { MapToolbar } from "./map-toolbar";
 import {
   markerCssVars,
   markerKind,
@@ -107,14 +105,12 @@ const afterLayout = (run: () => void) => window.setTimeout(run, 80);
 /** The Google place hover card's size (height approximate: photo, card, Tabelog link), for keeping it inside the map. */
 const placeTipWidth = 280;
 const placeTipHeight = 400;
-/** Server-read flags and the browser-visible provider key (only when discovery or the MVP is on). */
+/** Server-read flags and the browser-visible provider key. */
 export type PlacesConfig = {
   providerKey: string | null;
   reviewWrites: boolean;
   collections: boolean;
   mapEffects: boolean;
-  /** Map MVP: layers only — no search, discovery or system layers. */
-  mvp: boolean;
 };
 /** An in-memory business selection; it never enters the URL until a subject exists. */
 type BusinessSelection = {
@@ -167,7 +163,6 @@ export function MapWorkspace({
   authenticated,
   token,
   hasDemo,
-  contentEnabled,
   layerWrites,
   places,
   library = null,
@@ -181,14 +176,12 @@ export function MapWorkspace({
   authenticated: boolean;
   token: string | undefined;
   hasDemo: boolean;
-  contentEnabled: boolean;
   layerWrites: boolean;
   places: PlacesConfig;
   /** Map MVP: the signed-in member's loadable layers. */
   library?: LayerAvailability[] | null;
   layerScreen?: ReactNode;
 }) {
-  const mvp = places.mvp;
   const searchParams = useSearchParams();
   const router = useRouter();
   const layerPanel = readLayerPanel(new URLSearchParams(searchParams));
@@ -488,21 +481,19 @@ export function MapWorkspace({
     useMapReviewPreviews(queryKey);
   useEffect(() => () => window.clearTimeout(tipTimer.current), []);
   const stageBody = useRef<HTMLDivElement>(null);
-  /* Business discovery: a separate mode and in-memory selection, lazily loading the provider. */
+  /* Google place selection is in memory, lazily loading the provider. */
   const provider = useMemo(
     () => getPlacesProvider(places.providerKey ?? undefined, locale),
     [places.providerKey, locale],
   );
-  const [mode, setMode] = useState<"layers" | "business">("layers");
   const [business, setBusiness] = useState<BusinessSelection | null>(null);
-  const [searchPoints, setSearchPoints] = useState<ExtraPoint[]>([]);
   const [locatedPlaces, setLocatedPlaces] = useState<
     Record<string, { lat: number; lng: number }>
   >({});
   const [pendingExternal, setPendingExternal] = useState(0);
   const [externalPoints, setExternalPoints] = useState<ExtraPoint[]>([]);
   const extraPoints = useMemo(() => {
-    const points = [...externalPoints, ...searchPoints];
+    const points = [...externalPoints];
     if (business?.location && !points.some((p) => p.key === business.key))
       points.push({
         key: business.key,
@@ -512,7 +503,7 @@ export function MapWorkspace({
         placeId: business.placeId ?? undefined,
       });
     return points;
-  }, [externalPoints, searchPoints, business]);
+  }, [externalPoints, business]);
   const onItemHover = (hover: { key: string; x: number; y: number } | null) => {
     window.clearTimeout(tipTimer.current);
     if (hover) {
@@ -565,14 +556,6 @@ export function MapWorkspace({
     const spot = next.location;
     if (spot && moveCamera) afterLayout(() => canvas.current?.focusPoint(spot));
   };
-  const selectSearchPlace = (place: ProviderPlace) =>
-    selectBusiness({
-      key: `search:${place.id}`,
-      placeId: place.id,
-      subjectId: null,
-      location: place.location,
-      temporary: true,
-    });
   const closeBusiness = () => {
     setBusiness(null);
     panelRef.current?.focus();
@@ -670,14 +653,13 @@ export function MapWorkspace({
     track("map_area_searched", {});
   };
   /*
-   * MVP framing: every loaded place (catalog/custom pins and Google places as
+   * Framing: every loaded place (catalog/custom pins and Google places as
    * they resolve) stays in view until the user moves the map themselves; a
    * new set of layers starts framing again.
    */
   const autoFit = useRef<string | null>(null);
-  const onUserMove = (bounds: Bounds) => {
-    if (mvp) autoFit.current = null;
-    else setPendingArea(bounds);
+  const onUserMove = () => {
+    autoFit.current = null;
   };
   /* Layout: everything floats over one full-viewport map; the list is a collapsible panel. */
   const mobile = useMedia("(max-width: 800px)");
@@ -686,7 +668,7 @@ export function MapWorkspace({
   const visible =
     !!layerPanel || panelVisible({ open: panelOpen, listView, fallback });
   // The sidebar is the Layers panel; results only list when there is no map to show them.
-  const showResults = listView || fallback || (mvp && pendingExternal > 0);
+  const showResults = listView || fallback || pendingExternal > 0;
   const savedScroll = useRef(0);
   const wasDetail = useRef(false);
   useEffect(() => {
@@ -752,9 +734,8 @@ export function MapWorkspace({
     );
   };
   const [sheet, setSheet] = useState<Sheet>("half");
-  // An empty MVP map opens on the member's layers: loading one is the first step.
+  // An empty map opens on the member's layers: loading one is the first step.
   const [tab, setTab] = useState<"layers" | "results">(() =>
-    mvp &&
     authenticated &&
     appliedSlugs.length === 0 &&
     // A member with no layers of their own opens on the first-run starter.
@@ -768,17 +749,12 @@ export function MapWorkspace({
    */
   const revealedFor = useRef<string | null>(null);
   useEffect(() => {
-    if (
-      !mvp ||
-      layerPanel ||
-      !pendingExternal ||
-      revealedFor.current === queryKey
-    )
+    if (layerPanel || !pendingExternal || revealedFor.current === queryKey)
       return;
     revealedFor.current = queryKey;
     setTab("results");
     setPanelOpen(true);
-  }, [mvp, layerPanel, pendingExternal, queryKey]);
+  }, [layerPanel, pendingExternal, queryKey]);
   const [limit, setLimit] = useState(20);
   const [panelHeight, setPanelHeight] = useState(0);
   const [panelRight, setPanelRight] = useState(0);
@@ -872,7 +848,6 @@ export function MapWorkspace({
       });
     }
     setTab("layers");
-    setMode("layers");
     setDetailHidden(true);
     setPanelOpen(true);
     window.requestAnimationFrame(() => panelRef.current?.focus());
@@ -905,10 +880,8 @@ export function MapWorkspace({
   useEffect(() => {
     setLimit(20);
   }, [result.total, result.generatedAt]);
-  // MVP counts include Google places as they get a location (as placeCount).
-  const announcedCount = mvp
-    ? result.total + externalPoints.length
-    : result.total;
+  // Counts include Google places as they get a location (as placeCount).
+  const announcedCount = result.total + externalPoints.length;
   useEffect(() => {
     setAnnounce(format(t.resultsInArea, { count: announcedCount }));
   }, [announcedCount, result.generatedAt, t.resultsInArea]);
@@ -936,8 +909,7 @@ export function MapWorkspace({
     canvas.current?.flyTo([city.longitude, city.latitude], cityZoom);
   }, [city.slug, city.longitude, city.latitude, canvasStatus]);
   useEffect(() => {
-    if (!mvp || canvasStatus !== "ready" || autoFit.current !== appliedKey)
-      return;
+    if (canvasStatus !== "ready" || autoFit.current !== appliedKey) return;
     const points: ExtraPoint[] = [
       ...mapped.map((i) => ({
         key: i.key,
@@ -956,7 +928,7 @@ export function MapWorkspace({
     return () => window.clearTimeout(timer);
     // `mapped` is derived from `result`; its identity changes with it.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [mvp, canvasStatus, appliedKey, result, externalPoints]);
+  }, [canvasStatus, appliedKey, result, externalPoints]);
   const businessPanel = business && (
     <BusinessPanel
       key={business.key}
@@ -989,7 +961,7 @@ export function MapWorkspace({
   // Details share the one floating panel with results and layers (business wins when both exist).
   const detailInPanel =
     !layerPanel && (!!selected || !!business) && !detailHidden;
-  const routeInPanel = !layerPanel && mvp && routeOpen;
+  const routeInPanel = !layerPanel && routeOpen;
   // The open place as a route stop: the keyboard and list path into a route.
   const openStop: PlannedStop | null = business
     ? business.location && !business.temporary
@@ -1007,7 +979,7 @@ export function MapWorkspace({
       ? itemStop(selected.key)
       : null;
   const inRoute = !!openStop && routeStops.some((s) => s.key === openStop.key);
-  const routeAction = mvp && openStop && (
+  const routeAction = openStop && (
     <div className="route-action">
       <button
         type="button"
@@ -1043,7 +1015,7 @@ export function MapWorkspace({
     );
     editRoute();
   };
-  const routeThroughButton = mvp && routablePlaces.length > 1 && (
+  const routeThroughButton = routablePlaces.length > 1 && (
     <button
       type="button"
       className="button secondary small route-through"
@@ -1055,7 +1027,7 @@ export function MapWorkspace({
   );
   // The route bar: present while there are stops, so no mode is needed.
   const barLinks = routeLinks(routeStops, travelMode);
-  const routeBar = mvp && routeStops.length > 0 && (
+  const routeBar = routeStops.length > 0 && (
     <div className="route-bar" role="group" aria-label={t.routeTitle}>
       <button
         type="button"
@@ -1107,7 +1079,7 @@ export function MapWorkspace({
   );
   /** Add or remove a hovered pin from the route, right on its hover card. */
   const tipRouteButton = (key: string) => {
-    const stop = mvp ? stopFor(key) : null;
+    const stop = stopFor(key);
     if (!stop) return null;
     const added = routeStops.some((s) => s.key === key);
     return (
@@ -1139,7 +1111,6 @@ export function MapWorkspace({
   const layerCount = result.layers.filter((l) => l.status === "ok").length;
   // MVP layers are mostly Google places, counted once they have a location.
   const placeCount = announcedCount;
-  const otherCity = result.layers.filter((l) => l.status === "other-city");
   const preview = selected && (
     <ItemPreview
       item={selected}
@@ -1167,11 +1138,11 @@ export function MapWorkspace({
   );
   const panelLayers = shownSlugs
     .map((slug) => knownLayers.get(slug))
-    .filter((l): l is LayerAvailability => !!l && l.status !== "other-city");
+    .filter((l): l is LayerAvailability => !!l);
   const layersPanel = (
     <ActiveLayersPanel
       layers={panelLayers}
-      library={mvp ? (library ?? []) : null}
+      library={library ?? []}
       hidden={hiddenLayers.filter((h) => !shownSlugs.includes(h.slug))}
       t={t}
       locale={locale}
@@ -1227,7 +1198,6 @@ export function MapWorkspace({
   const dailyPickSlug =
     (library ?? []).find((l) => l.ownerKind === "system")?.slug ?? null;
   const firstRun =
-    mvp &&
     authenticated &&
     library != null &&
     !library.some((l) => l.ownerKind !== "system");
@@ -1252,7 +1222,7 @@ export function MapWorkspace({
         </div>
         <p className="fine-print">{t.starterJoinGroup}</p>
       </div>
-    ) : mvp && appliedSlugs.length === 0 ? (
+    ) : appliedSlugs.length === 0 ? (
       <div className="empty">
         <h3>{t.mvpEmptyTitle}</h3>
         <p>{authenticated ? t.mvpEmptyBody : t.signInForLayers}</p>
@@ -1279,54 +1249,6 @@ export function MapWorkspace({
           )}
         </div>
       </div>
-    ) : appliedSlugs.length === 0 && result.searchScope !== "city" ? (
-      <div className="empty">
-        <h3>{t.chooseLayer}</h3>
-        <p>{t.chooseLayerBody}</p>
-        <Link className="button" href="/layers">
-          {t.findLayers}
-        </Link>
-      </div>
-    ) : result.total === 0 && !mvp ? (
-      // MVP layers are mostly Google places, listed below by ExternalReferences.
-      <div className="empty">
-        <h3>
-          {state.area
-            ? t.noResultsArea
-            : state.date !== "upcoming"
-              ? t.noResultsDate
-              : t.empty}
-        </h3>
-        <div className="actions">
-          {state.area && (
-            <button
-              type="button"
-              className="button secondary small"
-              onClick={() => commit({ area: undefined })}
-            >
-              {t.clearArea}
-            </button>
-          )}
-          {state.date !== "upcoming" && (
-            <button
-              type="button"
-              className="button secondary small"
-              onClick={() => commit({ date: "upcoming" })}
-            >
-              {t.showUpcoming}
-            </button>
-          )}
-          {(state.types?.length ?? 3) < itemTypes.length && (
-            <button
-              type="button"
-              className="button secondary small"
-              onClick={() => commit({ types: [...itemTypes] })}
-            >
-              {t.typeAll}
-            </button>
-          )}
-        </div>
-      </div>
     ) : null;
   const dailyPick = result.dailyPick && (
     <DailyPickCard
@@ -1338,7 +1260,7 @@ export function MapWorkspace({
       t={t}
       locale={locale}
       authenticated={authenticated}
-      addToLayer={mvp && layerWrites}
+      addToLayer={layerWrites}
       onShow={select}
       onChanged={() => {
         // Authoritative refresh: the card's saved state and any open detail for the same place.
@@ -1373,7 +1295,7 @@ export function MapWorkspace({
       locale={locale}
       timeZone={city.timezone}
       events={result.events}
-      autoLoad={mvp}
+      autoLoad
       layers={panelLayers}
       onPending={setPendingExternal}
       onPoints={setExternalPoints}
@@ -1467,30 +1389,7 @@ export function MapWorkspace({
           layers={panelLayers}
         />
       )}
-      {!mvp && externalReferences}
     </>
-  );
-  const discoveryPanel = provider && (
-    <BusinessDiscovery
-      provider={provider}
-      cityCenter={{ lat: city.latitude, lng: city.longitude }}
-      currentCenter={() => canvas.current?.getCenter() ?? null}
-      t={t}
-      onSelect={selectSearchPlace}
-      onResults={(found) => {
-        const points = found
-          .filter((p) => p.location)
-          .map((p) => ({
-            key: `search:${p.id}`,
-            kind: "search" as const,
-            lat: p.location!.lat,
-            lng: p.location!.lng,
-            placeId: p.id,
-          }));
-        setSearchPoints(points);
-        canvas.current?.fitPoints(points);
-      }}
-    />
   );
   const footer = (
     <div className="map-footer">
@@ -1612,24 +1511,6 @@ export function MapWorkspace({
           {city.name} · {t.mapNav}
         </h1>
         <div className="map-stage">
-          {/* The MVP map has no search or filters: it shows the loaded layers. */}
-          {!mvp && (
-            <MapToolbar
-              state={state}
-              cityName={city.name}
-              t={t}
-              contentEnabled={contentEnabled}
-              onCommit={(patch) => {
-                commit(patch);
-                // A submitted search shows its results in the panel.
-                if (patch.q) {
-                  setTab("results");
-                  setDetailHidden(true);
-                  setPanelOpen(true);
-                }
-              }}
-            />
-          )}
           {actionsTarget &&
             createPortal(
               <button
@@ -1852,7 +1733,7 @@ export function MapWorkspace({
               </button>
             )}
             {!listView && canvasStatus === "ready" && routeBar}
-            {mvp && !routeInPanel && (
+            {!routeInPanel && (
               <span className="sr-only" role="status">
                 {routeNotice}
               </span>
@@ -1948,44 +1829,6 @@ export function MapWorkspace({
                 </button>
               )}
             </div>
-            {provider && !mvp && !layerPanel && (
-              <div
-                className="segmented discovery-modes"
-                role="group"
-                aria-label={t.discoveryModes}
-              >
-                {(
-                  [
-                    ["layers", t.layersMode],
-                    ["business", t.businessMode],
-                  ] as const
-                ).map(([value, label]) => (
-                  <button
-                    key={value}
-                    type="button"
-                    aria-pressed={mode === value}
-                    className={mode === value ? "on" : ""}
-                    onClick={() => {
-                      setMode(value);
-                      setTab("results");
-                      setDetailHidden(true);
-                      // Leaving discovery clears temporary pins but keeps layer pins and selection.
-                      if (value === "layers") {
-                        setSearchPoints([]);
-                        if (business?.temporary) setBusiness(null);
-                      }
-                    }}
-                  >
-                    {label}
-                  </button>
-                ))}
-              </div>
-            )}
-            {otherCity.map((l) => (
-              <p key={l.slug} className="fine-print">
-                {format(t.layerOtherCity, { city: l.cityName ?? "" })}
-              </p>
-            ))}
             {layerPanel ? (
               <div
                 className="panel-body layer-workspace-screen"
@@ -2019,8 +1862,6 @@ export function MapWorkspace({
                 {attachedEvents}
                 {businessPanel ?? preview}
               </>
-            ) : mode === "business" && discoveryPanel && !mvp ? (
-              <div className="panel-body">{discoveryPanel}</div>
             ) : !showResults ? (
               <div className="panel-body">
                 {appliedSlugs.length === 0 && emptyState}
@@ -2040,7 +1881,7 @@ export function MapWorkspace({
             ) : (
               <div className="panel-body">{resultsPanel}</div>
             )}
-            {mvp && (
+            {
               // Google place pins come from these rows, so they stay mounted
               // (hidden) whichever view the panel shows.
               <div
@@ -2055,7 +1896,7 @@ export function MapWorkspace({
               >
                 {externalReferences}
               </div>
-            )}
+            }
             {footer}
           </div>
         </div>

@@ -39,6 +39,10 @@ test("a layer item rating and comment is visible to another group member", async
   await owner.getByRole("link", { name: "Create layer" }).click();
   await expect(owner).toHaveURL(/layerPanel=new.*group=/);
   await owner
+    .getByRole("link", { name: "Create an empty layer instead" })
+    .click();
+  await expect(owner).toHaveURL(/blank=1/);
+  await owner
     .getByLabel("Title", { exact: true })
     .fill(`Noodle spots ${stamp}`);
   await owner

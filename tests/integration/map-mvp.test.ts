@@ -101,7 +101,7 @@ beforeAll(async () => {
       'INSERT INTO "user"(id,name,email,email_verified,role) VALUES($1,$2,$3,true,$4)',
       [actor.id, "Map MVP", `${actor.id}@map-mvp.example`, actor.role],
     );
-  Object.assign(flags, { mapMvp: true, layerWrites: true });
+  Object.assign(flags, { layerWrites: true });
   process.env.GOOGLE_MAPS_LINK_API_KEY = "fake";
   const group = await createGroup(alice, {
     name: "MVP Circle",
@@ -362,8 +362,8 @@ describe("layers from Google places", () => {
       status: 429,
     });
   });
-  it("is unavailable while the MVP flag is off", async () => {
-    flags.mapMvp = false;
+  it("is unavailable while layer writes are off", async () => {
+    flags.layerWrites = false;
     try {
       await expect(
         createLayerFromGoogle(alice, {
@@ -373,7 +373,7 @@ describe("layers from Google places", () => {
         }),
       ).rejects.toMatchObject({ code: "DISABLED" });
     } finally {
-      flags.mapMvp = true;
+      flags.layerWrites = true;
     }
   });
 });
@@ -429,20 +429,6 @@ describe("the MVP map", () => {
       0,
     );
     expect(refs.references).toHaveLength(2);
-    // With the flag off, layers stay scoped to their own city.
-    flags.mapMvp = false;
-    try {
-      const scoped = await runMapQuery(
-        state([trip], { city: "tokyo" }),
-        tokyo,
-        alice,
-      );
-      expect(scoped.layers).toMatchObject([
-        { slug: trip, status: "other-city" },
-      ]);
-    } finally {
-      flags.mapMvp = true;
-    }
   });
   it("reads valid cached pins without resolving missing or expired locations", async () => {
     const located = `fake-link-${run}a`;
@@ -468,15 +454,6 @@ describe("the MVP map", () => {
     )!;
     expect(cached.location).toEqual({ lat: 29.7, lng: -95.5 });
     expect(cached.types).toEqual([]); // Missing types never cause a provider lookup.
-    flags.mapMvp = false;
-    try {
-      expect(
-        (await list()).references.find((r) => r.subjectId === subject)
-          ?.location,
-      ).toEqual(cached.location);
-    } finally {
-      flags.mapMvp = true;
-    }
     await pool.query(
       "UPDATE place_provider_reference SET location_fetched_at=now()-interval '31 days' WHERE subject_id=$1",
       [subject],

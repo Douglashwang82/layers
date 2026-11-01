@@ -48,7 +48,7 @@ export const connectLimits = {
   onboardingRepliesPerSender: 1,
 };
 export function chatCaptureEnabled() {
-  return flags.chatCapture && flags.mapMvp && flags.layerWrites;
+  return flags.chatCapture && flags.layerWrites;
 }
 function enabled() {
   if (!chatCaptureEnabled())

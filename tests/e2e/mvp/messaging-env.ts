@@ -1,7 +1,7 @@
 import path from "node:path";
 /*
  * Test-only chat channel settings for the "Send places from chat" browser
- * tests, shared by playwright.mvp.config.ts (the dev server) and the spec,
+ * tests, shared by playwright.config.ts (the dev server) and the spec,
  * which signs webhook bodies with the same secrets. Never real credentials.
  * Replies are captured as files under this run's capture directory, which
  * tests/e2e/global-teardown.ts removes.

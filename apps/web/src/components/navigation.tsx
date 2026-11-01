@@ -7,7 +7,6 @@ import { useEffect, useRef, useState } from "react";
 import {
   Map as MapIcon,
   Layers,
-  Bookmark,
   UserRound,
   MapPin,
   Globe,
@@ -35,33 +34,25 @@ export function isActiveRoute(pathname: string, href: string) {
       : pathname === base || pathname.startsWith(base + "/"),
   );
 }
-/**
- * Primary destinations. The map MVP drops the legacy saved-places catalog page
- * (it stays reachable by URL, just unlinked).
- */
-export function navigationHrefs(mvp: boolean) {
-  return ["/", "/layers", ...(mvp ? [] : ["/saved"]), "/profile"];
-}
 export function Navigation({
   t,
   locale,
   cities,
   city,
   mapHome = false,
-  mvp = false,
 }: {
   t: Copy;
   locale: Locale;
   cities: { id: string; slug: string; name: string }[];
   city: string;
   mapHome?: boolean;
-  mvp?: boolean;
 }) {
   const pathname = usePathname();
   const router = useRouter();
   const searchParams = useSearchParams();
   const mapPage = mapHome && pathname === "/";
-  const navHref = (href: string) => mapPage ? layerWorkspaceHref(href, searchParams.toString()) : href;
+  const navHref = (href: string) =>
+    mapPage ? layerWorkspaceHref(href, searchParams.toString()) : href;
   const [switching, setSwitching] = useState(false);
   /*
    * This layout-level component is not re-rendered by a query-only
@@ -87,14 +78,12 @@ export function Navigation({
     document.addEventListener("pointerdown", close);
     return () => document.removeEventListener("pointerdown", close);
   }, [mapPage]);
-  const allNav = [
+  // Primary destinations. The legacy saved-places page stays reachable by URL, just unlinked.
+  const nav = [
     ["/", t.mapNav, MapIcon],
     ["/layers", t.layers, Layers],
-    ["/saved", t.saved, Bookmark],
     ["/profile", t.profile, UserRound],
   ] as const;
-  const hrefs = navigationHrefs(mvp);
-  const nav = allNav.filter(([href]) => hrefs.includes(href));
   const current = (href: string) =>
     isActiveRoute(pathname, href) ? ("page" as const) : undefined;
   const nextLanguage = locale === "en" ? "繁體中文" : "English";
@@ -197,11 +186,18 @@ export function Navigation({
               Local<span>Link</span>
             </Link>
             <nav className="desktop-nav" aria-label={t.mainNav}>
-              {nav.filter(([href]) => href !== "/profile").map(([href, label]) => (
-                <Link key={href} href={navHref(href)} aria-current={current(href)} scroll={!mapPage}>
-                  {label}
-                </Link>
-              ))}
+              {nav
+                .filter(([href]) => href !== "/profile")
+                .map(([href, label]) => (
+                  <Link
+                    key={href}
+                    href={navHref(href)}
+                    aria-current={current(href)}
+                    scroll={!mapPage}
+                  >
+                    {label}
+                  </Link>
+                ))}
             </nav>
           </>
         )}
@@ -225,7 +221,12 @@ export function Navigation({
                 </summary>
                 <div className="map-profile-options">
                   {nav.map(([href, label, Icon]) => (
-                    <Link key={href} href={navHref(href)} aria-current={current(href)} scroll={!mapPage}>
+                    <Link
+                      key={href}
+                      href={navHref(href)}
+                      aria-current={current(href)}
+                      scroll={!mapPage}
+                    >
                       <Icon size={18} aria-hidden="true" />
                       {label}
                     </Link>
@@ -275,7 +276,12 @@ export function Navigation({
       </header>
       <nav className="bottom-nav" aria-label={t.mobileNav}>
         {nav.map(([href, label, Icon]) => (
-          <Link key={href} href={navHref(href)} aria-current={current(href)} scroll={!mapPage}>
+          <Link
+            key={href}
+            href={navHref(href)}
+            aria-current={current(href)}
+            scroll={!mapPage}
+          >
             <Icon size={22} aria-hidden="true" />
             <span>{label}</span>
           </Link>

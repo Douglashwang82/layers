@@ -2,7 +2,7 @@
 
 Design and implementation specification · September 21, 2026
 
-> While `FEATURE_MAP_MVP` is on, the map is layers-only (no search, no system layers, layers built from Google Maps links): see [the map MVP plan](../plans/layer-mvp-google-links-plan.md). This guide still describes the flag-off experience.
+> The map is now layers-only (no search, no system layers except the Daily Pick, layers built from Google Maps links): see [the map MVP plan](../plans/layer-mvp-google-links-plan.md). The former `FEATURE_MAP_MVP` flag was removed on 2026-11-01. This guide describes the earlier search-first experience and is kept for history.
 
 **Make the map the home experience. Let people apply layers of restaurants, events, and local content to decide where to go, what to do, and what to share with their community.**
 

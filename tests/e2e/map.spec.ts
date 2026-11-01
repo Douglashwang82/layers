@@ -1,23 +1,31 @@
 import { test, expect, type Page } from "@playwright/test";
-import { createTestAccount, openMapList, submitSignIn } from "./fixtures";
+import {
+  createTestAccount,
+  openMapList,
+  seededPlacesMap,
+  submitSignIn,
+} from "./fixtures";
+/*
+ * The layers-only map (docs/plans/layer-mvp-google-links-plan.md): no search,
+ * filters or system layers. These specs load a public member layer holding
+ * the seeded Houston places (seededPlacesMap), since a guest's map starts
+ * empty.
+ */
 const noodleHouse = "Little Taipei Noodle House";
 /** Deterministic provider failure, whether or not a Mapbox token is configured. */
 async function blockMapProvider(page: Page) {
   await page.route(/(\/\/|\.)mapbox\.com\//, (route) => route.abort());
 }
-test("map home: default layer, selection with Back, filters and layer toggles", async ({
+test("map home: selection with Back, list view and layer toggles", async ({
   page,
 }) => {
   // The sidebar lists results only without a map, as in CI (no token).
   await blockMapProvider(page);
-  await page.goto("/");
-  // A fresh session starts with the list collapsed; opening it keeps everything else.
+  const url = await seededPlacesMap();
+  await page.goto(url);
   await openMapList(page);
   // The sidebar is the place list itself, with no tab bar.
   await expect(page.getByRole("tab")).toHaveCount(0);
-  await expect(page.getByRole("status").first()).toContainText(
-    "results in this area",
-  );
   // Row → shared detail surface, URL state, and Back closes it to the prior results.
   await page
     .getByRole("link", { name: noodleHouse, exact: false })
@@ -30,123 +38,47 @@ test("map home: default layer, selection with Back, filters and layer toggles", 
   await expect(
     page.getByRole("link", { name: /Get directions/ }),
   ).toHaveAttribute("href", /google\.com\/maps/);
-  await expect(
-    page.getByRole("link", { name: "Open full details →" }),
-  ).toHaveAttribute("href", "/places/demo-little-taipei-noodle-house");
   await page.goBack();
   await expect(page).not.toHaveURL(/item=/);
   await expect(
     page.getByRole("heading", { name: noodleHouse, level: 2 }),
   ).toHaveCount(0);
-  // Type chip: only places remain; the URL carries the committed filter.
-  await page.getByRole("button", { name: "Restaurants", exact: true }).click();
-  await expect(page).toHaveURL(/types=place/);
-  await expect(page.locator(".result-row[data-type='event']")).toHaveCount(0);
-  await expect(
-    page.locator(".result-row[data-type='place']").first(),
-  ).toBeVisible();
-  // Search within applied layers.
-  await page.getByRole("searchbox").first().fill("noodle");
-  await page
-    .getByRole("button", { name: "Search", exact: true })
-    .first()
-    .click();
-  await expect(page).toHaveURL(/q=noodle/);
-  await expect(
-    page.getByRole("link", { name: noodleHouse, exact: false }).first(),
-  ).toBeVisible();
-  await page.getByRole("button", { name: "Exit search" }).click();
-  await expect(page).not.toHaveURL(/q=/);
+  // Old search and filter URLs are dropped, not shown.
+  await page.goto(`${url}&q=noodle&types=event&date=today`);
+  await expect(page).not.toHaveURL(/q=|types=|date=/);
   // Hiding the only layer yields the explicit empty state, never a secret default.
+  await openMapList(page);
   await page.getByRole("button", { name: "Manage layers" }).click();
-  const discover = page.getByRole("checkbox", { name: /Discover Houston/ });
-  await expect(discover).toBeChecked();
-  await discover.uncheck();
+  const seeded = page.getByRole("checkbox", { name: /Seeded places/ });
+  await expect(seeded).toBeChecked();
+  await seeded.uncheck();
   await expect(page).toHaveURL(/layers=none/);
-  await discover.check();
-  await expect(page).toHaveURL(/layers=discover-houston/);
+  await seeded.check();
+  await expect(page).toHaveURL(/layers=e2e-seeded-places-/);
   await page
     .getByRole("button", { name: "Back to results", exact: true })
     .click();
   await expect(page.locator(".result-row").first()).toBeVisible();
-  // Date preset and list view are URL state too.
-  await page.getByRole("button", { name: /^Filters/ }).click();
-  await page.getByRole("button", { name: "Today", exact: true }).click();
-  await expect(page).toHaveURL(/date=today/);
-  // Applied filters stay visible with a way to clear them.
-  await page.getByRole("button", { name: "Clear Today" }).click();
-  await expect(page).not.toHaveURL(/date=/);
+  // List view is URL state too.
   await page.getByRole("button", { name: "List view" }).first().click();
   await expect(page).toHaveURL(/view=list/);
   await page.getByRole("button", { name: "Map view" }).click();
   await expect(page).not.toHaveURL(/view=/);
-});
-test("library Apply adds to the current set; duplicates render once with membership count", async ({
-  page,
-}) => {
-  // The sidebar lists results only without a map, as in CI (no token).
-  await blockMapProvider(page);
-  await page.goto("/?layers=discover-houston&types=place");
-  // The workspace remembers the session's map state once hydrated.
-  await page.waitForFunction(() =>
-    sessionStorage.getItem("taiwanhub:map")?.includes("discover-houston"),
-  );
-  await page.locator(".map-profile-menu summary").click();
-  await page.getByRole("link", { name: "Layers", exact: true }).first().click();
-  await expect(page).toHaveURL(/layerPanel=library/);
-  const food = page.locator(".layer-card", {
-    hasText: "Local food favorites",
-  });
-  await food.getByRole("button", { name: "Apply to map" }).click();
-  await expect(page).toHaveURL(/layers=discover-houston(,|%2C)food-houston/);
-  await expect(page).toHaveURL(/types=place/);
-  await page
-    .locator(".layer-workspace-screen")
-    .getByRole("link", { name: "Open in Map", exact: true })
-    .first()
-    .click();
-  await openMapList(page);
-  await page.getByRole("button", { name: "Manage layers" }).click();
-  await expect(
-    page.getByRole("checkbox", { name: /Local food favorites/ }),
-  ).toBeChecked();
-  await expect(
-    page.getByRole("checkbox", { name: /Discover Houston/ }),
-  ).toBeChecked();
-  await page
-    .getByRole("button", { name: "Back to results", exact: true })
-    .click();
-  const row = page.locator(".result-row", { hasText: noodleHouse });
-  await expect(row).toHaveCount(1);
-  await expect(row).toContainText("In 2 layers");
-  // Show only this layer is explicit and keeps the other listed for undo.
-  await page.getByRole("button", { name: "Manage layers" }).click();
-  await page
-    .getByRole("button", { name: "Show only this layer" })
-    .first()
-    .click();
-  await expect(page).toHaveURL(/layers=discover-houston(&|$)/);
-  await expect(
-    page.getByRole("checkbox", { name: /Local food favorites/ }),
-  ).not.toBeChecked();
-  // A shared layer link previews contents and reports a missing one neutrally.
-  await page.goto("/layers/food-houston");
-  await expect(
-    page.getByRole("heading", { name: "Local food favorites" }),
-  ).toBeVisible();
-  await expect(page.getByRole("button", { name: "Copy link" })).toBeVisible();
+  // System layers are never loaded, and a missing layer is reported neutrally.
+  await page.goto("/?layers=discover-houston");
+  await expect(page).toHaveURL(/layers=none/);
   await page.goto("/layers/private-secret-layer");
   await expect(
     page.getByText("This layer is unavailable or requires access."),
   ).toBeVisible();
   await expect(page.locator("body")).not.toContainText("secret");
 });
-test("sign-in return keeps the selected item; personal layer creation, add, apply and My saves", async ({
+test("sign-in return keeps the selected item; save and add to a layer from the preview", async ({
   page,
 }) => {
-  // The sidebar lists results only without a map, as in CI (no token).
   await blockMapProvider(page);
-  await page.goto("/?types=place");
+  const url = await seededPlacesMap();
+  await page.goto(url);
   await openMapList(page);
   await page
     .getByRole("link", { name: noodleHouse, exact: false })
@@ -169,134 +101,29 @@ test("sign-in return keeps the selected item; personal layer creation, add, appl
   // Saves live on /saved; there is no My saves map layer.
   await page.goto("/saved");
   await expect(page.getByRole("link", { name: "Show on map" })).toHaveCount(0);
-  // Create a layer with only a title, add an item from the map preview, apply it.
-  await page.goto("/layers/new");
+  // Add to a layer of one's own from the map preview, then see the membership.
   const title = `Weekend plan ${Date.now()}`;
-  await page.getByLabel("Title", { exact: true }).fill(title);
-  await page.getByRole("button", { name: "Date range" }).click();
-  await page.getByLabel("From", { exact: true }).fill("2026-09-26");
-  await page.getByLabel("To", { exact: true }).fill("2026-09-27");
-  await page.getByRole("button", { name: "Create layer", exact: true }).click();
-  await expect(page).toHaveURL(/layerPanel=contents.*layer=weekend-plan-/);
-  await page
-    .locator(".layer-workspace-screen")
-    .getByRole("searchbox", { name: "Search", exact: true })
-    .fill("noodle");
-  await page
-    .locator(".layer-workspace-screen")
-    .getByRole("button", { name: "Search", exact: true })
-    .click();
-  await page
-    .locator(".editor-results .result-row", { hasText: noodleHouse })
-    .getByRole("button", { name: "Add to layer" })
-    .click();
-  await expect(
-    page.locator(".editor-results .result-row", { hasText: noodleHouse }),
-  ).toContainText("Added");
-  // No catalog match: create a private custom place in place, pinned to the
-  // (mocked) current location, so no geocoder request is made.
-  await page
-    .locator(".layer-workspace-screen")
-    .getByRole("searchbox", { name: "Search", exact: true })
-    .fill("Zzyzx Tea Lab");
-  await page
-    .locator(".layer-workspace-screen")
-    .getByRole("button", { name: "Search", exact: true })
-    .click();
-  await expect(page.getByText("No results for “Zzyzx Tea Lab”.")).toBeVisible();
-  await page
-    .getByRole("button", { name: "Add “Zzyzx Tea Lab” as a new place" })
-    .click();
-  await expect(page.getByLabel("Place name")).toHaveValue("Zzyzx Tea Lab");
-  await page.context().grantPermissions(["geolocation"]);
-  await page.context().setGeolocation({ latitude: 29.705, longitude: -95.55 });
-  await page.getByRole("button", { name: "Use my current location" }).click();
-  await expect(
-    page.getByText("Pinned to your current location (approximate)."),
-  ).toBeVisible();
-  await page.getByRole("button", { name: "Save place" }).click();
-  await expect(page.getByText("Place added to this layer.")).toBeVisible();
-  const customRow = page.locator(".layer-contents .result-row", {
-    hasText: "Zzyzx Tea Lab",
+  const created = await page.request.post("/api/v1/layers", {
+    data: { title, city: "houston" },
   });
-  await expect(customRow.first()).toContainText("Private place");
-  // A second search finds it under "Your places", already added.
-  await page
-    .locator(".layer-workspace-screen")
-    .getByRole("searchbox", { name: "Search", exact: true })
-    .fill("Zzyzx");
-  await page
-    .locator(".layer-workspace-screen")
-    .getByRole("button", { name: "Search", exact: true })
-    .click();
-  await expect(
-    page.getByRole("heading", { name: "Your places" }),
-  ).toBeVisible();
-  await expect(
-    page.locator(".editor-results .result-row", { hasText: "Zzyzx Tea Lab" }),
-  ).toContainText("Added");
-  await page.getByRole("button", { name: "Done" }).click();
-  await expect(page).toHaveURL(/layerPanel=detail.*layer=weekend-plan-/);
-  await expect(
-    page.getByRole("heading", { name: title, level: 1 }),
-  ).toBeVisible();
-  await expect(
-    page.getByText("Private — only you can view").first(),
-  ).toBeVisible();
-  await expect(page.locator(".layer-contents")).toContainText(noodleHouse);
-  await expect(page.locator(".layer-contents")).toContainText("Zzyzx Tea Lab");
-  const layerUrl = page.url();
-  await page.getByRole("button", { name: "Apply to map" }).first().click();
-  await expect(page).toHaveURL(/layers=.*weekend-plan/);
-  await page
-    .locator(".layer-workspace-screen")
-    .getByRole("link", { name: "Open in Map", exact: true })
-    .first()
-    .click();
+  expect(created.status()).toBe(201);
+  await page.goto(url);
   await openMapList(page);
-  await page.getByRole("button", { name: "Manage layers" }).click();
-  await expect(
-    page.getByRole("checkbox", { name: new RegExp(title) }),
-  ).toBeChecked();
-  await expect(page.getByText("By you")).toBeVisible();
-  // Add to layer from the map preview shows existing membership instead of duplicating.
-  await page
-    .getByRole("button", { name: "Back to results", exact: true })
-    .click();
   await page
     .getByRole("link", { name: noodleHouse, exact: false })
     .first()
     .click();
   await page.getByRole("button", { name: "Add to layer" }).click();
+  await page.locator(".picker-row", { hasText: title }).click();
   await expect(page.locator(".picker-row", { hasText: title })).toContainText(
     "Already in this layer",
   );
-  // The custom place opens on the map as a place without catalog actions.
-  await page.goto(layerUrl);
-  await page
-    .locator(".layer-contents .result-row", { hasText: "Zzyzx Tea Lab" })
-    .click();
-  await expect(page).toHaveURL(/item=custom%3A/);
-  await expect(
-    page.getByRole("heading", { name: "Zzyzx Tea Lab", level: 2 }),
-  ).toBeVisible();
-  await expect(page.getByText(/^A private place:/)).toBeVisible();
-  await expect(
-    page.getByRole("button", { name: "Save", exact: true }),
-  ).toHaveCount(0);
-  // Returning users get their layers restored without explicit URL state.
-  await page.goto("/");
-  await openMapList(page);
-  await page.getByRole("button", { name: "Manage layers" }).click();
-  await expect(
-    page.getByRole("checkbox", { name: new RegExp(title) }),
-  ).toBeChecked();
 });
 test("a failed map provider keeps results, selection and directions usable", async ({
   page,
 }) => {
   await blockMapProvider(page);
-  await page.goto("/?types=place");
+  await page.goto(await seededPlacesMap());
   // The workspace explains the failure, never a blank screen. With a token the
   // blocked provider offers a retry; without one (as in CI) it names the missing
   // token instead. Either way every list flow below must keep working.
@@ -308,7 +135,7 @@ test("a failed map provider keeps results, selection and directions usable", asy
   // The list opens by itself and cannot be hidden: no empty map with a hidden list.
   await expect(page.locator("#map-panel")).toBeVisible();
   await expect(page.getByRole("button", { name: /^Show list/ })).toHaveCount(0);
-  // Every discovery and action flow still works from the semantic list.
+  // Every action flow still works from the semantic list.
   const row = page.locator(".result-row", { hasText: noodleHouse });
   await expect(row).toHaveCount(1);
   await row.locator("a").first().click();
@@ -327,14 +154,14 @@ test("a failed map provider keeps results, selection and directions usable", asy
   await expect(page.locator(".result-row").first()).toBeVisible();
 });
 
-test("floating shell: full-viewport map, one search, labeled menu and no page scroll", async ({
+test("floating shell: full-viewport map, no search, labeled menu and no page scroll", async ({
   page,
 }) => {
   await blockMapProvider(page);
-  await page.goto("/");
+  await page.goto(await seededPlacesMap());
   const header = page.locator(".map-header");
-  await expect(header.getByRole("searchbox")).toBeVisible();
-  await expect(page.getByRole("searchbox")).toHaveCount(1);
+  await expect(page.locator(".map-workspace")).toBeVisible();
+  await expect(page.getByRole("searchbox")).toHaveCount(0);
   await expect(header.locator(".desktop-nav")).toHaveCount(0);
   const viewport = page.viewportSize()!;
   expect(await page.locator(".map-workspace").boundingBox()).toMatchObject({
@@ -346,28 +173,22 @@ test("floating shell: full-viewport map, one search, labeled menu and no page sc
   expect(
     await page.evaluate(() => document.documentElement.scrollHeight),
   ).toBeLessThanOrEqual(viewport.height);
-  // Search commits to the URL and results appear in the same floating panel.
-  await header.getByRole("searchbox").fill("noodle");
-  await header.getByRole("searchbox").press("Enter");
-  await expect(page).toHaveURL(/q=noodle/);
-  await page.reload();
-  await expect(header.getByRole("searchbox")).toHaveValue("noodle");
-  await expect(page.locator(".result-count")).toBeVisible();
   // The labeled menu reaches every destination and Escape returns focus.
   const summary = page.locator(".map-profile-menu summary");
   await expect(summary).toContainText("Menu");
   await summary.click();
-  for (const name of ["Map", "Layers", "Saved", "Profile"])
+  for (const name of ["Map", "Layers", "Profile"])
     await expect(
       page.locator(".map-profile-options").getByRole("link", { name }),
     ).toBeVisible();
+  await expect(
+    page.locator(".map-profile-options").getByRole("link", { name: "Saved" }),
+  ).toHaveCount(0);
   await summary.press("Escape");
   await expect(page.locator(".map-profile-options")).toBeHidden();
   await expect(summary).toBeFocused();
-  // Phones: same full-bleed map, wrapped search and a floating bottom navigation.
+  // Phones: same full-bleed map and a floating bottom navigation.
   await page.setViewportSize({ width: 390, height: 844 });
-  await expect(header.getByRole("searchbox")).toBeVisible();
-  await expect(page.locator(".result-count")).toBeVisible();
   const nav = await page.locator(".bottom-nav").boundingBox();
   expect(nav!.x).toBeGreaterThan(0);
   expect(nav!.y + nav!.height).toBeLessThan(844);

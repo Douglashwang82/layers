@@ -45,6 +45,11 @@ test("group creation, email-bound invitation, restricted layer and revocation", 
   // Editors create group layers; the layer is restricted to members.
   await member.getByRole("link", { name: "Create layer" }).click();
   await expect(member).toHaveURL(/layerPanel=new.*group=/);
+  // Layers start from Google Maps links; this one starts empty, still for the group.
+  await member
+    .getByRole("link", { name: "Create an empty layer instead" })
+    .click();
+  await expect(member).toHaveURL(/group=.*blank=1|blank=1.*group=/);
   await member
     .getByLabel("Title", { exact: true })
     .fill(`Student favorites ${stamp}`);

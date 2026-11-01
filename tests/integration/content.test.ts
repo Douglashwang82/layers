@@ -38,6 +38,17 @@ const state = (layers: string[]) => ({
   view: "map" as const,
   page: 1,
 });
+/** A private admin layer holding these items, queried as the map does. */
+async function mapOf(keys: string[]) {
+  const { layer } = await createLayer(admin, {
+    title: "Content map",
+    city: "houston",
+  });
+  layers.push(layer.id);
+  for (const key of keys) await addLayerItem(admin, layer.id, { key });
+  return runMapQuery(state([layer.slug]), city, admin);
+}
+const layers: string[] = [];
 beforeAll(async () => {
   for (const actor of [author, admin])
     await pool.query(
@@ -46,6 +57,7 @@ beforeAll(async () => {
     );
 });
 afterAll(async () => {
+  await pool.query("DELETE FROM layer WHERE id=ANY($1::uuid[])", [layers]);
   await pool.query("DELETE FROM content_post WHERE id=ANY($1::uuid[])", [ids]);
   await pool.query("DELETE FROM submission WHERE user_id=ANY($1::uuid[])", [
     [author.id, admin.id],
@@ -60,7 +72,7 @@ afterAll(async () => {
   await pool.end();
 });
 describe("local content with explicit location status", () => {
-  it("validates, stays private until approved, then joins Discover", async () => {
+  it("validates, stays private until approved, then shows on the map", async () => {
     const post = await createContent(author, {
       title: "Where to find good soy milk",
       body: "A short guide to breakfast spots across the city.",
@@ -73,15 +85,13 @@ describe("local content with explicit location status", () => {
     await expect(getContentPost(post.slug, null)).rejects.toMatchObject({
       status: 404,
     });
-    const before = await runMapQuery(state(["discover-houston"]), city, null);
-    expect(before.items.some((i) => i.id === post.id)).toBe(false);
     await moderate(admin, {
       entityType: "content",
       entityId: post.id,
       action: "approved",
       reason: "Looks good",
     });
-    const after = await runMapQuery(state(["discover-houston"]), city, null);
+    const after = await mapOf([`content:${post.id}`]);
     const item = after.items.find((i) => i.id === post.id)!;
     expect(item.type).toBe("content");
     expect(item.locationStatus).toBe("citywide");
@@ -127,7 +137,11 @@ describe("local content with explicit location status", () => {
         city: "houston",
       }),
     ).rejects.toBeTruthy();
-    const result = await runMapQuery(state(["discover-houston"]), city, null);
+    const result = await mapOf([
+      `place:${placeId}`,
+      `content:${linked.id}`,
+      `content:${area.id}`,
+    ]);
     expect(result.items.find((i) => i.id === linked.id)?.latitude).toBe(
       result.items.find((i) => i.id === placeId)?.latitude,
     );
@@ -195,13 +209,15 @@ describe("local content with explicit location status", () => {
       city: "houston",
     });
     ids.push(post.id);
+    const shown = await mapOf([`content:${post.id}`]);
+    expect(shown.items.some((i) => i.id === post.id)).toBe(true);
     await moderate(admin, {
       entityType: "content",
       entityId: post.id,
       action: "hidden",
       reason: "Test",
     });
-    const result = await runMapQuery(state(["discover-houston"]), city, null);
+    const result = await runMapQuery(shown.state, city, admin);
     expect(result.items.some((i) => i.id === post.id)).toBe(false);
     await expect(getContentPost(post.id, author)).rejects.toMatchObject({
       status: 404,

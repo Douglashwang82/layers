@@ -1,5 +1,5 @@
 import type { MetadataRoute } from "next";
-import { appUrl, flags } from "@/lib/config";
+import { appUrl } from "@/lib/config";
 export default function robots(): MetadataRoute.Robots {
   return {
     rules: {
@@ -13,7 +13,7 @@ export default function robots(): MetadataRoute.Robots {
         "/submit/",
         // Shared layer links carry a secret token in the path.
         "/shared/",
-        ...(flags.mapMvp ? ["/search"] : []),
+        "/search",
       ],
     },
     sitemap: appUrl + "/sitemap.xml",

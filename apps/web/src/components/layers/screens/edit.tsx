@@ -68,7 +68,6 @@ export default async function EditLayerPage({
             ? { latitude: cityRow.latitude, longitude: cityRow.longitude }
             : undefined
         }
-        mvp={flags.mapMvp}
         providerKey={placesClientConfig().providerKey}
         t={t}
         locale={locale}

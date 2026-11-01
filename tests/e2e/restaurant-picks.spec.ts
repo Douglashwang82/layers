@@ -157,11 +157,6 @@ test("review, queue, publish, discover, save, withdraw, and translate a restaura
     .click();
   await expect(page.getByRole("status")).toContainText("Saved");
   expect((await workRestaurantJob(area, adapters))?.status).toBe("created");
-  await page.goto(`/?city=${city.slug}&layers=discover-${city.slug}`);
-  await openMapList(page);
-  await expect(
-    page.getByRole("region", { name: "External businesses" }),
-  ).toBeVisible();
   await page.goto(`/?city=${city.slug}&layers=daily-pick-${city.slug}`);
   await openMapList(page);
   const card = page.getByRole("region", { name: "Daily Pick", exact: true });

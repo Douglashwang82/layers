@@ -72,24 +72,22 @@ export default async function HomePage({
     currentActor(),
   ]);
   const { city, state } = await resolveMapRequest(params, actor);
-  if (flags.mapMvp) {
-    // The URL is the client's source of truth: drop what the MVP ignores
-    // (search, filters, area, disabled system layers) instead of showing it.
-    const canonical = await mvpCanonicalUrl(params, state, city, actor);
-    if (canonical) {
-      const url = new URL(canonical, "https://local.invalid");
-      for (const key of layerPanelKeys)
-        if (params[key] !== undefined) url.searchParams.set(key, params[key]!);
-      redirect(url.pathname + url.search);
-    }
+  // The URL is the client's source of truth: drop what the map ignores
+  // (search, filters, area, disabled system layers) instead of showing it.
+  const canonical = await mvpCanonicalUrl(params, state, city, actor);
+  if (canonical) {
+    const url = new URL(canonical, "https://local.invalid");
+    for (const key of layerPanelKeys)
+      if (params[key] !== undefined) url.searchParams.set(key, params[key]!);
+    redirect(url.pathname + url.search);
   }
   const [result, detail, library] = await Promise.all([
     runMapQuery(state, city, actor),
     state.item
       ? getMapItemDetail(state.item, actor).catch(() => null)
       : Promise.resolve(null),
-    // The MVP picker lists the member's own, group and followed layers.
-    flags.mapMvp && actor ? listMapLibrary(actor, city) : Promise.resolve(null),
+    // The picker lists the member's own, group and followed layers.
+    actor ? listMapLibrary(actor, city) : Promise.resolve(null),
   ]);
   return (
     <MapWorkspace
@@ -102,7 +100,6 @@ export default async function HomePage({
       authenticated={!!actor}
       token={process.env.NEXT_PUBLIC_MAPBOX_TOKEN || undefined}
       hasDemo={result.items.some((item) => item.isDemo)}
-      contentEnabled={flags.content}
       layerWrites={flags.layerWrites}
       places={placesClientConfig()}
       library={

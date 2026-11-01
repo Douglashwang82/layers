@@ -135,18 +135,6 @@ test("daily pick: card, map selection, filtered state and history", async ({
   await expect(
     page.getByRole("heading", { name: pickName, level: 2 }),
   ).toBeVisible();
-  // Outside the map area: explained, with a way back to the pick; never a substitute.
-  await page.goto(
-    `/?city=${city.slug}&layers=${layer}&area=-80.50000,40.10000,-80.10000,40.40000`,
-  );
-  await expect(card.getByText(/outside the current map area/)).toBeVisible();
-  await expect(page.locator(".result-row")).toHaveCount(0);
-  await card.getByRole("button", { name: "Show today's pick" }).click();
-  await expect(page).not.toHaveURL(/area=/);
-  await expect(page).toHaveURL(/item=place/);
-  await expect(
-    page.getByRole("heading", { name: pickName, level: 2 }),
-  ).toBeVisible();
   // Dated history.
   await page.goto(`/daily-pick?city=${city.slug}`);
   await expect(

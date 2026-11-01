@@ -80,11 +80,9 @@ export function ActiveLayersPanel({
                   )}
                 </span>
                 <span className="layer-meta" id={`layer-${layer.slug}-meta`}>
-                  {layer.status === "other-city"
-                    ? format(t.layerOtherCity, { city: layer.cityName ?? "" })
-                    : layer.status === "ok"
-                      ? `${ownerLabel(layer, t, false)} · ${scheduleLabel(layer, t, locale)}`
-                      : ""}
+                  {layer.status === "ok"
+                    ? `${ownerLabel(layer, t, false)} · ${scheduleLabel(layer, t, locale)}`
+                    : ""}
                 </span>
               </span>
               {layer.status === "ok" && (

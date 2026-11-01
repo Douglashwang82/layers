@@ -22,6 +22,11 @@ for (const mobile of [false, true]) {
       .click();
     await expect(page).toHaveURL(/layerPanel=new/);
     await expect(workspace).toBeVisible();
+    // Layers start from Google Maps links; this flow uses the empty editor.
+    await screen
+      .getByRole("link", { name: "Create an empty layer instead" })
+      .click();
+    await expect(page).toHaveURL(/blank=1/);
     const title = `Map collection ${Date.now()}`;
     await screen.getByLabel("Title", { exact: true }).fill(title);
     // Closing a dirty form can be cancelled without losing its content.
@@ -62,7 +67,9 @@ for (const mobile of [false, true]) {
     await screen.getByLabel("Title", { exact: true }).fill(title + " updated");
     page.once("dialog", (dialog) => dialog.dismiss());
     await page.evaluate(() => window.history.back());
-    await expect(screen.getByLabel("Title", { exact: true })).toHaveValue(title + " updated");
+    await expect(screen.getByLabel("Title", { exact: true })).toHaveValue(
+      title + " updated",
+    );
     await screen
       .getByRole("button", { name: "Save changes", exact: true })
       .click();
