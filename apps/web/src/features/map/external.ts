@@ -102,8 +102,8 @@ export async function collectExternalReferences(
     slug: string;
   }) => {
     const existing = byId.get(row.subject_id);
-      existing.markerImageUrl ??= row.marker_image_url || null;
     if (existing) {
+      existing.markerImageUrl ??= row.marker_image_url || null;
       if (!existing.layers.includes(row.slug)) existing.layers.push(row.slug);
       existing.localNote ??= row.note || null;
       existing.name ??= row.link_name || null;
@@ -119,10 +119,10 @@ export async function collectExternalReferences(
       layers: [row.slug],
       cityReviewStatus: row.city_review_status,
     };
-  const marker = `(SELECT mi.url FROM image mi WHERE mi.id=i.marker_image_id) AS marker_image_url`;
     byId.set(row.subject_id, ref);
     ordered.push(ref);
   };
+  const marker = `(SELECT mi.url FROM image mi WHERE mi.id=i.marker_image_id) AS marker_image_url`;
   const provider = `(SELECT r.provider_place_id FROM place_provider_reference r WHERE r.subject_id=s.id AND r.state='current' LIMIT 1) AS provider_place_id`;
   for (const { layer, access } of resolved) {
     if (layer.rule?.kind === "saves") {
