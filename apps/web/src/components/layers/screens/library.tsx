@@ -12,6 +12,9 @@ import {
 } from "@/features/layers/repository";
 import { LayerCard } from "@/components/layers/layer-card";
 import { CreateLayerLink } from "@/components/layers/layer-actions";
+import { FolderCreate } from "@/components/layers/folder-create";
+import { FolderLink } from "@/components/layers/folder-link";
+import { listMapCollections } from "@/features/layers/collections";
 import { EmptyState } from "@/components/cards";
 import { listMyGroups } from "@/features/groups/repository";
 import { roleLabel } from "@/lib/layer-labels";
@@ -53,9 +56,12 @@ export default async function LayersPage({
     ? (query.tab as LibraryScope)
     : "discover";
   const q = (query.q ?? "").slice(0, 100);
-  const [entries, myGroups] = await Promise.all([
+  const [entries, myGroups, folders] = await Promise.all([
     listLibrary(tab, actor, city, q),
     tab === "groups" && actor ? listMyGroups(actor.id) : Promise.resolve([]),
+    tab === "mine" && actor
+      ? listMapCollections(actor, city)
+      : Promise.resolve([]),
   ]);
   const labels: Record<LibraryScope, string> = {
     discover: t.libraryDiscover,
@@ -104,6 +110,9 @@ export default async function LayersPage({
       </div>
       <div className="actions">
         {flags.layerWrites && <CreateLayerLink t={t} authenticated={!!actor} />}
+        {flags.layerWrites && actor && (
+          <FolderCreate t={t} citySlug={city.slug} />
+        )}
         <Link className="button secondary" href="/">
           {t.mapEntry}
         </Link>
@@ -185,7 +194,7 @@ export default async function LayersPage({
             </section>
           )}
         </>
-      ) : entries.length === 0 ? (
+      ) : entries.length === 0 && folders.length === 0 ? (
         <EmptyState
           t={t}
           title={empty}
@@ -206,7 +215,27 @@ export default async function LayersPage({
             </section>
           ))
       ) : (
-        <section className="library-group">{cards(entries)}</section>
+        <>
+          {folders.length > 0 && (
+            <section className="library-group" aria-labelledby="my-folders">
+              <h2 id="my-folders">{t.folderYours}</h2>
+              <ul className="group-list">
+                {folders.map((f) => (
+                  <li key={f.id}>
+                    <FolderLink slug={f.slug}>
+                      {locale === "zh-TW" && f.titleChinese
+                        ? f.titleChinese
+                        : f.title}
+                    </FolderLink>
+                  </li>
+                ))}
+              </ul>
+            </section>
+          )}
+          {entries.length > 0 && (
+            <section className="library-group">{cards(entries)}</section>
+          )}
+        </>
       )}
     </div>
   );

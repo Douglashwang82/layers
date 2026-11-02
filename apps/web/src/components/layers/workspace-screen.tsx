@@ -2,6 +2,7 @@ import Library from "./screens/library";
 import Detail from "./screens/detail";
 import NewLayer from "./screens/new";
 import EditLayer from "./screens/edit";
+import FolderScreen from "./screens/folder";
 import { readLayerPanel } from "@/lib/layer-workspace";
 
 export function LayerWorkspaceScreen({
@@ -16,6 +17,7 @@ export function LayerWorkspaceScreen({
   if (!panel) return null;
   if (panel === "new")
     return <NewLayer searchParams={Promise.resolve(params)} />;
+  if (panel === "folder") return <FolderScreen slug={params.folder} />;
   if (panel === "library" || !params.layer)
     return (
       <Library
