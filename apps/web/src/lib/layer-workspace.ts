@@ -8,13 +8,20 @@ export const layerPanelKeys = [
   "next",
   "group",
   "blank",
+  "folder",
 ] as const;
-export type LayerPanel = "library" | "detail" | "new" | "settings" | "contents";
+export type LayerPanel =
+  "library" | "detail" | "new" | "settings" | "contents" | "folder";
 export function readLayerPanel(params: URLSearchParams): LayerPanel | null {
   const value = params.get("layerPanel");
-  return ["library", "detail", "new", "settings", "contents"].includes(
-    value ?? "",
-  )
+  return [
+    "library",
+    "detail",
+    "new",
+    "settings",
+    "contents",
+    "folder",
+  ].includes(value ?? "")
     ? (value as LayerPanel)
     : null;
 }
@@ -56,4 +63,12 @@ export function withoutLayerPanel(current: string) {
   const params = new URLSearchParams(current);
   for (const key of layerPanelKeys) params.delete(key);
   return "/" + (params.size ? "?" + params.toString() : "");
+}
+/** The workspace URL that opens a folder panel, keeping the map state. */
+export function folderPanelHref(slug: string, current = ""): string {
+  const params = new URLSearchParams(current.replace(/^\?/, ""));
+  for (const key of layerPanelKeys) params.delete(key);
+  params.set("layerPanel", "folder");
+  params.set("folder", slug);
+  return "/?" + params.toString();
 }

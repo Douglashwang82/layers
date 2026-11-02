@@ -22,6 +22,7 @@ import {
   ChevronDown,
   ChevronUp,
   ExternalLink,
+  Folder as FolderIcon,
   List,
   Map as MapIcon,
   Layers as LayersIcon,
@@ -37,8 +38,11 @@ import {
   serializeMapQuery,
   type Bounds,
   type MapState,
+  appliedSlots,
+  maxAppliedCollections,
   maxAppliedLayers,
 } from "@taiwanhub/shared";
+import type { CollectionNode } from "@/features/layers/collections-types";
 import type {
   LayerAvailability,
   MapCity,
@@ -172,6 +176,7 @@ export function MapWorkspace({
   layerWrites,
   places,
   library = null,
+  folders = [],
   layerScreen,
 }: {
   initial: MapQueryResult;
@@ -187,6 +192,8 @@ export function MapWorkspace({
   places: PlacesConfig;
   /** Map MVP: the signed-in member's loadable layers. */
   library?: LayerAvailability[] | null;
+  /** The signed-in member's top-level folders with their trees. */
+  folders?: CollectionNode[];
   layerScreen?: ReactNode;
 }) {
   const mvp = places.mvp;
@@ -212,8 +219,14 @@ export function MapWorkspace({
       ...parsed,
       city: city.slug,
       layers: parsed.layers ?? initial.state.layers,
+      collections: parsed.collections ?? initial.state.collections ?? [],
     };
-  }, [searchParams, city.slug, initial.state.layers]);
+  }, [
+    searchParams,
+    city.slug,
+    initial.state.layers,
+    initial.state.collections,
+  ]);
   const queryKey = keyOf(state, true);
   const listView = state.view === "list";
   // Declared early: effects below open the panel when a selection arrives.
@@ -321,14 +334,25 @@ export function MapWorkspace({
     setOptimisticLayers(null);
   }, [state.layers]);
   const shownSlugs = optimisticLayers ?? appliedSlugs;
+  const appliedFolders = state.collections ?? [];
+  const [optimisticFolders, setOptimisticFolders] = useState<string[] | null>(
+    null,
+  );
+  useEffect(() => {
+    setOptimisticFolders(null);
+  }, [state.collections]);
+  const shownFolders = optimisticFolders ?? appliedFolders;
+  // Layers and folders share the map's slots; empty states look at both.
+  const slotsUsed = appliedSlots(shownSlugs, shownFolders);
+  const hasApplied = appliedSlugs.length + appliedFolders.length > 0;
   const persist = useCallback(
-    (layers: string[], view: MapState["view"]) => {
+    (layers: string[], collections: string[], view: MapState["view"]) => {
       if (!authenticated) return;
       // keepalive so a quick navigation away never loses the preference.
       fetch("/api/v1/map/preference", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ layers, view }),
+        body: JSON.stringify({ layers, collections, view }),
         keepalive: true,
       }).catch(() => {});
     },
@@ -336,7 +360,7 @@ export function MapWorkspace({
   );
   const toggleLayer = (slug: string, applied: boolean) => {
     if (applied && shownSlugs.includes(slug)) return;
-    if (applied && shownSlugs.length >= maxAppliedLayers) {
+    if (applied && slotsUsed >= maxAppliedLayers) {
       setLoadError(format(t.layerLimit, { max: maxAppliedLayers }));
       return;
     }
@@ -351,6 +375,37 @@ export function MapWorkspace({
     commit({ layers: next.length ? next : "none" });
     track(applied ? "layer_applied" : "layer_hidden", { layer: slug });
   };
+  const folderTitles = useMemo(() => {
+    const map = new Map<string, CollectionNode>();
+    const walk = (nodes: CollectionNode[]) => {
+      for (const node of nodes) {
+        map.set(node.slug, node);
+        walk(
+          node.children.flatMap((c) => (c.kind === "folder" ? [c.folder] : [])),
+        );
+      }
+    };
+    walk(folders);
+    return map;
+  }, [folders]);
+  const toggleFolder = (slug: string, applied: boolean) => {
+    if (applied && shownFolders.includes(slug)) return;
+    if (applied && slotsUsed >= maxAppliedLayers) {
+      setLoadError(format(t.layerLimit, { max: maxAppliedLayers }));
+      return;
+    }
+    if (applied && shownFolders.length >= maxAppliedCollections) {
+      setLoadError(
+        format(t.folderLimitFolders, { max: maxAppliedCollections }),
+      );
+      return;
+    }
+    const next = applied
+      ? [...shownFolders, slug]
+      : shownFolders.filter((s) => s !== slug);
+    setOptimisticFolders(next);
+    commit({ collections: next });
+  };
   const onlyLayer = (slug: string) => {
     const others = result.layers.filter(
       (l) => l.slug !== slug && l.status === "ok",
@@ -362,13 +417,20 @@ export function MapWorkspace({
       ),
     ]);
     setOptimisticLayers([slug]);
-    commit({ layers: [slug] });
+    setOptimisticFolders([]);
+    commit({ layers: [slug], collections: [] });
   };
   // Whatever is applied, by toggle or by explicit link, becomes the returning user's default.
-  const appliedKey = appliedSlugs.join(",");
+  const appliedKey = [...appliedSlugs, "|", ...appliedFolders].join(",");
+  const layersKey = appliedSlugs.join(",");
+  const foldersKey = appliedFolders.join(",");
   useEffect(() => {
-    persist(appliedKey ? appliedKey.split(",") : [], state.view);
-  }, [appliedKey, state.view, persist]);
+    persist(
+      layersKey ? layersKey.split(",") : [],
+      foldersKey ? foldersKey.split(",") : [],
+      state.view,
+    );
+  }, [layersKey, foldersKey, state.view, persist]);
   /* Selection */
   const selectedKey = state.item ?? null;
   const selected = result.items.find((i) => i.key === selectedKey) ?? null;
@@ -660,10 +722,17 @@ export function MapWorkspace({
     if (state.area) canvas.current?.fitBounds(state.area);
     else if (
       appliedSlugs.length === 1 &&
+      appliedFolders.length === 0 &&
       result.layers[0]?.ownerKind !== "system"
     )
       canvas.current?.fitTo(result.items);
-  }, [canvasStatus, state.area, appliedSlugs.length, result]);
+  }, [
+    canvasStatus,
+    state.area,
+    appliedSlugs.length,
+    appliedFolders.length,
+    result,
+  ]);
   const searchArea = () => {
     if (!pendingArea) return;
     commit({ area: pendingArea });
@@ -757,7 +826,7 @@ export function MapWorkspace({
   const [tab, setTab] = useState<"layers" | "results">(() =>
     mvp &&
     authenticated &&
-    appliedSlugs.length === 0 &&
+    !hasApplied &&
     // A member with no layers of their own opens on the first-run starter.
     (library ?? []).some((l) => l.ownerKind !== "system")
       ? "layers"
@@ -1174,6 +1243,9 @@ export function MapWorkspace({
     <ActiveLayersPanel
       layers={panelLayers}
       library={mvp ? (library ?? []) : null}
+      folders={folders}
+      appliedFolders={shownFolders}
+      onToggleFolder={toggleFolder}
       hidden={hiddenLayers.filter((h) => !shownSlugs.includes(h.slug))}
       t={t}
       locale={locale}
@@ -1234,7 +1306,7 @@ export function MapWorkspace({
     library != null &&
     !library.some((l) => l.ownerKind !== "system");
   const emptyState =
-    firstRun && appliedSlugs.length === 0 ? (
+    firstRun && !hasApplied ? (
       <div className="empty first-run-starter">
         <h3>{t.starterTitle}</h3>
         <p>{t.starterBody}</p>
@@ -1254,7 +1326,7 @@ export function MapWorkspace({
         </div>
         <p className="fine-print">{t.starterJoinGroup}</p>
       </div>
-    ) : mvp && appliedSlugs.length === 0 ? (
+    ) : mvp && !hasApplied ? (
       <div className="empty">
         <h3>{t.mvpEmptyTitle}</h3>
         <p>{authenticated ? t.mvpEmptyBody : t.signInForLayers}</p>
@@ -1281,7 +1353,7 @@ export function MapWorkspace({
           )}
         </div>
       </div>
-    ) : appliedSlugs.length === 0 && result.searchScope !== "city" ? (
+    ) : !hasApplied && result.searchScope !== "city" ? (
       <div className="empty">
         <h3>{t.chooseLayer}</h3>
         <p>{t.chooseLayerBody}</p>
@@ -1437,6 +1509,34 @@ export function MapWorkspace({
     ) : null;
   const layerChips = (
     <div className="layer-chips" role="group" aria-label={t.onYourMap}>
+      {shownFolders.map((slug) => {
+        const node = folderTitles.get(slug);
+        const known = result.collections?.find((c) => c.slug === slug);
+        const name = node
+          ? locale === "zh-TW" && node.titleChinese
+            ? node.titleChinese
+            : node.title
+          : known
+            ? locale === "zh-TW" && known.titleChinese
+              ? known.titleChinese
+              : known.title
+            : "";
+        return (
+          <button
+            key={`folder:${slug}`}
+            type="button"
+            className="layer-chip"
+            aria-pressed
+            aria-label={format(t.folderShowOnMap, {
+              title: name || t.folderUnavailable,
+            })}
+            onClick={() => toggleFolder(slug, false)}
+          >
+            <FolderIcon size={14} aria-hidden="true" />
+            {name || t.folderUnavailable}
+          </button>
+        );
+      })}
       {[
         ...panelLayers,
         ...hiddenLayers.filter((h) => !shownSlugs.includes(h.slug)),
@@ -1450,7 +1550,7 @@ export function MapWorkspace({
               type="button"
               className="layer-chip"
               aria-pressed={on}
-              disabled={!on && shownSlugs.length >= maxAppliedLayers}
+              disabled={!on && slotsUsed >= maxAppliedLayers}
               onClick={() => toggleLayer(layer.slug, !on)}
             >
               <span
@@ -1552,6 +1652,7 @@ export function MapWorkspace({
     <LayerWorkspaceContext.Provider
       value={{
         applied: shownSlugs,
+        appliedFolders: shownFolders.length,
         apply: (slug, only) => {
           if (!only) {
             toggleLayer(slug, true);
@@ -1587,7 +1688,7 @@ export function MapWorkspace({
           const layers = shownSlugs.includes(slug)
             ? shownSlugs
             : [...shownSlugs, slug];
-          if (layers.length > maxAppliedLayers) {
+          if (appliedSlots(layers, shownFolders) > maxAppliedLayers) {
             setLoadError(format(t.layerLimit, { max: maxAppliedLayers }));
             return;
           }
@@ -2050,7 +2151,7 @@ export function MapWorkspace({
               <div className="panel-body">{discoveryPanel}</div>
             ) : !showResults ? (
               <div className="panel-body">
-                {appliedSlugs.length === 0 && emptyState}
+                {!hasApplied && emptyState}
                 {layersPanel}
               </div>
             ) : tab === "layers" ? (

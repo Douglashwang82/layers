@@ -8,6 +8,7 @@ import { LayerWorkspaceScreen } from "@/components/layers/workspace-screen";
 import { layerPanelKeys } from "@/lib/layer-workspace";
 import { getMapItemDetail } from "@/features/map/detail";
 import { listMapLibrary, resolveLayers } from "@/features/layers/repository";
+import { listMapCollections } from "@/features/layers/collections";
 import {
   serializeMapQuery,
   type Actor,
@@ -45,6 +46,9 @@ async function mvpCanonicalUrl(
             : layers.length
               ? layers
               : "none",
+        // Like layers, folders come from the URL only when it names them.
+        collections:
+          params.collections === undefined ? undefined : state.collections,
         item: state.item,
         view: state.view,
       },
@@ -83,13 +87,15 @@ export default async function HomePage({
       redirect(url.pathname + url.search);
     }
   }
-  const [result, detail, library] = await Promise.all([
+  const [result, detail, library, folders] = await Promise.all([
     runMapQuery(state, city, actor),
     state.item
       ? getMapItemDetail(state.item, actor).catch(() => null)
       : Promise.resolve(null),
     // The MVP picker lists the member's own, group and followed layers.
     flags.mapMvp && actor ? listMapLibrary(actor, city) : Promise.resolve(null),
+    // Folders are listed in both modes: they take map slots like layers do.
+    actor ? listMapCollections(actor, city) : Promise.resolve([]),
   ]);
   return (
     <MapWorkspace
@@ -105,6 +111,7 @@ export default async function HomePage({
       contentEnabled={flags.content}
       layerWrites={flags.layerWrites}
       places={placesClientConfig()}
+      folders={folders}
       library={
         library &&
         library.map(({ layer, access }) => ({

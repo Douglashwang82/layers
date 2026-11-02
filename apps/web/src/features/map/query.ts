@@ -102,6 +102,7 @@ export type LayerAvailability = {
   count: number;
   cityName?: string;
 };
+import type { CollectionAvailability } from "@/features/layers/collections-types";
 export type MapQueryResult = {
   generatedAt: string;
   city: MapCity;
@@ -118,6 +119,8 @@ export type MapQueryResult = {
   dailyPick: DailyPickView | null;
   /** Upcoming events attached to places in the applied layers, by place key (catalog, custom or subject). */
   events: Record<string, LayerEvent[]>;
+  /** Applied folders. The folders server slice makes this required; optional until that merges. */
+  collections?: CollectionAvailability[];
 };
 type Row = Record<string, unknown>;
 const iso = (v: unknown) =>
