@@ -25,9 +25,10 @@ export const mapImportEn = {
   markers: "markers",
   selected: "selected",
   sourceHelp:
-    "One-time copy. Source changes will not sync. Names, coordinates and plain-text notes are imported; photos, styles, routes and shapes are not. Upload an export if the shared link cannot be downloaded.",
+    "One-time copy. Source changes will not sync. Names, coordinates and plain-text notes are imported; photos, styles, routes and shapes are not. Each marker is linked to the Google place with its name at its pin, when one is found; its pin and note stay as imported. Upload an export if the shared link cannot be downloaded.",
   added: "Layer entries added",
   reused: "Existing places reused",
+  matched: "Linked to Google places",
   done: "Import complete",
   open: "Open layer",
   all: "Select all",
@@ -73,9 +74,10 @@ export const mapImportZh: typeof mapImportEn = {
   markers: "個地點",
   selected: "已選取",
   sourceHelp:
-    "此為單次複製，不會同步來源的後續變更。匯入名稱、座標及純文字備註；不包含照片、樣式、路線及形狀。若無法下載連結，請上傳匯出的檔案。",
+    "此為單次複製，不會同步來源的後續變更。匯入名稱、座標及純文字備註；不包含照片、樣式、路線及形狀。若在標記位置找到同名的 Google 地點，會連結該地點；標記位置與備註維持匯入時的內容。若無法下載連結，請上傳匯出的檔案。",
   added: "新增圖層項目",
   reused: "重複使用現有地點",
+  matched: "已連結 Google 地點",
   done: "匯入完成",
   open: "開啟圖層",
   all: "全選",

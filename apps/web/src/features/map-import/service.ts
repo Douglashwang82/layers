@@ -19,7 +19,9 @@ import {
   notProjected,
 } from "@/features/layers/service";
 import { maxCustomPlacesPerScope } from "@/features/custom-places/service";
+import { resolverDeps } from "@/features/google-links/deps";
 import { myMapsUrl } from "./download";
+import { matchPoints } from "./match";
 
 export function importActor(actor: Actor | null) {
   if (!flags.layerWrites || !flags.layerCustomPlaces)
@@ -32,7 +34,39 @@ export type ImportResult = {
   added: number;
   reused: number;
   skipped: number;
+  /** Markers linked to a Google place (absent on receipts from before matching). */
+  matched?: number;
 };
+/** Markers a member may match against Google per day; bounds the lookups behind imports. */
+export const matchBudget = { markers: 2000, hours: 24 };
+/**
+ * Google place IDs for the selected markers, keyed by marker id. Matching is
+ * best effort: without a configured key, over the daily budget, or on any
+ * provider failure, markers import as plain custom places, as before.
+ */
+async function importMatches(
+  actor: Actor,
+  points: { id: string; name: string; latitude: number; longitude: number }[],
+) {
+  if (!points.length) return new Map<string, string>();
+  let deps;
+  try {
+    deps = resolverDeps();
+  } catch {
+    return new Map<string, string>();
+  }
+  const spent = await pool.query<{ count: number }>(
+    `INSERT INTO rate_limit(key,count,expires_at) VALUES($1,$2::int,now()+make_interval(hours=>$3::int))
+     ON CONFLICT(key) DO UPDATE SET
+       count=CASE WHEN rate_limit.expires_at<now() THEN $2::int ELSE rate_limit.count+$2::int END,
+       expires_at=CASE WHEN rate_limit.expires_at<now() THEN now()+make_interval(hours=>$3::int) ELSE rate_limit.expires_at END
+     RETURNING count`,
+    [`map-import-match:${actor.id}`, points.length, matchBudget.hours],
+  );
+  if (spent.rows[0].count > matchBudget.markers)
+    return new Map<string, string>();
+  return matchPoints(points, deps);
+}
 /** Advisory preview; the transaction repeats all authorization and dedupe checks. */
 export async function reviewMapImport(actor: Actor | null, body: unknown) {
   const a = importActor(actor);
@@ -118,6 +152,20 @@ export async function commitMapImport(
   const digest = createHash("sha256")
     .update(JSON.stringify(input))
     .digest("hex");
+  // Provider lookups run before the transaction; a replayed request skips them.
+  const replay = await pool.query(
+    "SELECT 1 FROM map_import_receipt WHERE user_id=$1 AND request_id=$2",
+    [a.id, input.requestId],
+  );
+  const chosen = new Set(input.selected);
+  const matches = replay.rows[0]
+    ? new Map<string, string>()
+    : await importMatches(
+        a,
+        input.document.layers
+          .flatMap((l) => l.points)
+          .filter((p) => chosen.has(p.id)),
+      );
   const tx = await pool.connect();
   try {
     await tx.query("BEGIN");
@@ -196,6 +244,7 @@ export async function commitMapImport(
       added: 0,
       reused: 0,
       skipped: input.document.skipped,
+      matched: 0,
     };
     const targets =
       input.mode === "collection"
@@ -234,9 +283,18 @@ export async function commitMapImport(
           `SELECT id FROM custom_place WHERE (owner_user_id=$1 OR owner_group_id=$2) AND city_id=$3 AND status='active' AND lower(name)=lower($4) AND latitude=$5 AND longitude=$6 ORDER BY created_at LIMIT 1`,
           [userId, groupId, layer.cityId, p.name, p.latitude, p.longitude],
         );
+        const googlePlaceId = matches.get(p.id) ?? null;
+        if (googlePlaceId) result.matched!++;
         let placeId = match.rows[0]?.id;
-        if (placeId) result.reused++;
-        else {
+        if (placeId) {
+          result.reused++;
+          // Importing again links an earlier, unmatched copy of this marker.
+          if (googlePlaceId)
+            await tx.query(
+              "UPDATE custom_place SET google_place_id=$2, updated_at=now() WHERE id=$1 AND google_place_id IS NULL",
+              [placeId, googlePlaceId],
+            );
+        } else {
           if (++placeCount > maxCustomPlacesPerScope)
             throw new AppError(
               429,
@@ -244,7 +302,7 @@ export async function commitMapImport(
               "This import would exceed the 1,000 custom-place limit. Nothing was saved.",
             );
           const row = await tx.query<{ id: string }>(
-            `INSERT INTO custom_place(owner_user_id,owner_group_id,city_id,name,address,location_status,latitude,longitude,location,note,created_by) VALUES($1,$2,$3,$4,$5,'approximate',$6::float8,$7::float8,ST_SetSRID(ST_MakePoint($7::float8,$6::float8),4326),$8,$9) RETURNING id`,
+            `INSERT INTO custom_place(owner_user_id,owner_group_id,city_id,name,address,location_status,latitude,longitude,location,note,created_by,google_place_id) VALUES($1,$2,$3,$4,$5,'approximate',$6::float8,$7::float8,ST_SetSRID(ST_MakePoint($7::float8,$6::float8),4326),$8,$9,$10) RETURNING id`,
             [
               userId,
               groupId,
@@ -255,6 +313,7 @@ export async function commitMapImport(
               p.longitude,
               p.description,
               a.id,
+              googlePlaceId,
             ],
           );
           placeId = row.rows[0].id;

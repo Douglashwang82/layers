@@ -1,0 +1,2 @@
+ALTER TABLE "custom_place" ADD COLUMN "google_place_id" text;--> statement-breakpoint
+ALTER TABLE "custom_place" ADD CONSTRAINT "custom_place_google_place_id_check" CHECK ("custom_place"."google_place_id" ~ '^[A-Za-z0-9_-]+$' AND length("custom_place"."google_place_id") <= 512);

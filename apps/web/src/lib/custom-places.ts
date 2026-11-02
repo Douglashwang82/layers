@@ -39,5 +39,6 @@ export function customMapItem(place: CustomPlace, layerSlug: string): MapItem {
     note: null,
     rank: 0,
     customScope: place.ownerKind,
+    ...(place.googlePlaceId ? { googlePlaceId: place.googlePlaceId } : {}),
   };
 }

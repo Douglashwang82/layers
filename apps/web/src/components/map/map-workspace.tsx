@@ -1161,6 +1161,7 @@ export function MapWorkspace({
       }}
       layerWrites={layerWrites}
       backLabel={t.backToResults}
+      provider={provider}
     />
   );
   const knownLayers = new Map(

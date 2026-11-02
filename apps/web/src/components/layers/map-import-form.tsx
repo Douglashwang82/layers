@@ -156,6 +156,12 @@ export function MapImportForm({
         <p>
           {t.added}: {result.added} · {t.reused}: {result.reused} ·{" "}
           {t.resultSkipped}: {result.skipped}
+          {result.matched != null && (
+            <>
+              {" "}
+              · {t.matched}: {result.matched}
+            </>
+          )}
         </p>
         <ul>
           {result.layers.map((l) => (

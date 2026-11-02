@@ -78,6 +78,8 @@ export type MapItem = {
   rank: number;
   /** Set for member-created places (`custom:` keys): who owns them. */
   customScope?: "user" | "group";
+  /** Google place matched to a custom place at import: details on request, never its pin. */
+  googlePlaceId?: string;
   /** A layer editor's custom pin image for this item (first layer that sets one wins). */
   markerImageUrl?: string | null;
 };

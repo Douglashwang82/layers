@@ -928,6 +928,12 @@ export const customPlace = pgTable(
     catalogPlaceId: uuid("catalog_place_id").references(() => place.id, {
       onDelete: "set null",
     }),
+    /**
+     * Google place ID matched at import (a verified nearby Text Search hit).
+     * Only the ID is kept, which Google allows indefinitely; the place's own
+     * coordinates and note stay the member's. Null when nothing matched.
+     */
+    googlePlaceId: text("google_place_id"),
     status: text("status", { enum: ["active", "hidden", "deleted"] })
       .default("active")
       .notNull(),
@@ -950,6 +956,10 @@ export const customPlace = pgTable(
     check(
       "custom_place_status_check",
       sql`${t.status} IN ('active', 'hidden', 'deleted')`,
+    ),
+    check(
+      "custom_place_google_place_id_check",
+      sql`${t.googlePlaceId} ~ '^[A-Za-z0-9_-]+$' AND length(${t.googlePlaceId}) <= 512`,
     ),
   ],
 );
