@@ -232,6 +232,13 @@
       "when": 1793518476213,
       "tag": "0032_quick_madrox",
       "breakpoints": true
+    },
+    {
+      "idx": 33,
+      "version": "7",
+      "when": 1793592356750,
+      "tag": "0033_steep_cassandra_nova",
+      "breakpoints": true
     }
   ]
 }

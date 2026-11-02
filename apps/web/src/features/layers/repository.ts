@@ -438,16 +438,19 @@ export async function listEditableLayers(actor: Actor) {
 export async function listLayerItemRefs(layerId: string) {
   const result = await pool.query<{
     id: string;
+    marker_image_url: string | null;
     place_id: string | null;
     event_id: string | null;
     content_id: string | null;
+     LEFT JOIN image mi ON mi.id=i.marker_image_id
     subject_id: string | null;
     custom_place_id: string | null;
     /** A custom place whose suggestion was approved is shown as that catalog place. */
     approved_catalog_id: string | null;
   }>(
-    `SELECT i.id,i.place_id,i.event_id,i.content_id,i.subject_id,i.custom_place_id,p.id AS approved_catalog_id
+    `SELECT i.id,i.place_id,i.event_id,i.content_id,i.subject_id,i.custom_place_id,p.id AS approved_catalog_id,mi.url AS marker_image_url
      FROM layer_item i
+    markerImageUrl: r.marker_image_url,
      LEFT JOIN custom_place cp ON cp.id=i.custom_place_id
      LEFT JOIN place p ON p.id=cp.catalog_place_id AND p.status='approved'
      WHERE i.layer_id=$1 ORDER BY i.position, i.created_at`,

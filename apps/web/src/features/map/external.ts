@@ -24,6 +24,8 @@ export type ExternalReference = {
   layers: string[];
   cityReviewStatus: "unreviewed" | "approved";
   isDailyPick?: boolean;
+  /** A layer editor's custom pin image (first layer that sets one wins). */
+  markerImageUrl?: string | null;
   /** Cached Google coordinates (at most 30 days old), for the pin. */
   location?: { lat: number; lng: number } | null;
   /** Cached Google place types, fetched and expired with the coordinates. */
@@ -92,6 +94,7 @@ export async function collectExternalReferences(
   const byId = new Map<string, ExternalReference>();
   const add = (row: {
     subject_id: string;
+    marker_image_url?: string | null;
     provider_place_id: string | null;
     note: string | null;
     link_name: string | null;
@@ -99,6 +102,7 @@ export async function collectExternalReferences(
     slug: string;
   }) => {
     const existing = byId.get(row.subject_id);
+      existing.markerImageUrl ??= row.marker_image_url || null;
     if (existing) {
       if (!existing.layers.includes(row.slug)) existing.layers.push(row.slug);
       existing.localNote ??= row.note || null;
@@ -109,11 +113,13 @@ export async function collectExternalReferences(
       subjectId: row.subject_id,
       canonicalKey: subjectKey(row.subject_id),
       providerPlaceId: row.provider_place_id,
+      markerImageUrl: row.marker_image_url || null,
       localNote: row.note || null,
       name: row.link_name || null,
       layers: [row.slug],
       cityReviewStatus: row.city_review_status,
     };
+  const marker = `(SELECT mi.url FROM image mi WHERE mi.id=i.marker_image_id) AS marker_image_url`;
     byId.set(row.subject_id, ref);
     ordered.push(ref);
   };
@@ -143,7 +149,7 @@ export async function collectExternalReferences(
       if (layer.rule?.kind !== "discover" && layer.rule?.kind !== "daily_pick")
         continue;
       const rows = await pool.query(
-        `SELECT s.id AS subject_id,${provider},i.note,i.link_name,s.city_review_status
+        `SELECT s.id AS subject_id,${provider},i.note,i.link_name,s.city_review_status,${marker}
          FROM layer_item i JOIN place_subject s ON s.id=i.subject_id
          WHERE i.layer_id=$1 AND s.status='active' AND s.catalog_place_id IS NULL
            AND s.city_review_status='approved'
@@ -169,7 +175,7 @@ export async function collectExternalReferences(
     // Public viewers see only city-reviewed external places; owners and members see their own curation.
     const member = access.role !== "public";
     const rows = await pool.query(
-      `SELECT s.id AS subject_id,${provider},i.note,i.link_name,s.city_review_status
+      `SELECT s.id AS subject_id,${provider},i.note,i.link_name,s.city_review_status,${marker}
        FROM layer_item i JOIN place_subject s ON s.id=i.subject_id
        WHERE i.layer_id=$1 AND s.status='active' AND s.catalog_place_id IS NULL
          AND ($2::boolean OR s.city_review_status='approved')

@@ -28,14 +28,14 @@ export async function POST(req: NextRequest) {
       throw new AppError(400, "IMAGE", "Use PNG, JPEG or WebP.");
     const extension = png ? "png" : jpg ? "jpg" : "webp";
     const key = crypto.randomUUID() + "." + extension;
-    const url = await imageStorage().put(key, bytes, file.type);
-    await db.insert(schema.image).values({
-      key,
-      url,
-      userId: actor.id,
-      mimeType: png ? "image/png" : jpg ? "image/jpeg" : "image/webp",
-    });
-    return NextResponse.json({ data: { url } }, { status: 201 });
+    const mimeType = png ? "image/png" : jpg ? "image/jpeg" : "image/webp";
+    // Store the sniffed type, never the client-declared one.
+    const url = await imageStorage().put(key, bytes, mimeType);
+    const [row] = await db
+      .insert(schema.image)
+      .values({ key, url, userId: actor.id, mimeType })
+      .returning({ id: schema.image.id });
+    return NextResponse.json({ data: { id: row.id, url } }, { status: 201 });
   } catch (e) {
     return NextResponse.json(
       {

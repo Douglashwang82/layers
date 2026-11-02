@@ -78,6 +78,8 @@ export type MapItem = {
   rank: number;
   /** Set for member-created places (`custom:` keys): who owns them. */
   customScope?: "user" | "group";
+  /** A layer editor's custom pin image for this item (first layer that sets one wins). */
+  markerImageUrl?: string | null;
 };
 export type LayerAvailability = {
   slug: string;
@@ -387,8 +389,9 @@ async function curatedMembers(
     position: number;
     valid_from: Date | null;
     valid_until: Date | null;
+    marker_image_url: string | null;
   }>(
-    "SELECT layer_id,place_id,event_id,content_id,custom_place_id,note,position,valid_from,valid_until FROM layer_item WHERE layer_id=ANY($1::uuid[]) ORDER BY position, created_at",
+    "SELECT i.layer_id,i.place_id,i.event_id,i.content_id,i.custom_place_id,i.note,i.position,i.valid_from,i.valid_until,mi.url AS marker_image_url FROM layer_item i LEFT JOIN image mi ON mi.id=i.marker_image_id WHERE i.layer_id=ANY($1::uuid[]) ORDER BY i.position, i.created_at",
     [layers.map((l) => l.id)],
   );
   const byKey = new Map<string, MapItem>();
@@ -454,6 +457,7 @@ async function curatedMembers(
       ...item,
       layers: [slug],
       note: row.note || null,
+      ...(row.marker_image_url ? { markerImageUrl: row.marker_image_url } : {}),
       rank: item.rank - row.position / 1e6,
     });
     groups.set(slug, list);

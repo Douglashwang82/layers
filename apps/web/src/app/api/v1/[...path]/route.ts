@@ -49,6 +49,7 @@ import {
   deleteLayer,
   addLayerItem,
   removeLayerItem,
+  setLayerItemMarker,
   followLayer,
   publishLayer,
 } from "@/features/layers/service";
@@ -625,6 +626,21 @@ async function handler(
                 : await deleteItemReview(a, layerUuid, itemUuid, body),
           });
         }
+        if (
+          id &&
+          action === "items" &&
+          path[3] &&
+          path[4] === "marker" &&
+          method === "PATCH"
+        )
+          return ok(
+            await setLayerItemMarker(
+              a,
+              z.uuid().parse(id),
+              z.uuid().parse(path[3]),
+              body,
+            ),
+          );
         if (id && action === "items" && method === "POST")
           return ok(await addLayerItem(a, id, body), 201);
         if (id && action === "items" && method === "DELETE")

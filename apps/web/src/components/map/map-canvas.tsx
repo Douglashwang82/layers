@@ -35,6 +35,12 @@ import {
   markerKind,
   markerPalettes,
 } from "@/lib/marker-presentation";
+import {
+  customPinId,
+  pendingPinUrls,
+  pinProperty,
+  type PinStatus,
+} from "@/lib/custom-pins";
 export type MapCanvasHandle = {
   fitTo: (items: MapItem[]) => void;
   /** Current camera center, used to bias provider search toward what the user sees. */
@@ -69,7 +75,10 @@ export type ExtraPoint = {
   tabelog?: { name: string; url: string };
   /** Pin color from the place's Google types; uncolored until they are known. */
   marker?: GoogleMarkerKind;
+  /** A layer editor's custom sticker pin, drawn instead of the dot once loaded. */
+  markerImageUrl?: string | null;
 };
+const noPins: ReadonlyMap<string, PinStatus> = new Map();
 /** Route stops in order: numbered badges joined by a dashed line (order only, not roads). */
 function routeGeoJSON(stops: { lat: number; lng: number }[]) {
   const coordinates = stops.map((s) => [s.lng, s.lat]);
@@ -93,7 +102,10 @@ function routeGeoJSON(stops: { lat: number; lng: number }[]) {
     ],
   };
 }
-function extraGeoJSON(points: ExtraPoint[]) {
+function extraGeoJSON(
+  points: ExtraPoint[],
+  pins: ReadonlyMap<string, PinStatus> = noPins,
+) {
   return {
     type: "FeatureCollection" as const,
     features: points.map((p) => ({
@@ -102,6 +114,7 @@ function extraGeoJSON(points: ExtraPoint[]) {
         key: p.key,
         kind: p.kind,
         ...(p.marker ? { marker: p.marker } : {}),
+        ...pinProperty(p.markerImageUrl, pins),
       },
       geometry: { type: "Point" as const, coordinates: [p.lng, p.lat] },
     })),
@@ -119,7 +132,11 @@ function labelOf(item: MapItem, locale: Locale) {
     ? item.nameChinese || item.name
     : item.name || item.nameChinese;
 }
-function toGeoJSON(items: MapItem[], locale: Locale) {
+function toGeoJSON(
+  items: MapItem[],
+  locale: Locale,
+  pins: ReadonlyMap<string, PinStatus> = noPins,
+) {
   return {
     type: "FeatureCollection" as const,
     features: items
@@ -131,6 +148,7 @@ function toGeoJSON(items: MapItem[], locale: Locale) {
           type: i.type,
           kind: markerKind(i),
           label: labelOf(i, locale),
+          ...pinProperty(i.markerImageUrl, pins),
         },
         geometry: {
           type: "Point" as const,
@@ -222,6 +240,9 @@ export function MapCanvas({
     highlightKey,
     onItemHover,
   });
+  // Custom pin images registered on the current map instance, by URL.
+  const pinStatus = useRef(new Map<string, PinStatus>());
+  const [pinVersion, setPinVersion] = useState(0);
   const mapHoverKey = useRef<string | null>(null);
   const hoverTimer = useRef<number | undefined>(undefined);
   useEffect(() => {
@@ -257,6 +278,7 @@ export function MapCanvas({
       toGeoJSON(
         key && key !== chosen ? all.filter((i) => i.key === key) : [],
         lang,
+        pinStatus.current,
       ),
     );
   }
@@ -273,9 +295,14 @@ export function MapCanvas({
       "extra-points",
       "point-icons",
       "extra-icons",
+      "custom-pins",
+      "extra-pins",
     ]) {
       if (!map.getLayer(layer)) continue;
-      const prop = layer.endsWith("-icons") ? "icon-opacity" : "circle-opacity";
+      const prop =
+        layer.endsWith("-icons") || layer.endsWith("-pins")
+          ? "icon-opacity"
+          : "circle-opacity";
       map.setPaintProperty(layer, `${prop}-transition`, { duration, delay: 0 });
       map.setPaintProperty(layer, prop, opacity);
     }
@@ -407,6 +434,8 @@ export function MapCanvas({
         map.touchZoomRotate.disableRotation();
         map.keyboard.disableRotation();
         mapRef.current = map;
+        // A rebuilt map (theme, retry) has none of the old pin images.
+        pinStatus.current = new Map();
         dispose = () => {
           window.clearTimeout(hoverTimer.current);
           setReadyMap(null);
@@ -463,7 +492,11 @@ export function MapCanvas({
           // Quiet dots: the type is repeated in the list and the selected label.
           map.addSource("items", {
             type: "geojson",
-            data: toGeoJSON(latest.current.items, latest.current.locale),
+            data: toGeoJSON(
+              latest.current.items,
+              latest.current.locale,
+              pinStatus.current,
+            ),
             cluster: true,
             clusterRadius: 48,
             clusterMaxZoom: 16,
@@ -477,6 +510,7 @@ export function MapCanvas({
                 (item) => item.key === latest.current.selectedKey,
               ),
               latest.current.locale,
+              pinStatus.current,
             ),
           });
           map.addLayer({
@@ -539,7 +573,11 @@ export function MapCanvas({
             id: "points-edge",
             type: "circle",
             source: "items",
-            filter: ["!", ["has", "point_count"]],
+            filter: [
+              "all",
+              ["!", ["has", "point_count"]],
+              ["!", ["has", "pin"]],
+            ],
             paint: {
               "circle-radius": radius(
                 5.5 + chrome.edgeGrow,
@@ -554,7 +592,11 @@ export function MapCanvas({
             id: "points",
             type: "circle",
             source: "items",
-            filter: ["!", ["has", "point_count"]],
+            filter: [
+              "all",
+              ["!", ["has", "point_count"]],
+              ["!", ["has", "pin"]],
+            ],
             paint: {
               "circle-radius": radius(5.5, 9.5) as never,
               "circle-color": markerColorExpression,
@@ -571,6 +613,7 @@ export function MapCanvas({
             id: "hover-point",
             type: "circle",
             source: "hover-item",
+            filter: ["!", ["has", "pin"]],
             paint: {
               "circle-radius": radius(6.5, 11) as never,
               "circle-color": markerColorExpression,
@@ -589,10 +632,48 @@ export function MapCanvas({
             type: "symbol",
             source: "items",
             minzoom: 14,
-            filter: ["!", ["has", "point_count"]],
+            filter: [
+              "all",
+              ["!", ["has", "point_count"]],
+              ["!", ["has", "pin"]],
+            ],
             layout: {
               "icon-image": ["concat", "marker-", ["get", "kind"]],
               "icon-size": 0.55,
+              "icon-allow-overlap": true,
+              "icon-ignore-placement": true,
+            },
+          });
+          // Custom sticker pins (128px images at pixelRatio 2, ~26-44px on screen).
+          const pinSize = (grow: number) => [
+            "interpolate",
+            ["linear"],
+            ["zoom"],
+            10,
+            0.4 * grow,
+            15,
+            0.68 * grow,
+          ];
+          map.addLayer({
+            id: "custom-pins",
+            type: "symbol",
+            source: "items",
+            filter: ["all", ["!", ["has", "point_count"]], ["has", "pin"]],
+            layout: {
+              "icon-image": ["get", "pin"],
+              "icon-size": pinSize(1) as never,
+              "icon-allow-overlap": true,
+              "icon-ignore-placement": true,
+            },
+          });
+          map.addLayer({
+            id: "hover-pin",
+            type: "symbol",
+            source: "hover-item",
+            filter: ["has", "pin"],
+            layout: {
+              "icon-image": ["get", "pin"],
+              "icon-size": pinSize(1.2) as never,
               "icon-allow-overlap": true,
               "icon-ignore-placement": true,
             },
@@ -617,7 +698,13 @@ export function MapCanvas({
               "text-size": 13,
               "text-font": ["DIN Pro Medium", "Arial Unicode MS Regular"],
               "text-anchor": "top",
-              "text-offset": [0, 1.3],
+              // Sticker pins are taller than dots; the label clears them.
+              "text-offset": [
+                "case",
+                ["has", "pin"],
+                ["literal", [0, 2.1]],
+                ["literal", [0, 1.3]],
+              ] as never,
               "text-max-width": 12,
               "text-allow-overlap": true,
             },
@@ -633,7 +720,7 @@ export function MapCanvas({
           };
           map.addSource("places-extra", {
             type: "geojson",
-            data: extraGeoJSON(latest.current.extraPoints),
+            data: extraGeoJSON(latest.current.extraPoints, pinStatus.current),
           });
           map.addLayer({
             id: "extra-halo",
@@ -656,6 +743,7 @@ export function MapCanvas({
             id: "extra-points",
             type: "circle",
             source: "places-extra",
+            filter: ["!", ["has", "pin"]],
             paint: {
               // Larger than catalog dots; search results are hollow, saved/layer
               // external places are filled with their type's marker color.
@@ -686,10 +774,22 @@ export function MapCanvas({
             type: "symbol",
             source: "places-extra",
             minzoom: 14,
-            filter: ["has", "marker"],
+            filter: ["all", ["has", "marker"], ["!", ["has", "pin"]]],
             layout: {
               "icon-image": ["concat", "marker-", ["get", "marker"]],
               "icon-size": 0.55,
+              "icon-allow-overlap": true,
+              "icon-ignore-placement": true,
+            },
+          });
+          map.addLayer({
+            id: "extra-pins",
+            type: "symbol",
+            source: "places-extra",
+            filter: ["has", "pin"],
+            layout: {
+              "icon-image": ["get", "pin"],
+              "icon-size": pinSize(1) as never,
               "icon-allow-overlap": true,
               "icon-ignore-placement": true,
             },
@@ -742,7 +842,7 @@ export function MapCanvas({
             },
             paint: { "text-color": palette.surface },
           });
-          map.on("click", "extra-points", (e) => {
+          map.on("click", ["extra-points", "extra-pins"], (e) => {
             const key = (e.features?.[0] as Feature | undefined)?.properties
               ?.key;
             if (key) latest.current.onSelectExtra?.(String(key));
@@ -775,7 +875,12 @@ export function MapCanvas({
               },
             );
           });
-          for (const layer of ["points-hit", "clusters", "extra-points"]) {
+          for (const layer of [
+            "points-hit",
+            "clusters",
+            "extra-points",
+            "extra-pins",
+          ]) {
             map.on(
               "mouseenter",
               layer,
@@ -789,7 +894,7 @@ export function MapCanvas({
           }
           // Pin hover: immediate highlight, tooltip after a 250ms dwell.
           // Google places (extra points) share it; their keys match no catalog pin.
-          for (const layer of ["points-hit", "extra-points"]) {
+          for (const layer of ["points-hit", "extra-points", "extra-pins"]) {
             map.on("mousemove", layer, (e) => {
               const key = (e.features?.[0] as Feature | undefined)?.properties
                 ?.key;
@@ -862,16 +967,52 @@ export function MapCanvas({
     const map = mapRef.current;
     if (!map || !loadedRef.current) return;
     (map.getSource("items") as GeoJSONSource | undefined)?.setData(
-      toGeoJSON(catalogItems, locale),
+      toGeoJSON(catalogItems, locale, pinStatus.current),
     );
-  }, [catalogItems, locale, readyMap]);
+  }, [catalogItems, locale, readyMap, pinVersion]);
   useEffect(() => {
     const map = mapRef.current;
     if (!map || !loadedRef.current) return;
     (map.getSource("places-extra") as GeoJSONSource | undefined)?.setData(
-      extraGeoJSON(extraPoints),
+      extraGeoJSON(extraPoints, pinStatus.current),
     );
-  }, [extraPoints]);
+  }, [extraPoints, readyMap, pinVersion]);
+  // Registers each new custom pin image once per map; features switch from
+  // the dot to the sticker only after their image is ready.
+  useEffect(() => {
+    const map = readyMap;
+    if (!map || !loadedRef.current) return;
+    const status = pinStatus.current;
+    const urls = pendingPinUrls(
+      [
+        ...catalogItems.map((i) => i.markerImageUrl),
+        ...extraPoints.map((p) => p.markerImageUrl),
+      ],
+      status,
+    );
+    for (const url of urls) {
+      status.set(url, "loading");
+      // Local uploads are root-relative; Mapbox fetches absolute URLs.
+      map.loadImage(new URL(url, window.location.href).href, (error, image) => {
+        if (mapRef.current !== map || pinStatus.current !== status) return;
+        if (error || !image) {
+          status.set(url, "failed");
+          return;
+        }
+        const id = customPinId(url);
+        if (!map.hasImage(id)) map.addImage(id, image, { pixelRatio: 2 });
+        status.set(url, "ready");
+        // How many sticker pins are drawable, readable by browser tests.
+        map
+          .getContainer()
+          .setAttribute(
+            "data-custom-pins",
+            String([...status.values()].filter((v) => v === "ready").length),
+          );
+        setPinVersion((v) => v + 1);
+      });
+    }
+  }, [catalogItems, extraPoints, readyMap]);
   useEffect(() => {
     const map = mapRef.current;
     if (!map || !loadedRef.current) return;
@@ -883,7 +1024,7 @@ export function MapCanvas({
     const map = mapRef.current;
     if (!map || !loadedRef.current) return;
     syncHover(map);
-  }, [highlightKey, items, selectedKey, locale, readyMap]);
+  }, [highlightKey, items, selectedKey, locale, readyMap, pinVersion]);
   // A brief ring on selection, once; never a loop and not under reduced motion.
   useEffect(() => {
     const map = mapRef.current;
@@ -911,13 +1052,22 @@ export function MapCanvas({
       toGeoJSON(
         items.filter((item) => item.key === selectedKey),
         locale,
+        pinStatus.current,
       ),
     );
     for (const layer of ["selected-halo", "selected-label"])
       map.setFilter(layer, ["==", ["get", "key"], selectedKey ?? ""]);
     map.setFilter("extra-halo", ["==", ["get", "key"], extraSelectedKey ?? ""]);
     applyEffects(map);
-  }, [selectedKey, extraSelectedKey, effects, items, locale, readyMap]);
+  }, [
+    selectedKey,
+    extraSelectedKey,
+    effects,
+    items,
+    locale,
+    readyMap,
+    pinVersion,
+  ]);
   useEffect(() => {
     const map = mapRef.current;
     if (!map || !loadedRef.current) return;

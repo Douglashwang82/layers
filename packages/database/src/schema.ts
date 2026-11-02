@@ -792,6 +792,13 @@ export const layerItem = pgTable(
      * never relabels the place elsewhere.
      */
     linkName: text("link_name"),
+    /**
+     * Optional custom map marker (a small transparent PNG sticker) chosen by
+     * a layer editor. Scoped to this layer; other layers keep their pins.
+     */
+    markerImageId: uuid("marker_image_id").references(() => image.id, {
+      onDelete: "set null",
+    }),
     position: integer("position").default(0).notNull(),
     validFrom: timestamp("valid_from", { withTimezone: true }),
     validUntil: timestamp("valid_until", { withTimezone: true }),
@@ -819,6 +826,7 @@ export const layerItem = pgTable(
       .on(t.layerId, t.customPlaceId)
       .where(sql`${t.customPlaceId} IS NOT NULL`),
     index("layer_item_custom_place_idx").on(t.customPlaceId),
+    index("layer_item_marker_image_idx").on(t.markerImageId),
     check(
       "layer_item_one_entity",
       sql`num_nonnulls(${t.placeId}, ${t.eventId}, ${t.contentId}, ${t.subjectId}, ${t.customPlaceId}) = 1`,

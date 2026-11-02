@@ -7,6 +7,7 @@ import {
   useLayerItemRatings,
 } from "@/components/layers/layer-item-reviews";
 import { layerColor } from "@/components/map/layer-section";
+import { LayerItemMarker } from "@/components/markers/marker-editor";
 import { type Copy, type Locale, format } from "@/lib/dictionary";
 import { layerTitle } from "@/lib/layer-labels";
 import type { LayerAvailability } from "@/features/map/query";
@@ -100,7 +101,7 @@ function LayerAttachment({
   onEventsChanged: () => void;
 }) {
   // Item ids by place key: tells whether this layer holds the place.
-  const { ids, available } = useLayerItemRatings(layer.id);
+  const { ids, markers, available } = useLayerItemRatings(layer.id);
   // A save shows at once; once the map query refreshes, its events win again.
   const signature = events
     .map((e) => [e.id, e.title, e.startTime, e.endTime, e.note].join("~"))
@@ -127,6 +128,15 @@ function LayerAttachment({
           layer: title,
         })}
       </h3>
+      {canAddEvents && (
+        <LayerItemMarker
+          layerId={layer.id!}
+          itemId={itemId}
+          layerTitle={title}
+          current={markers.get(itemId) ?? null}
+          t={t}
+        />
+      )}
       {canAddEvents && (
         <LayerItemEvents
           layerId={layer.id!}
