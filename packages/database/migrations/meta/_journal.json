@@ -239,6 +239,13 @@
       "when": 1793592356750,
       "tag": "0033_steep_cassandra_nova",
       "breakpoints": true
+    },
+    {
+      "idx": 34,
+      "version": "7",
+      "when": 1793608139868,
+      "tag": "0034_mute_barracuda",
+      "breakpoints": true
     }
   ]
 }

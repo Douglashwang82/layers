@@ -35,7 +35,10 @@
   "dependencies": {
     "@anthropic-ai/sdk": "^0.127.0",
     "@aws-sdk/client-s3": "^3.1134.0",
+    "@better-auth/oauth-provider": "1.7.5",
+    "@better-auth/utils": "0.4.2",
     "@hookform/resolvers": "^5.2.2",
+    "@modelcontextprotocol/sdk": "1.32.2",
     "@taiwanhub/database": "workspace:*",
     "@taiwanhub/shared": "workspace:*",
     "better-auth": "1.7.5",
