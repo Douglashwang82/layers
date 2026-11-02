@@ -549,7 +549,12 @@ export function MapCanvas({
             id: "selected-halo",
             type: "circle",
             source: "selected-item",
-            filter: ["==", ["get", "key"], latest.current.selectedKey ?? ""],
+            // Sticker pins carry their own white band; no ring around them.
+            filter: [
+              "all",
+              ["==", ["get", "key"], latest.current.selectedKey ?? ""],
+              ["!", ["has", "pin"]],
+            ],
             paint: {
               "circle-radius": 13,
               "circle-color": palette.surface,
@@ -727,9 +732,9 @@ export function MapCanvas({
             type: "circle",
             source: "places-extra",
             filter: [
-              "==",
-              ["get", "key"],
-              latest.current.extraSelectedKey ?? "",
+              "all",
+              ["==", ["get", "key"], latest.current.extraSelectedKey ?? ""],
+              ["!", ["has", "pin"]],
             ],
             paint: {
               "circle-radius": 20,
@@ -1055,9 +1060,18 @@ export function MapCanvas({
         pinStatus.current,
       ),
     );
-    for (const layer of ["selected-halo", "selected-label"])
-      map.setFilter(layer, ["==", ["get", "key"], selectedKey ?? ""]);
-    map.setFilter("extra-halo", ["==", ["get", "key"], extraSelectedKey ?? ""]);
+    const noPin = ["!", ["has", "pin"]];
+    map.setFilter("selected-label", ["==", ["get", "key"], selectedKey ?? ""]);
+    map.setFilter("selected-halo", [
+      "all",
+      ["==", ["get", "key"], selectedKey ?? ""],
+      noPin,
+    ]);
+    map.setFilter("extra-halo", [
+      "all",
+      ["==", ["get", "key"], extraSelectedKey ?? ""],
+      noPin,
+    ]);
     applyEffects(map);
   }, [
     selectedKey,
