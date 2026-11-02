@@ -73,7 +73,10 @@ export function FolderPanel({
           "GET",
         ).catch(() => [])) as CollectionCandidate[];
         setCandidates(list);
-        setLayerId("");
+        // Keep a selection made while a (strict-mode or refresh) reload was in flight.
+        setLayerId((current) =>
+          list.some((c) => c.id === current) ? current : "",
+        );
       } else setCandidates([]);
     } catch {
       setFolder(null);

@@ -219,7 +219,11 @@ export function MapWorkspace({
       ...parsed,
       city: city.slug,
       layers: parsed.layers ?? initial.state.layers,
-      collections: parsed.collections ?? initial.state.collections ?? [],
+      // An explicit layer selection without folders means "no folders" (empty
+      // collections are omitted from the URL), not the server-rendered ones.
+      collections:
+        parsed.collections ??
+        (parsed.layers !== undefined ? [] : (initial.state.collections ?? [])),
     };
   }, [
     searchParams,
@@ -1696,6 +1700,8 @@ export function MapWorkspace({
             withoutLayerPanel(searchParams.toString()).split("?")[1],
           );
           params.set("layers", layers.join(","));
+          if (shownFolders.length)
+            params.set("collections", shownFolders.join(","));
           params.set("item", key);
           router.push("/?" + params, { scroll: false });
           reveal();
@@ -1708,6 +1714,8 @@ export function MapWorkspace({
           const params = new URLSearchParams(searchParams);
           const remaining = shownSlugs.filter((value) => value !== slug);
           params.set("layers", remaining.length ? remaining.join(",") : "none");
+          if (shownFolders.length)
+            params.set("collections", shownFolders.join(","));
           for (const key of layerPanelKeys) params.delete(key);
           params.set("layerPanel", "library");
           params.set("layerTab", "mine");
