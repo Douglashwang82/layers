@@ -4,7 +4,8 @@ import { currentActor } from "@/lib/session";
 import { getLocale } from "@/lib/i18n";
 import { flags } from "@/lib/config";
 import { mapImportEn, mapImportZh } from "@/lib/map-import-copy";
-import { listCollections } from "@/features/map-import/service";
+import { listCollections } from "@/features/layers/collections";
+import type { CollectionChild } from "@/features/layers/collections-types";
 import { CollectionList } from "@/components/layers/collection-list";
 export const metadata = {
   title: "Layer collections",
@@ -15,7 +16,14 @@ export default async function CollectionsPage() {
   const actor = await currentActor();
   if (!actor) redirect("/sign-in?next=/layer-collections");
   const t = (await getLocale()) === "zh-TW" ? mapImportZh : mapImportEn;
-  const collections = await listCollections(actor);
+  const [mine, groups] = await Promise.all([
+    listCollections("mine", actor),
+    listCollections("groups", actor),
+  ]);
+  const seen = new Set<string>();
+  const collections = [...mine, ...groups].filter(
+    (c) => !seen.has(c.id) && !!seen.add(c.id),
+  );
   return (
     <div className="container">
       <nav>
@@ -33,14 +41,30 @@ export default async function CollectionsPage() {
         collections={collections.map((c) => ({
           id: c.id,
           title: c.title,
-          layers: c.layers.map((l) => ({
+          layers: flatLayers(c.children).map((l) => ({
             id: l.id,
             slug: l.slug,
             title: l.title,
-            citySlug: l.citySlug,
+            citySlug: c.citySlug,
           })),
         }))}
       />
     </div>
   );
+}
+
+/** The folder's layers in tree order, sub-folders included, without repeats. */
+function flatLayers(children: CollectionChild[]) {
+  const seen = new Set<string>();
+  const layers: Extract<CollectionChild, { kind: "layer" }>["layer"][] = [];
+  const walk = (list: CollectionChild[]) => {
+    for (const child of list)
+      if (child.kind === "folder") walk(child.folder.children);
+      else if (!seen.has(child.layer.id)) {
+        seen.add(child.layer.id);
+        layers.push(child.layer);
+      }
+  };
+  walk(children);
+  return layers;
 }

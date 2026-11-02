@@ -20,13 +20,11 @@ import {
   withinBounds,
   placeRank,
 } from "@taiwanhub/shared";
-import {
-  type LayerRecord,
-  type LayerWithAccess,
-  resolveLayers,
-} from "../layers/repository";
+import { type LayerRecord, type LayerWithAccess } from "../layers/repository";
 import { listMapEvents } from "../layers/events";
 import { countExternalReferences } from "./external";
+import { explicitLayers, resolveAppliedLayers } from "./applied";
+import type { CollectionAvailability } from "../layers/collections-types";
 import { flags } from "@/lib/config";
 import { customMapItem } from "@/lib/custom-places";
 import { listActiveCustomPlaces } from "../custom-places/repository";
@@ -102,12 +100,13 @@ export type LayerAvailability = {
   count: number;
   cityName?: string;
 };
-import type { CollectionAvailability } from "@/features/layers/collections-types";
 export type MapQueryResult = {
   generatedAt: string;
   city: MapCity;
   state: MapState;
   layers: LayerAvailability[];
+  /** Applied folders; their expanded layers are listed here, not in `layers`. */
+  collections: CollectionAvailability[];
   window: { start: string; end: string | null; label: string };
   items: MapItem[];
   total: number;
@@ -119,8 +118,6 @@ export type MapQueryResult = {
   dailyPick: DailyPickView | null;
   /** Upcoming events attached to places in the applied layers, by place key (catalog, custom or subject). */
   events: Record<string, LayerEvent[]>;
-  /** Applied folders. The folders server slice makes this required; optional until that merges. */
-  collections?: CollectionAvailability[];
 };
 type Row = Record<string, unknown>;
 const iso = (v: unknown) =>
@@ -503,13 +500,10 @@ export async function runMapQuery(
 ): Promise<MapQueryResult> {
   const window = resolveDateWindow(state.date, city.timezone, now);
   const candidates = await loadCandidates(city, window.start);
-  const { resolved, unavailable, otherCity, disabled } = await resolveLayers(
-    state.layers === "none" ? [] : state.layers,
-    actor,
-    city,
-  );
+  const applied = await resolveAppliedLayers(state, actor, city);
+  const { resolved, unavailable, otherCity, disabled } = applied;
   // Disabled (system, under the map MVP) layers leave the state as if never applied.
-  const slugs = (state.layers === "none" ? [] : state.layers).filter(
+  const slugs = explicitLayers(state).filter(
     (slug) => !disabled.includes(slug),
   );
   const searchAll = state.scope === "city" && state.q.length > 0;
@@ -661,6 +655,10 @@ export async function runMapQuery(
         count: 0,
       });
   }
+  const collections = applied.collections.map((c) => ({
+    ...c,
+    count: c.layerSlugs.reduce((n, slug) => n + (counts.get(slug) ?? 0), 0),
+  }));
   const events = searchAll ? {} : await listMapEvents(resolved, now);
   return {
     generatedAt: now.toISOString(),
@@ -668,6 +666,7 @@ export async function runMapQuery(
     state: { ...state, layers: state.layers === "none" ? "none" : slugs },
     events,
     layers: availability,
+    collections,
     window: {
       start: window.start.toISOString(),
       end: window.end?.toISOString() ?? null,

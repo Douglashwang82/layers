@@ -6,7 +6,8 @@ import {
   type MapState,
 } from "@taiwanhub/shared";
 import { flags } from "@/lib/config";
-import { resolveLayers, type LayerWithAccess } from "../layers/repository";
+import type { LayerWithAccess } from "../layers/repository";
+import { hasApplied, resolveAppliedLayers } from "./applied";
 import { placeLocations } from "../google-links/locations";
 import type { MapCity } from "./query";
 /**
@@ -87,9 +88,9 @@ export async function collectExternalReferences(
 ): Promise<ExternalReference[]> {
   const types = state.types?.length ? state.types : ["place"];
   // External places are places; city-wide text search only covers the catalog.
-  if (!types.includes("place") || state.layers === "none") return [];
+  if (!types.includes("place") || !hasApplied(state)) return [];
   if (state.scope === "city" && state.q) return [];
-  const { resolved } = await resolveLayers(state.layers, actor, city);
+  const { resolved } = await resolveAppliedLayers(state, actor, city);
   const ordered: ExternalReference[] = [];
   const byId = new Map<string, ExternalReference>();
   const add = (row: {
