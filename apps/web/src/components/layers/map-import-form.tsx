@@ -17,14 +17,16 @@ export function MapImportForm({
   layers,
   groups,
   initialLayer,
+  initialUrl,
 }: {
   t: typeof mapImportEn;
   cities: City[];
   layers: Layer[];
   groups: { id: string; name: string; cityId: string }[];
   initialLayer?: string;
+  initialUrl?: string;
 }) {
-  const [url, setUrl] = useState("");
+  const [url, setUrl] = useState(initialUrl ?? "");
   const [file, setFile] = useState<File | null>(null);
   const [document, setDocument] = useState<ImportDocument | null>(null);
   const [selected, setSelected] = useState<string[]>([]);

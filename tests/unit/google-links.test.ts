@@ -84,6 +84,14 @@ describe("parseGoogleMapsLink", () => {
         "https://www.google.com/maps/@29.7,-95.5,14z/data=!4m3!11m2!2sAbC!3e3",
       ),
     ).toBe("list");
+    expect(
+      reason(
+        "https://www.google.com/maps/d/u/0/viewer?mid=1hGLtbFuM7h3PVQmDxPRRH2xHbT7MfWo&ll=35.75,139.34&z=8",
+      ),
+    ).toBe("my_maps");
+    expect(
+      reason("https://www.google.com/maps/d/edit?mid=1hGLtbFuM7h3PVQmDxPR"),
+    ).toBe("my_maps");
     expect(reason("https://www.google.com/maps/@29.7,-95.5,14z")).toBe(
       "no_place_name",
     );

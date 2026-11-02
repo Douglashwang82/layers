@@ -943,6 +943,9 @@ export const en = {
   linkList:
     "Google Maps lists aren't supported yet. Share each place's link instead.",
   linkNoPlace: "This link doesn't point at a single place.",
+  linkMyMaps:
+    "This is a whole Google My Maps map, not a single place. Import it as a shared map instead.",
+  linkMyMapsAction: "Import this map",
   linkNotFound: "No matching place was found.",
   linkFailed: "This link couldn't be read. Try again.",
   linkDuplicate: "Same place as an earlier link.",
@@ -1450,15 +1453,15 @@ export const zh: Copy = {
   shareLinkTurnOff: "關閉連結",
   shareLinkOn: "任何持有連結的人都可以檢視（自 {date} 起）",
   shareLinkOff: "唯讀連結：已關閉",
-  shareLinkCopiedOnce: "已複製連結。此連結只會顯示這一次；重設連結即可取得新連結。",
+  shareLinkCopiedOnce:
+    "已複製連結。此連結只會顯示這一次；重設連結即可取得新連結。",
   shareLinkOffDone: "已關閉唯讀連結。",
   shareLinkLabel: "唯讀連結",
   shareLinkResetNote: "重設後，先前的連結將無法使用。",
   sharedViewBy: "由 {name} 分享",
   sharedViewReadOnly: "這是透過連結分享的唯讀內容。",
   sharedViewUnavailable: "此連結已失效",
-  sharedViewUnavailableHelp:
-    "連結可能已被關閉或更換。請向分享者索取新的連結。",
+  sharedViewUnavailableHelp: "連結可能已被關閉或更換。請向分享者索取新的連結。",
   sharedViewNoPlaces: "目前沒有可顯示的地點。",
   sharedViewCta: "想新增地點嗎？請向 {name} 索取邀請。",
   sharedViewOpenInMap: "在你的地圖中開啟",
@@ -1875,6 +1878,8 @@ export const zh: Copy = {
   linkNotGoogleMaps: "請使用 Google 地圖地點連結或 Instagram 貼文／Reel 連結。",
   linkList: "目前還不支援 Google 地圖清單，請改為分享每個地點的連結。",
   linkNoPlace: "這個連結沒有指向單一地點。",
+  linkMyMaps: "這是整張 Google 我的地圖，不是單一地點。請改用匯入共享地圖。",
+  linkMyMapsAction: "匯入這張地圖",
   linkNotFound: "找不到相符的地點。",
   linkFailed: "無法讀取這個連結，請再試一次。",
   linkDuplicate: "與前面的連結是同一個地點。",
