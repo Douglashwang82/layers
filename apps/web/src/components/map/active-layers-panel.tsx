@@ -1,5 +1,5 @@
 "use client";
-import { useState, type KeyboardEvent } from "react";
+import { useId, useState } from "react";
 import { LayerLink as Link } from "../layers/workspace-navigation";
 import {
   ChevronRight,
@@ -20,6 +20,19 @@ function folderName(folder: CollectionNode, locale: Locale) {
     : folder.title;
 }
 
+/** Distinct layer ids anywhere in the folder's subtree. */
+function subtreeLayerCount(folder: CollectionNode) {
+  const ids = new Set<string>();
+  const walk = (node: CollectionNode) => {
+    for (const child of node.children) {
+      if (child.kind === "layer") ids.add(child.layer.id);
+      else walk(child.folder);
+    }
+  };
+  walk(folder);
+  return ids.size;
+}
+
 /**
  * One folder in the tree. A folder goes on the map as a unit; when it is
  * applied its descendants are already included, so their own checkboxes show
@@ -27,7 +40,6 @@ function folderName(folder: CollectionNode, locale: Locale) {
  */
 function FolderItem({
   folder,
-  level,
   included,
   appliedFolders,
   slotsFull,
@@ -37,7 +49,6 @@ function FolderItem({
   onOnly,
 }: {
   folder: CollectionNode;
-  level: number;
   included: boolean;
   appliedFolders: string[];
   slotsFull: boolean;
@@ -47,35 +58,17 @@ function FolderItem({
   onOnly: (slug: string) => void;
 }) {
   const [open, setOpen] = useState(false);
+  const groupId = useId();
   const title = folderName(folder, locale);
   const own = appliedFolders.includes(folder.slug);
   const inherited = included && !own;
   const checked = own || included;
   const hasChildren = folder.children.length > 0;
-  const layerCount = folder.children.filter((c) => c.kind === "layer").length;
+  const layerCount = subtreeLayerCount(folder);
   const full =
     !checked && (slotsFull || appliedFolders.length >= maxAppliedCollections);
-  const keys = (event: KeyboardEvent<HTMLLIElement>) => {
-    // Nested items handle their own keys.
-    const item = (event.target as Element).closest('[role="treeitem"]');
-    if (item !== event.currentTarget) return;
-    if (event.key === "ArrowRight" && hasChildren && !open) {
-      event.preventDefault();
-      setOpen(true);
-    } else if (event.key === "ArrowLeft" && open) {
-      event.preventDefault();
-      setOpen(false);
-    }
-  };
   return (
-    <li
-      role="treeitem"
-      aria-level={level}
-      aria-expanded={hasChildren ? open : undefined}
-      aria-selected={checked}
-      className="folder-item"
-      onKeyDown={keys}
-    >
+    <li className="folder-item">
       <div className="layer-toggle folder-row">
         {hasChildren ? (
           <button
@@ -85,6 +78,7 @@ function FolderItem({
               title,
             })}
             aria-expanded={open}
+            aria-controls={groupId}
             onClick={() => setOpen(!open)}
           >
             <ChevronRight
@@ -119,13 +113,12 @@ function FolderItem({
         </FolderLink>
       </div>
       {open && hasChildren && (
-        <ul role="group" className="folder-group">
+        <ul id={groupId} className="folder-group">
           {folder.children.map((child) =>
             child.kind === "folder" ? (
               <FolderItem
                 key={`f:${child.folder.id}`}
                 folder={child.folder}
-                level={level + 1}
                 included={checked}
                 appliedFolders={appliedFolders}
                 slotsFull={slotsFull}
@@ -135,13 +128,7 @@ function FolderItem({
                 onOnly={onOnly}
               />
             ) : (
-              <li
-                key={`l:${child.layer.id}`}
-                role="treeitem"
-                aria-level={level + 1}
-                aria-selected={checked}
-                className="folder-layer"
-              >
+              <li key={`l:${child.layer.id}`} className="folder-layer">
                 <span className="layer-title">
                   <Link href={`/layers/${child.layer.slug}`}>
                     {locale === "zh-TW" && child.layer.titleChinese
@@ -228,16 +215,11 @@ export function ActiveLayersPanel({
           <h3 id="folder-tree-heading" className="folder-heading">
             {t.folders}
           </h3>
-          <ul
-            role="tree"
-            aria-labelledby="folder-tree-heading"
-            className="folder-tree"
-          >
+          <ul aria-labelledby="folder-tree-heading" className="folder-tree">
             {folders.map((folder) => (
               <FolderItem
                 key={folder.id}
                 folder={folder}
-                level={1}
                 included={false}
                 appliedFolders={appliedFolders}
                 slotsFull={slotsFull}

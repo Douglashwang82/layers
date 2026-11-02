@@ -136,6 +136,31 @@ describe("folder tree", () => {
     expect((await getCollection(e.id, alice))?.depth).toBe(2);
   });
 
+  it("returns 404 for a move target the actor cannot view and 403 when view-only", async () => {
+    const mine = await folder(alice, "Mover");
+    const bobs = await folder(bob, "Bob target");
+    await expect(
+      updateCollection(alice, mine.id, {
+        revision: mine.revision,
+        parentId: bobs.id,
+      }),
+    ).rejects.toMatchObject({ status: 404 });
+    await deleteCollection(bob, bobs.id);
+    const shared = await createCollection(alice, {
+      title: "Viewable circle target",
+      city: "houston",
+      audience: "group",
+      groupId,
+    });
+    const viewerOwn = await folder(viewer, "Viewer mover");
+    await expect(
+      updateCollection(viewer, viewerOwn.id, {
+        revision: viewerOwn.revision,
+        parentId: shared.id,
+      }),
+    ).rejects.toMatchObject({ status: 403 });
+  });
+
   it("rejects a stale revision", async () => {
     const f = await folder(alice, "Versioned");
     await updateCollection(alice, f.id, { revision: f.revision, title: "One" });
@@ -392,6 +417,22 @@ describe("applying a folder to the map", () => {
       truncated: false,
     });
     expect(viewed.resolved.map((r) => r.layer.slug)).toEqual([first.slug]);
+  });
+
+  it("counts a layer filed twice in one tree once and limits per folder", async () => {
+    const root = await folder(alice, "Twice root");
+    const sub = await folder(alice, "Twice sub", root.id);
+    const dup = await layer(alice, "Filed twice");
+    await addLayerToCollection(alice, root.id, { layerId: dup.id });
+    await addLayerToCollection(alice, sub.id, { layerId: dup.id });
+    const applied = await resolveAppliedLayers(
+      { layers: "none", collections: [root.slug] },
+      alice,
+      houston,
+    );
+    expect(applied.collections[0].layerSlugs).toEqual([dup.slug]);
+    expect(applied.collections[0].hiddenCount).toBe(0);
+    expect(applied.resolved.map((r) => r.layer.slug)).toEqual([dup.slug]);
   });
 
   it("restores a folder-only preference and treats explicit URLs as authoritative", async () => {

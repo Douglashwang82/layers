@@ -1531,7 +1531,7 @@ export function MapWorkspace({
             type="button"
             className="layer-chip"
             aria-pressed
-            aria-label={format(t.folderShowOnMap, {
+            aria-label={format(t.folderHideFromMap, {
               title: name || t.folderUnavailable,
             })}
             onClick={() => toggleFolder(slug, false)}

@@ -104,7 +104,7 @@ test("a folder of layers is added to the map, toggled and restored", async ({
   const rowA = panel.getByText(`Folder place A ${stamp}`).first();
   const rowB = panel.getByText(`Folder place B ${stamp}`).first();
   const chip = page.getByRole("button", {
-    name: `Show ${folderTitle} on map`,
+    name: `Hide ${folderTitle} from map`,
   });
   await expect(chip).toHaveAttribute("aria-pressed", "true");
   await expect(rowA).toBeVisible();

@@ -91,13 +91,17 @@ export function FolderPanel({
 
   const changed = () => window.dispatchEvent(new Event("layer:changed"));
   /** Runs a mutation, refreshing the folder and the map's folder list after it. */
-  const run = async (action: () => Promise<unknown>, done?: string) => {
+  const run = async (
+    action: () => Promise<unknown>,
+    done?: string,
+    reload = true,
+  ) => {
     setBusy(true);
     setNotice(null);
     try {
       await action();
       if (done) setNotice({ tone: "success", text: done });
-      await load();
+      if (reload) await load();
       changed();
     } catch (error) {
       const code = (error as { code?: string }).code;
@@ -109,11 +113,20 @@ export function FolderPanel({
           tone: "error",
           text: format(t.folderTooDeep, { max: maxCollectionDepth }),
         });
-      else
+      else {
+        const known: Record<string, string> = {
+          FOLDER_CYCLE: t.folderCycleError,
+          FOLDER_MISMATCH: t.folderMismatchError,
+          CITY_MISMATCH: t.folderCityMismatchError,
+          LAYER_NOT_ALLOWED: t.folderLayerNotAllowed,
+          ORDER_MISMATCH: t.folderOrderMismatch,
+          SLUG_CONFLICT: t.folderSlugConflict,
+        };
         setNotice({
           tone: "error",
-          text: (error as Error).message || t.folderError,
+          text: (code && known[code]) || t.folderError,
         });
+      }
     } finally {
       setBusy(false);
     }
@@ -187,10 +200,14 @@ export function FolderPanel({
     );
   };
   const remove = () =>
-    run(async () => {
-      await api(`layer-collections/${folder.id}`, "DELETE");
-      router.push("/?layerPanel=library&layerTab=mine", { scroll: false });
-    });
+    run(
+      async () => {
+        await api(`layer-collections/${folder.id}`, "DELETE");
+        router.push("/?layerPanel=library&layerTab=mine", { scroll: false });
+      },
+      undefined,
+      false,
+    );
 
   return (
     <div className="container folder-panel">

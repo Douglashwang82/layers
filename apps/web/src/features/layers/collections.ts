@@ -373,7 +373,10 @@ export async function updateCollection(
     if (moving) {
       const target = targetId ? await findCollection(tx, targetId) : null;
       if (target) {
-        if (!collectionAccessFor(target, a, memberships).edit)
+        const targetAccess = collectionAccessFor(target, a, memberships);
+        if (!targetAccess.view)
+          throw new AppError(404, "NOT_FOUND", "This folder is unavailable.");
+        if (!targetAccess.edit)
           throw new AppError(
             403,
             "FORBIDDEN",

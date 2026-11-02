@@ -27,7 +27,7 @@ export function hasApplied(state: Pick<MapState, "layers" | "collections">) {
   return explicitLayers(state).length > 0 || !!state.collections?.length;
 }
 
-/** Upper bound on layers read from folder trees before access filtering. */
+/** Upper bound on layers read per applied folder before access filtering. */
 const folderLayerScanLimit = 500;
 
 /**
@@ -56,17 +56,22 @@ async function expandFolders(slugs: string[], actor: Actor | null) {
          UNION ALL
          SELECT c.id, t.root, t.path || c.position FROM layer_collection c JOIN t ON c.parent_id=t.id
        )
-       SELECT t.root, l.slug
-       FROM t JOIN layer_collection_member m ON m.collection_id=t.id JOIN layer l ON l.id=m.layer_id
-       ORDER BY t.root, (t.path || m.position), l.slug
-       LIMIT ${folderLayerScanLimit}`,
-      [[...usable.keys()]],
+       SELECT root, slug FROM (
+         SELECT t.root, l.slug,
+                row_number() OVER (PARTITION BY t.root ORDER BY (t.path || m.position), l.slug) AS rn,
+                t.path || m.position AS ord
+         FROM t JOIN layer_collection_member m ON m.collection_id=t.id JOIN layer l ON l.id=m.layer_id
+       ) ranked
+       WHERE rn <= $2
+       ORDER BY root, rn`,
+      [[...usable.keys()], folderLayerScanLimit],
     );
-    for (const row of rows.rows)
-      layersByRoot.set(row.root, [
-        ...(layersByRoot.get(row.root) ?? []),
-        row.slug,
-      ]);
+    // A layer filed twice in one tree counts once, at its first position.
+    for (const row of rows.rows) {
+      const list = layersByRoot.get(row.root) ?? [];
+      if (!list.includes(row.slug)) list.push(row.slug);
+      layersByRoot.set(row.root, list);
+    }
   }
   return slugs.map((slug) => {
     const rec = bySlug.get(slug);
