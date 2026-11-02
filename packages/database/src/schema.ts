@@ -5,6 +5,7 @@ import {
   timestamp,
   boolean,
   integer,
+  smallint,
   doublePrecision,
   jsonb,
   uniqueIndex,
@@ -1089,14 +1090,48 @@ export const layerCollection = pgTable(
   "layer_collection",
   {
     id: id(),
+    slug: text("slug").unique().notNull(),
     title: text("title").notNull(),
+    titleChinese: text("title_chinese").default("").notNull(),
+    description: text("description").default("").notNull(),
+    descriptionChinese: text("description_chinese").default("").notNull(),
+    cityId: uuid("city_id")
+      .notNull()
+      .references(() => city.id),
     ownerUserId: uuid("owner_user_id").references(() => user.id, {
       onDelete: "cascade",
     }),
     ownerGroupId: uuid("owner_group_id").references(() => group.id, {
       onDelete: "cascade",
     }),
+    /** Folders nest up to 3 levels; deleting a folder deletes sub-folders, never layers. */
+    parentId: uuid("parent_id").references(
+      (): AnyPgColumn => layerCollection.id,
+      {
+        onDelete: "cascade",
+      },
+    ),
+    depth: smallint("depth").default(1).notNull(),
+    position: integer("position").default(0).notNull(),
+    audience: text("audience", { enum: ["public", "private", "group"] })
+      .default("private")
+      .notNull(),
+    reviewStatus: text("review_status", {
+      enum: ["unsubmitted", "pending", "approved", "rejected", "hidden"],
+    })
+      .default("unsubmitted")
+      .notNull(),
+    lifecycle: text("lifecycle", { enum: ["draft", "active", "archived"] })
+      .default("active")
+      .notNull(),
+    revision: integer("revision").default(1).notNull(),
     sourceUrl: text("source_url").default("").notNull(),
+    createdBy: uuid("created_by").references(() => user.id, {
+      onDelete: "set null",
+    }),
+    updatedBy: uuid("updated_by").references(() => user.id, {
+      onDelete: "set null",
+    }),
     ...timestamps(),
   },
   (t) => [
@@ -1104,6 +1139,11 @@ export const layerCollection = pgTable(
       "layer_collection_owner_check",
       sql`num_nonnulls(${t.ownerUserId},${t.ownerGroupId})=1`,
     ),
+    check("layer_collection_depth_check", sql`${t.depth} BETWEEN 1 AND 3`),
+    index("layer_collection_parent_position_idx").on(t.parentId, t.position),
+    index("layer_collection_city_idx").on(t.cityId),
+    index("layer_collection_owner_user_idx").on(t.ownerUserId),
+    index("layer_collection_owner_group_idx").on(t.ownerGroupId),
   ],
 );
 export const layerCollectionMember = pgTable(
@@ -1117,7 +1157,10 @@ export const layerCollectionMember = pgTable(
       .references(() => layer.id, { onDelete: "cascade" }),
     position: integer("position").notNull(),
   },
-  (t) => [primaryKey({ columns: [t.collectionId, t.layerId] })],
+  (t) => [
+    primaryKey({ columns: [t.collectionId, t.layerId] }),
+    index("layer_collection_member_layer_idx").on(t.layerId),
+  ],
 );
 /** Transactional retry receipt: no source document or imported private text. */
 export const mapImportReceipt = pgTable(
@@ -1139,6 +1182,10 @@ export const userMapPreference = pgTable("user_map_preference", {
     .primaryKey()
     .references(() => user.id, { onDelete: "cascade" }),
   activeLayers: jsonb("active_layers").$type<string[]>().default([]).notNull(),
+  activeCollections: jsonb("active_collections")
+    .$type<string[]>()
+    .default([])
+    .notNull(),
   view: text("view", { enum: ["map", "list"] })
     .default("map")
     .notNull(),
