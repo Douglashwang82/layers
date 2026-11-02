@@ -45,6 +45,7 @@ async function mvpCanonicalUrl(
             : layers.length
               ? layers
               : "none",
+        collections: state.collections,
         item: state.item,
         view: state.view,
       },

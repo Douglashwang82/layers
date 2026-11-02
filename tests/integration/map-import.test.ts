@@ -5,13 +5,21 @@ import type { Actor } from "../../packages/shared/src";
 import { flags } from "../../apps/web/src/lib/config";
 import {
   commitMapImport,
-  listCollections,
   reviewMapImport,
 } from "../../apps/web/src/features/map-import/service";
 import { parseKml } from "../../apps/web/src/features/map-import/parser";
 import { getLayer } from "../../apps/web/src/features/layers/repository";
+import { listCollections as listFolders } from "../../apps/web/src/features/layers/collections";
 import { createGroup } from "../../apps/web/src/features/groups/service";
 import { getLayerContents } from "../../apps/web/src/features/layers/contents";
+/** Own and group folders, like the old single list. */
+async function listCollections(actor: Actor) {
+  const [mine, groups] = await Promise.all([
+    listFolders("mine", actor),
+    listFolders("groups", actor),
+  ]);
+  return [...mine, ...groups];
+}
 const owner: Actor = { id: crypto.randomUUID(), role: "USER" };
 const stranger: Actor = { id: crypto.randomUUID(), role: "USER" };
 const viewer: Actor = { id: crypto.randomUUID(), role: "USER" };
@@ -99,7 +107,7 @@ describe("transactional map imports", () => {
     });
     expect(
       (await listCollections(owner)).some(
-        (c) => c.id === result.collectionId && c.layers.length === 2,
+        (c) => c.id === result.collectionId && c.children.length === 2,
       ),
     ).toBe(true);
     expect(await listCollections(stranger)).toEqual([]);

@@ -9,13 +9,13 @@ import {
 import { importRequest } from "@taiwanhub/shared/map-import";
 import { flags } from "@/lib/config";
 import {
-  getLayer,
   getMemberships,
   requireEditableLayer,
 } from "@/features/layers/repository";
 import {
   attachLayerItem,
   insertLayer,
+  slugify,
   notProjected,
 } from "@/features/layers/service";
 import { maxCustomPlacesPerScope } from "@/features/custom-places/service";
@@ -333,11 +333,27 @@ export async function commitMapImport(
       ]);
     }
     if (input.mode === "collection") {
-      const collection = await tx.query<{ id: string }>(
-        "INSERT INTO layer_collection(title,owner_user_id,owner_group_id,source_url) VALUES($1,$2,$3,$4) RETURNING id",
-        [input.title, userId, groupId, sourceUrl],
+      const collectionId = crypto.randomUUID();
+      await tx.query(
+        "INSERT INTO layer_collection(id,slug,title,city_id,owner_user_id,owner_group_id,audience,source_url,created_by,updated_by) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$9)",
+        [
+          collectionId,
+          slugify(input.title, collectionId),
+          input.title,
+          (
+            await tx.query<{ id: string }>(
+              "SELECT id FROM city WHERE slug=$1",
+              [input.city],
+            )
+          ).rows[0].id,
+          userId,
+          groupId,
+          groupId ? "group" : "private",
+          sourceUrl,
+          a.id,
+        ],
       );
-      result.collectionId = collection.rows[0].id;
+      result.collectionId = collectionId;
       for (const [position, layer] of result.layers.entries())
         await tx.query(
           "INSERT INTO layer_collection_member(collection_id,layer_id,position) VALUES($1,$2,$3)",
@@ -363,33 +379,4 @@ export async function commitMapImport(
   } finally {
     tx.release();
   }
-}
-
-export async function listCollections(actor: Actor | null) {
-  const a = requireActor(actor);
-  const collections = await pool.query<{
-    id: string;
-    title: string;
-    source_url: string;
-  }>(
-    `SELECT id,title,source_url FROM layer_collection WHERE owner_user_id=$1 OR owner_group_id IN (SELECT group_id FROM group_member WHERE user_id=$1) ORDER BY created_at DESC LIMIT 100`,
-    [a.id],
-  );
-  return Promise.all(
-    collections.rows.map(async (collection) => {
-      const members = await pool.query<{ layer_id: string }>(
-        "SELECT layer_id FROM layer_collection_member WHERE collection_id=$1 ORDER BY position",
-        [collection.id],
-      );
-      const visible = await Promise.all(
-        members.rows.map((m) => getLayer(m.layer_id, a)),
-      );
-      return {
-        ...collection,
-        layers: visible
-          .filter((l) => l?.access.view && l.layer.lifecycle !== "archived")
-          .map((l) => l!.layer),
-      };
-    }),
-  );
 }

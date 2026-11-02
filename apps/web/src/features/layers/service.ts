@@ -21,7 +21,7 @@ import {
 import { flags } from "@/lib/config";
 import { requeueLayerReviews } from "@/features/reviews/service";
 import { requireActionableSubject } from "@/features/place-subjects/service";
-async function transaction<T>(fn: (tx: PoolClient) => Promise<T>) {
+export async function transaction<T>(fn: (tx: PoolClient) => Promise<T>) {
   const tx = await pool.connect();
   try {
     await tx.query("BEGIN");
@@ -46,7 +46,7 @@ async function record(
     [userId, name, JSON.stringify(properties)],
   );
 }
-function writable() {
+export function writable() {
   if (!flags.layerWrites)
     throw new AppError(404, "DISABLED", "Layer editing is unavailable.");
 }

@@ -44,6 +44,16 @@ import {
   setMapPreference,
 } from "@/features/layers/repository";
 import {
+  addLayerToCollection,
+  createCollection,
+  deleteCollection,
+  getCollection,
+  listCollectionCandidates,
+  listCollections,
+  removeLayerFromCollection,
+  updateCollection,
+} from "@/features/layers/collections";
+import {
   createLayer,
   updateLayer,
   deleteLayer,
@@ -242,6 +252,24 @@ async function handler(
       if (!place)
         throw new AppError(404, "NOT_FOUND", "This place is unavailable.");
       return ok({ place });
+    }
+    if (method === "GET" && resource === "layer-collections") {
+      if (id && action === "candidates")
+        return ok(await listCollectionCandidates(actor, id));
+      if (id) {
+        const folder = await getCollection(id, actor);
+        if (!folder)
+          throw new AppError(404, "NOT_FOUND", "This folder is unavailable.");
+        return ok(folder);
+      }
+      const scope = z.enum(["mine", "groups"]).catch("mine").parse(query.scope);
+      return ok(
+        await listCollections(
+          scope,
+          actor,
+          String(query.q ?? "").slice(0, 100),
+        ),
+      );
     }
     if (method === "GET" && resource === "layers") {
       const { city } = await getActiveCity(query.city);
@@ -591,6 +619,20 @@ async function handler(
         return ok(await acceptInvite(a, id));
       if (resource === "map" && id === "preference" && method === "POST")
         return ok(await setMapPreference(a.id, mapPreferenceInput.parse(body)));
+      if (resource === "layer-collections") {
+        if (!id && method === "POST")
+          return ok(await createCollection(a, body), 201);
+        if (id && !action && method === "PATCH")
+          return ok(await updateCollection(a, id, body));
+        if (id && !action && method === "DELETE")
+          return ok(await deleteCollection(a, id));
+        if (id && action === "layers" && !path[3] && method === "POST")
+          return ok(await addLayerToCollection(a, id, body));
+        if (id && action === "layers" && path[3] && method === "DELETE")
+          return ok(
+            await removeLayerFromCollection(a, id, z.uuid().parse(path[3])),
+          );
+      }
       if (resource === "layers") {
         if (!id && method === "POST")
           return ok(await createLayer(a, body), 201);
