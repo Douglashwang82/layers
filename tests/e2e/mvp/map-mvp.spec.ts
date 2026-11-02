@@ -2,7 +2,7 @@ import { test, expect } from "@playwright/test";
 import { createAndSignIn, openMapList } from "../fixtures";
 /*
  * Map MVP (docs/plans/layer-mvp-google-links-plan.md), run by
- * playwright.mvp.config.ts with FEATURE_MAP_MVP on and the fake Google link
+ * the default Playwright config with the fake Google link
  * resolver and Places provider: no search, no system layers, layers built
  * from Google Maps links, and events attached to their places.
  */

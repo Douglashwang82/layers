@@ -87,3 +87,36 @@ export async function createAndSignIn(
   await createTestAccount(name, email, role);
   await signIn(page, email);
 }
+/**
+ * The map has no Discover layer any more (system layers are off except the
+ * Daily Pick), so a guest's map starts empty. Specs that need places on the
+ * map load this public, approved member layer holding the seeded Houston
+ * places instead. Returns the map URL (`/?layers=<slug>`). Idempotent: the
+ * layer is created once per run and reused.
+ */
+let seededLayerSlug: string | null = null;
+export async function seededPlacesMap(extra = "") {
+  if (!seededLayerSlug) {
+    const owner = crypto.randomUUID();
+    const slug = `e2e-seeded-places-${owner.slice(0, 8)}`;
+    await pool.query(
+      'INSERT INTO "user"(id,name,email,role) VALUES($1,$2,$3,$4)',
+      [owner, "Seeded Places", `${owner}@example.test`, "USER"],
+    );
+    const layer = await pool.query<{ id: string }>(
+      `INSERT INTO layer(slug,title,city_id,owner_kind,owner_user_id,audience,lifecycle,review_status)
+       SELECT $1,'Seeded places',id,'user',$2,'public','active','approved' FROM city WHERE slug='houston'
+       RETURNING id`,
+      [slug, owner],
+    );
+    await pool.query(
+      `INSERT INTO layer_item(layer_id,place_id,position,added_by)
+       SELECT $1,p.id,row_number() OVER (ORDER BY p.name),$2
+       FROM place p JOIN city c ON c.id=p.city_id
+       WHERE c.slug='houston' AND p.status='approved'`,
+      [layer.rows[0].id, owner],
+    );
+    seededLayerSlug = slug;
+  }
+  return `/?layers=${seededLayerSlug}${extra}`;
+}

@@ -1,5 +1,5 @@
 import { expect, test, type Page } from "@playwright/test";
-import { openMapList } from "./fixtures";
+import { openMapList, seededPlacesMap } from "./fixtures";
 
 // Exercise the actual Mapbox renderer without live tiles, geocoding or glyph fees.
 // Deliberately request tilt in the provider style: application camera constraints win.
@@ -18,6 +18,9 @@ const providerStyle = {
   ],
 };
 
+/** A seeded Houston place in the seeded layer, opened by URL: with a map on
+ * screen the panel shows the member's layers, not result rows. */
+const seededItem = "&item=place%3A00000000-0000-4000-8000-000000005000";
 async function mockProvider(page: Page) {
   await page.route(/(\/\/|\.)mapbox\.com\//, async (route) => {
     const url = route.request().url();
@@ -35,7 +38,7 @@ test("the floating list remembers its preference, closes with Escape and yields 
   page,
 }) => {
   await mockProvider(page);
-  await page.goto("/?types=place");
+  await page.goto(await seededPlacesMap());
   test.skip(
     await page.getByText("Map preview needs a Mapbox token.").isVisible(),
     "Requires NEXT_PUBLIC_MAPBOX_TOKEN (a fake test token is sufficient).",
@@ -55,13 +58,12 @@ test("the floating list remembers its preference, closes with Escape and yields 
   await page.reload();
   await expect(panel).toBeHidden();
   // A shared item link opens the panel with details whatever the stored preference is.
-  await openMapList(page);
-  await page.locator(".result-row a").first().click();
-  const shared = page.url();
-  expect(shared).toMatch(/item=/);
+  const shared = await seededPlacesMap(seededItem);
+  await page.goto(shared);
+  await expect(panel).toBeVisible();
   await page.locator(".map-list-toggle").click();
   await expect(panel).toBeHidden();
-  await expect(page).toHaveURL(shared);
+  await expect(page).toHaveURL(/item=/);
   await page.goto(shared);
   await expect(panel).toBeVisible();
   await expect(page.locator(".item-preview")).toBeVisible();
@@ -69,9 +71,10 @@ test("the floating list remembers its preference, closes with Escape and yields 
     .getByRole("button", { name: "Back to results", exact: true })
     .click();
   await expect(page).not.toHaveURL(/item=/);
-  await page.locator(".result-row a").first().click();
+  await page.goto(shared);
+  // Back to the item-less map, which follows the stored (hidden) preference.
   await page.goBack();
-  await page.locator(".map-list-toggle").click();
+  if (await panel.isVisible()) await page.locator(".map-list-toggle").click();
   await expect(panel).toBeHidden();
   await page.goForward();
   await expect(panel).toBeVisible();
@@ -85,7 +88,7 @@ test("flat map fills the viewport with a quiet atlas, a collapsed list and a usa
   const errors: string[] = [];
   page.on("pageerror", (error) => errors.push(error.message));
   await mockProvider(page);
-  await page.goto("/?types=place");
+  await page.goto(await seededPlacesMap());
   // CI normally has no token; run this provider-fixture test with an explicit fake token.
   test.skip(
     await page.getByText("Map preview needs a Mapbox token.").isVisible(),
@@ -106,10 +109,8 @@ test("flat map fills the viewport with a quiet atlas, a collapsed list and a usa
   expect(await page.locator(".mapboxgl-canvas").boundingBox()).toEqual(
     canvasBox,
   );
-  const first = page.locator(".result-row a").first();
-  await expect(first).toBeVisible();
-  await first.click();
-  await expect(page).toHaveURL(/item=/);
+  await page.goto(await seededPlacesMap(seededItem));
+  await expect(page.locator(".item-preview")).toBeVisible();
   // Selection is a quiet ring and label; the companion is not mounted on the map home.
   await expect(page.locator(".map-pet-host")).toHaveCount(0);
   await page
@@ -124,7 +125,7 @@ test("flat map fills the viewport with a quiet atlas, a collapsed list and a usa
   await expect(page.locator(".map-skeleton")).toHaveCount(0);
   await expect(page.locator(".map-unavailable")).toHaveCount(0);
   await openMapList(page);
-  await expect(page.locator(".result-row").first()).toBeVisible();
+  await expect(page.locator("#map-panel")).toBeVisible();
   expect(
     await page.evaluate(
       () => document.documentElement.scrollWidth <= innerWidth,
@@ -138,7 +139,7 @@ test("dark map follows the OS, honours a stored override and keeps the map usabl
 }) => {
   await page.emulateMedia({ colorScheme: "dark" });
   await mockProvider(page);
-  await page.goto("/?types=place");
+  await page.goto(await seededPlacesMap());
   test.skip(
     await page.getByText("Map preview needs a Mapbox token.").isVisible(),
     "Requires NEXT_PUBLIC_MAPBOX_TOKEN (a fake test token is sufficient).",

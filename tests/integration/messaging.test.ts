@@ -95,7 +95,7 @@ beforeAll(async () => {
       [actor.id],
     );
   }
-  Object.assign(flags, { mapMvp: true, layerWrites: true, chatCapture: true });
+  Object.assign(flags, { layerWrites: true, chatCapture: true });
   process.env.GOOGLE_MAPS_LINK_API_KEY = "fake";
   process.env.LINE_CHANNEL_SECRET = "integration-line-secret-0123456789";
   process.env.LINE_CHANNEL_ACCESS_TOKEN = "integration-line-token";

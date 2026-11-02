@@ -43,9 +43,9 @@ export default async function NewLayerPage({
   const cityGroups = groups
     .filter((g) => g.cityId === city.id)
     .map((g) => ({ id: g.id, name: g.name }));
-  // The map MVP builds layers from Google Maps links; adding a known item or
-  // asking for a blank layer keeps the plain editor.
-  if (flags.mapMvp && !query.add && !query.blank)
+  // Layers are built from Google Maps links; adding a known item or asking
+  // for a blank layer keeps the plain editor.
+  if (!query.add && !query.blank)
     return (
       <div className="container">
         <section className="form-panel">
@@ -59,7 +59,12 @@ export default async function NewLayerPage({
             locale={locale}
           />
           <p className="fine-print">
-            <Link href="/layers/new?blank=1">{t.createEmptyLayer}</Link>
+            {/* Keep the group, city and return path when switching editors. */}
+            <Link
+              href={`/layers/new?${new URLSearchParams({ ...Object.fromEntries(returnParams), blank: "1" })}`}
+            >
+              {t.createEmptyLayer}
+            </Link>
           </p>
         </section>
       </div>

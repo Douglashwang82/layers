@@ -208,17 +208,15 @@ describe("Daily Pick on the map", () => {
     expect(result.dailyPick?.inResults).toBe(true);
     expect(result.dailyPick?.date).toBe(today);
     expect(result.layers[0]).toMatchObject({ slug: layer, count: 1 });
-    // A place in two applied layers stays one pin with both memberships.
+    // Other system layers next to the pick are dropped, not merged in.
     const both = await runMapQuery(
       state({ layers: `${layer},discover-${city.slug}` }),
       city,
       null,
     );
-    const shared = both.items.find((i) => i.key === key)!;
-    expect(shared.layers.sort()).toEqual(
-      [`discover-${city.slug}`, layer].sort(),
-    );
+    expect(both.state.layers).toEqual([layer]);
     expect(both.items.filter((i) => i.key === key)).toHaveLength(1);
+    expect(both.items.find((i) => i.key === key)!.layers).toEqual([layer]);
   });
   it("keeps the city-wide pick when filters or the map area exclude it, and says so", async () => {
     const [row] = await publishedRows(city.id, today);

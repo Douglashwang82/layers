@@ -40,7 +40,6 @@ export default async function RootLayout({
           {...{ t, locale, cities }}
           city={city.slug}
           mapHome={flags.mapHome}
-          mvp={flags.mapMvp}
         />
         <main id="main">{children}</main>
         <SiteChrome t={t} cityName={city.name} mapHome={flags.mapHome} />

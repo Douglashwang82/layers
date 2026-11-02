@@ -13,7 +13,7 @@ This guide lists the operator steps to set the accounts up. Each channel works o
 
 ## 1. Prerequisites (both channels)
 
-1. Production must already run the map MVP (`FEATURE_MAP_MVP=true`) with layer writes on (the default), and `GOOGLE_MAPS_LINK_API_KEY` must be a real server key.
+1. Layer writes must be on (the default), and `GOOGLE_MAPS_LINK_API_KEY` must be a real server key.
 2. Apply migration `0032_quick_madrox` (tables `messaging_link`, `messaging_link_attempt`, `messaging_receipt`) the usual way. See [database.md](../reference/database.md).
 3. `AUTH_SECRET` must be set. It keys the HMAC used to store sender IDs; raw LINE/Instagram user IDs are never stored. Changing `AUTH_SECRET` disconnects every chat.
 4. Put all secrets below in the existing Vercel / GitHub `Production` environment. Do not create a new environment. Never use a `NEXT_PUBLIC_` prefix.
@@ -104,4 +104,4 @@ Instagram messaging needs an Instagram **professional** (business or creator) ac
   - code linking, including expired, reused and stolen codes, a chat already taken, and the pending-confirm gate
   - Inbox creation, the chosen layer from LINE and Instagram, and duplicates
   - the public-layer guard, fallback when edit rights are lost, unsupported and not-found links, redelivery, and unfollow
-- Browser (`tests/e2e/mvp/messaging.spec.ts`, run by `pnpm test:e2e:mvp`): the Instagram handshake and the bad-signature check. In the full flow, a member connects LINE and Instagram on the web, the spec sends signed webhook calls, both places land in the chosen layer, and **Recently sent** and disconnect are checked. The server runs with test-only secrets from `tests/e2e/mvp/messaging-env.ts` and `MESSAGING_PROVIDER=capture`, so no LINE or Meta API is called.
+- Browser (`tests/e2e/mvp/messaging.spec.ts`, run by `pnpm test:e2e`): the Instagram handshake and the bad-signature check. In the full flow, a member connects LINE and Instagram on the web, the spec sends signed webhook calls, both places land in the chosen layer, and **Recently sent** and disconnect are checked. The server runs with test-only secrets from `tests/e2e/mvp/messaging-env.ts` and `MESSAGING_PROVIDER=capture`, so no LINE or Meta API is called.

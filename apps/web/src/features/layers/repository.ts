@@ -12,7 +12,6 @@ import {
   normalizeSystemLayerTitles,
   systemRule,
 } from "@taiwanhub/shared";
-import { flags } from "@/lib/config";
 export type GroupRole = "owner" | "editor" | "viewer";
 export type LayerRecord = {
   id: string;
@@ -247,19 +246,16 @@ export async function requireEditableLayer(id: string, actor: Actor) {
 }
 /**
  * Resolve applied layer slugs for a map query. Unavailable slugs are reported
- * without titles or counts; other-city layers are reported so the UI can
- * explain why they were hidden (not under the map MVP, where a layer shows
- * in every city). While the map MVP is on, system layers are
- * disabled except the Daily Pick: they are dropped silently (`disabled`) so an
- * old link or a remembered preference never loads them.
+ * without titles or counts. System layers are disabled except the Daily
+ * Pick: they are dropped silently (`disabled`) so an old link or a
+ * remembered preference never loads them.
  */
-/** Under the map MVP every system layer is off except the Daily Pick. */
+/** Every system layer is off except the Daily Pick. */
 export function isDisabledSystemLayer(
   layer: Pick<LayerRecord, "ownerKind" | "rule"> & { cityId?: string },
-  mapMvp = flags.mapMvp,
   activeCityId?: string,
 ) {
-  if (!mapMvp || layer.ownerKind !== "system") return false;
+  if (layer.ownerKind !== "system") return false;
   if (layer.rule?.kind !== "daily_pick") return true;
   // The Daily Pick is per-city: another city's pick is not this city's.
   return (
@@ -275,9 +271,8 @@ export async function resolveLayers(
 ) {
   const resolved: LayerWithAccess[] = [];
   const unavailable: string[] = [];
-  const otherCity: LayerWithAccess[] = [];
   const disabled: string[] = [];
-  if (!slugs.length) return { resolved, unavailable, otherCity, disabled };
+  if (!slugs.length) return { resolved, unavailable, disabled };
   const [memberships, following, result] = await Promise.all([
     getMemberships(actor?.id),
     followingSet(actor?.id),
@@ -293,7 +288,7 @@ export async function resolveLayers(
       unavailable.push(slug);
       continue;
     }
-    if (isDisabledSystemLayer(layer, flags.mapMvp, city.id)) {
+    if (isDisabledSystemLayer(layer, city.id)) {
       disabled.push(slug);
       continue;
     }
@@ -307,13 +302,11 @@ export async function resolveLayers(
       unavailable.push(slug);
       continue;
     }
-    // The MVP has no geographic limit (a layer's places can be anywhere), so
-    // the selected city only moves the camera; elsewhere layers stay city-scoped.
-    if (layer.cityId !== city.id && !flags.mapMvp)
-      otherCity.push({ layer, access });
-    else resolved.push({ layer, access });
+    // Layers have no geographic limit (a layer's places can be anywhere), so
+    // the selected city only moves the camera.
+    resolved.push({ layer, access });
   }
-  return { resolved, unavailable, otherCity, disabled };
+  return { resolved, unavailable, disabled };
 }
 export type LibraryScope = "discover" | "following" | "mine" | "groups";
 /** Library tabs: a finite curated set, not an infinite feed. Search matches title, owner and purpose. */
@@ -345,7 +338,7 @@ export async function listLibrary(
       `l.owner_kind='group' AND l.owner_group_id IN (SELECT group_id FROM group_member WHERE user_id=$1) AND l.lifecycle<>'archived'`,
     );
   }
-  if (flags.mapMvp) where.push(`l.owner_kind<>'system'`);
+  where.push(`l.owner_kind<>'system'`);
   if (q) {
     values.push("%" + q.replace(/[\\%_]/g, "\\$&") + "%");
     where.push(
@@ -438,19 +431,18 @@ export async function listEditableLayers(actor: Actor) {
 export async function listLayerItemRefs(layerId: string) {
   const result = await pool.query<{
     id: string;
-    marker_image_url: string | null;
     place_id: string | null;
     event_id: string | null;
     content_id: string | null;
-     LEFT JOIN image mi ON mi.id=i.marker_image_id
     subject_id: string | null;
     custom_place_id: string | null;
     /** A custom place whose suggestion was approved is shown as that catalog place. */
     approved_catalog_id: string | null;
+    marker_image_url: string | null;
   }>(
     `SELECT i.id,i.place_id,i.event_id,i.content_id,i.subject_id,i.custom_place_id,p.id AS approved_catalog_id,mi.url AS marker_image_url
      FROM layer_item i
-    markerImageUrl: r.marker_image_url,
+     LEFT JOIN image mi ON mi.id=i.marker_image_id
      LEFT JOIN custom_place cp ON cp.id=i.custom_place_id
      LEFT JOIN place p ON p.id=cp.catalog_place_id AND p.status='approved'
      WHERE i.layer_id=$1 ORDER BY i.position, i.created_at`,
@@ -458,6 +450,7 @@ export async function listLayerItemRefs(layerId: string) {
   );
   return result.rows.map((r) => ({
     id: r.id,
+    markerImageUrl: r.marker_image_url,
     key: r.place_id
       ? `place:${r.place_id}`
       : r.event_id

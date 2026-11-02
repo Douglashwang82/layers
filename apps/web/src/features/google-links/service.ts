@@ -38,7 +38,7 @@ export { resolverDeps };
 /** Pasted links a member may resolve per window; bounds the paid lookups behind them. */
 export const linkBudget = { links: 150, minutes: 10 };
 function enabled() {
-  if (!flags.mapMvp || !flags.layerWrites)
+  if (!flags.layerWrites)
     throw new AppError(
       404,
       "DISABLED",

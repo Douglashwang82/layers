@@ -70,10 +70,9 @@ export default async function LayerPage({ params }: Props) {
     timezone: layer.timezone,
   };
   const contents = await getLayerContents(layer, city, actor);
-  // MVP layers hold Google places, which the catalog contents never include.
-  const googlePlaces = flags.mapMvp
-    ? ((await countExternalReferences([found], actor)).get(layer.slug) ?? 0)
-    : 0;
+  // Layers hold Google places, which the catalog contents never include.
+  const googlePlaces =
+    (await countExternalReferences([found], actor)).get(layer.slug) ?? 0;
   await trackEvent(
     "layer_previewed",
     { layer: layer.slug, owner: layer.ownerKind },

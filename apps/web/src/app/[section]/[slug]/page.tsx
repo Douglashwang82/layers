@@ -56,9 +56,8 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
       description: item.description,
       images: [item.image],
     },
-    ...(item.isDemo || flags.mapMvp
-      ? { robots: { index: false, follow: true } }
-      : {}),
+    // The legacy catalog stays reachable but out of search engines.
+    robots: { index: false, follow: true },
   };
 }
 const timeOf = (value: string, locale: string) =>

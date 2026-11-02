@@ -14,7 +14,7 @@ The layer editor now also accepts an Instagram link through the worker below.
    listens only on `127.0.0.1:11435`. It needs no database or Google API key.
 3. On the web server set the same `INSTAGRAM_WORKER_TOKEN` and set
    `INSTAGRAM_WORKER_URL=http://127.0.0.1:11435` when both run on the same host.
-   The existing `FEATURE_MAP_MVP`, `FEATURE_LAYER_WRITES`, Google link resolver
+   The existing `FEATURE_LAYER_WRITES`, Google link resolver
    key and Places preview configuration still apply. Restart the web server.
 4. In the layer editor's **Google Maps or Instagram links** field, paste one
    Instagram `/p/` or `/reel/` link, then choose **Check links**. Inspect the

@@ -97,7 +97,7 @@ export type LayerAvailability = {
   schedule: LayerRecord["schedule"];
   startsOn: string | null;
   endsOn: string | null;
-  status: "ok" | "unavailable" | "other-city";
+  status: "ok" | "unavailable";
   /** Contribution to the current query, never the layer's total size. */
   count: number;
   cityName?: string;
@@ -500,12 +500,12 @@ export async function runMapQuery(
 ): Promise<MapQueryResult> {
   const window = resolveDateWindow(state.date, city.timezone, now);
   const candidates = await loadCandidates(city, window.start);
-  const { resolved, unavailable, otherCity, disabled } = await resolveLayers(
+  const { resolved, unavailable, disabled } = await resolveLayers(
     state.layers === "none" ? [] : state.layers,
     actor,
     city,
   );
-  // Disabled (system, under the map MVP) layers leave the state as if never applied.
+  // Disabled (system) layers leave the state as if never applied.
   const slugs = (state.layers === "none" ? [] : state.layers).filter(
     (slug) => !disabled.includes(slug),
   );
@@ -613,11 +613,10 @@ export async function runMapQuery(
   for (const item of items)
     for (const slug of item.layers)
       counts.set(slug, (counts.get(slug) ?? 0) + 1);
-  // MVP layers are mostly Google places, which the item list above never
-  // holds; count them too (the MVP has no area or date filter to apply).
-  if (flags.mapMvp)
-    for (const [slug, n] of await countExternalReferences(resolved, actor, now))
-      counts.set(slug, (counts.get(slug) ?? 0) + n);
+  // Layers are mostly Google places, which the item list above never
+  // holds; count them too (there is no area or date filter to apply).
+  for (const [slug, n] of await countExternalReferences(resolved, actor, now))
+    counts.set(slug, (counts.get(slug) ?? 0) + n);
   const availability: LayerAvailability[] = [];
   const describe = (
     { layer, access }: LayerWithAccess,
@@ -640,9 +639,7 @@ export async function runMapQuery(
   });
   for (const slug of slugs) {
     const ok = resolved.find((r) => r.layer.slug === slug);
-    const other = otherCity.find((r) => r.layer.slug === slug);
     if (ok) availability.push(describe(ok, "ok"));
-    else if (other) availability.push(describe(other, "other-city"));
     else if (unavailable.includes(slug))
       availability.push({
         slug,

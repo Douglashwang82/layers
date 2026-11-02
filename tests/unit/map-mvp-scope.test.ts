@@ -1,72 +1,53 @@
-import { describe, it, expect, vi, beforeEach } from "vitest";
+import { describe, it, expect, vi } from "vitest";
 
-const state = vi.hoisted(() => ({
-  flags: { mapMvp: true },
-  rows: [] as unknown[],
-}));
 vi.mock("@/lib/config", () => ({
   appUrl: "https://example.test",
-  flags: state.flags,
-}));
-vi.mock("@taiwanhub/database", () => ({
-  pool: { query: vi.fn(async () => ({ rows: state.rows })) },
+  flags: {},
 }));
 
 import { isDisabledSystemLayer } from "@/features/layers/repository";
-import { navigationHrefs } from "@/components/navigation";
 import sitemap from "@/app/sitemap";
 import robots from "@/app/robots";
 import { catalogMetadata } from "@/lib/catalog-metadata";
 
-beforeEach(() => {
-  state.flags.mapMvp = true;
-  state.rows = [{ slug: "a-place", updated_at: new Date("2026-01-01") }];
-});
-
-describe("system layers under the map MVP", () => {
+describe("system layers", () => {
   const system = (kind: string) => ({
     ownerKind: "system" as const,
     rule: { kind } as never,
   });
   it("keeps only the Daily Pick", () => {
-    expect(isDisabledSystemLayer(system("daily_pick"), true)).toBe(false);
-    expect(isDisabledSystemLayer(system("saves"), true)).toBe(true);
-    expect(isDisabledSystemLayer(system("upcoming"), true)).toBe(true);
-    expect(
-      isDisabledSystemLayer({ ownerKind: "system", rule: null }, true),
-    ).toBe(true);
+    expect(isDisabledSystemLayer(system("daily_pick"))).toBe(false);
+    expect(isDisabledSystemLayer(system("saves"))).toBe(true);
+    expect(isDisabledSystemLayer(system("upcoming"))).toBe(true);
+    expect(isDisabledSystemLayer({ ownerKind: "system", rule: null })).toBe(
+      true,
+    );
   });
   it("disables another city's Daily Pick but keeps the active city's", () => {
     const pick = { ...system("daily_pick"), cityId: "houston" };
-    expect(isDisabledSystemLayer(pick, true, "houston")).toBe(false);
-    expect(isDisabledSystemLayer(pick, true, "taipei")).toBe(true);
+    expect(isDisabledSystemLayer(pick, "houston")).toBe(false);
+    expect(isDisabledSystemLayer(pick, "taipei")).toBe(true);
   });
-  it("never disables user or group layers, nor anything outside the MVP", () => {
-    expect(isDisabledSystemLayer({ ownerKind: "user", rule: null }, true)).toBe(
+  it("never disables user or group layers", () => {
+    expect(isDisabledSystemLayer({ ownerKind: "user", rule: null })).toBe(
       false,
     );
-    expect(isDisabledSystemLayer(system("saves"), false)).toBe(false);
+    expect(isDisabledSystemLayer({ ownerKind: "group", rule: null })).toBe(
+      false,
+    );
   });
 });
 
-describe("legacy catalog under the map MVP", () => {
-  it("drops /saved from the navigation", () => {
-    expect(navigationHrefs(true)).toEqual(["/", "/layers", "/profile"]);
-    expect(navigationHrefs(false)).toContain("/saved");
+describe("legacy catalog", () => {
+  it("lists only the home URL in the sitemap", () => {
+    expect(sitemap().map((e) => e.url)).toEqual(["https://example.test"]);
   });
-  it("lists only the home URL in the sitemap", async () => {
-    const entries = await sitemap();
-    expect(entries.map((e) => e.url)).toEqual(["https://example.test"]);
-  });
-  it("still lists catalog pages outside the MVP", async () => {
-    state.flags.mapMvp = false;
-    const urls = (await sitemap()).map((e) => e.url);
-    expect(urls.some((u) => u.endsWith("/a-place"))).toBe(true);
-  });
-  it("marks catalog pages noindex only under the MVP", () => {
+  it("marks catalog pages noindex", () => {
     expect(catalogMetadata()).toEqual({ robots: { index: false } });
-    state.flags.mapMvp = false;
-    expect(catalogMetadata()).toEqual({});
+  });
+  it("keeps search out of crawlers", () => {
+    const rules = robots().rules as { disallow: string[] };
+    expect(rules.disallow).toContain("/search");
   });
   it("blocks shared-link paths for crawlers", () => {
     const rules = robots().rules as { disallow: string[] };

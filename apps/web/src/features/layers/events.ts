@@ -133,7 +133,7 @@ async function transaction<T>(fn: (tx: PoolClient) => Promise<T>) {
   }
 }
 function writable() {
-  if (!flags.layerWrites || !flags.mapMvp)
+  if (!flags.layerWrites)
     throw new AppError(404, "DISABLED", "Layer events are unavailable.");
 }
 async function editable(actor: Actor, layerId: string) {

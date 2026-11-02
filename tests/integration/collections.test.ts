@@ -249,7 +249,7 @@ describe("external reference projection", () => {
   it("lists authorized references with notes and never for outsiders", async () => {
     const result = await listExternalReferences(state({}), city, alice, 0);
     expect(result).toMatchObject({
-      pageSize: 12,
+      pageSize: 60,
       spatialFilter: "cached-locations",
       totalAuthorizedReferences: 1,
       nextCursor: null,

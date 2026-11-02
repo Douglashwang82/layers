@@ -32,7 +32,6 @@ Back/Forward cancellation uses the Navigation API where supported.
 
 - `pnpm exec vitest run tests/unit/layer-workspace.test.ts tests/unit/layers.test.ts tests/unit/map-panel.test.ts`
 - `pnpm exec playwright test tests/e2e/layer-workspace.spec.ts tests/e2e/map.spec.ts tests/e2e/groups.spec.ts tests/e2e/custom-places.spec.ts`
-- `pnpm test:e2e:mvp` (after the flag-off browser run)
 
 Playwright sets `E2E_ISOLATED_BUILD=true`, using `apps/web/.next/e2e` so it does
 not contend with a developer server's `.next/dev` lock. Choose a free `E2E_PORT`.

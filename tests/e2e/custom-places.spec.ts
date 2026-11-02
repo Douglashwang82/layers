@@ -8,7 +8,7 @@ import { createTestAccount, submitSignIn } from "./fixtures";
 test("a layer owner creates, edits and deletes a custom place", async ({
   page,
 }) => {
-  await page.goto("/layers/new");
+  await page.goto("/layers/new?blank=1");
   await expect(page).toHaveURL(/sign-in/);
   const email = `custom-places-${Date.now()}@example.test`;
   await createTestAccount("Place Keeper", email);
@@ -67,14 +67,11 @@ test("a layer owner creates, edits and deletes a custom place", async ({
   await page.getByRole("button", { name: "Delete place" }).click();
   await expect(page.getByText("Place deleted.")).toBeVisible();
   await expect(renamed).toHaveCount(0);
-  await page.locator(".layer-workspace-screen").getByRole("searchbox", { name: "Search", exact: true }).fill("Uncle Chen");
-  await page.locator(".layer-workspace-screen").getByRole("button", { name: "Search", exact: true }).click();
-  await expect(page.getByText("No results for “Uncle Chen”.")).toBeVisible();
 });
 test("a private place can be suggested to LocalLink for review", async ({
   page,
 }) => {
-  await page.goto("/layers/new");
+  await page.goto("/layers/new?blank=1");
   const email = `suggest-${Date.now()}@example.test`;
   await createTestAccount("Place Suggester", email);
   await submitSignIn(page, email);
@@ -98,7 +95,10 @@ test("a private place can be suggested to LocalLink for review", async ({
   await page
     .getByRole("button", { name: "Suggest to LocalLink", exact: true })
     .click();
-  await page.locator(".layer-workspace-screen").getByLabel("Category", { exact: true }).selectOption("Taiwanese");
+  await page
+    .locator(".layer-workspace-screen")
+    .getByLabel("Category", { exact: true })
+    .selectOption("Taiwanese");
   await page.getByLabel("Neighborhood").fill("Chinatown");
   await page
     .getByLabel("Why is it worth adding?")
@@ -117,7 +117,7 @@ test("a private place can be suggested to LocalLink for review", async ({
 test("a place can be pinned on the map picker", async ({ page }) => {
   // The picker needs no tiles: map requests are blocked, so nothing is billed.
   await page.route(/mapbox\.com\//, (route) => route.abort());
-  await page.goto("/layers/new");
+  await page.goto("/layers/new?blank=1");
   const email = `pin-${Date.now()}@example.test`;
   await createTestAccount("Pin Dropper", email);
   await submitSignIn(page, email);

@@ -5,15 +5,11 @@ import {
   type Actor,
   type MapState,
 } from "@taiwanhub/shared";
-import { flags } from "@/lib/config";
 import { resolveLayers, type LayerWithAccess } from "../layers/repository";
 import { placeLocations } from "../google-links/locations";
 import type { MapCity } from "./query";
-/**
- * Every MVP layer place is external, so a whole layer resolves in one page
- * there; elsewhere external places supplement catalog results in small pages.
- */
-export const externalPageSize = flags.mapMvp ? 60 : 12;
+/** Layer places are external, so a whole layer resolves in one page. */
+export const externalPageSize = 60;
 export type ExternalReference = {
   subjectId: string;
   canonicalKey: `subject:${string}`;
@@ -24,12 +20,12 @@ export type ExternalReference = {
   layers: string[];
   cityReviewStatus: "unreviewed" | "approved";
   isDailyPick?: boolean;
-  /** A layer editor's custom pin image (first layer that sets one wins). */
-  markerImageUrl?: string | null;
   /** Cached Google coordinates (at most 30 days old), for the pin. */
   location?: { lat: number; lng: number } | null;
   /** Cached Google place types, fetched and expired with the coordinates. */
   types?: string[] | null;
+  /** A layer editor's custom pin image (first layer that sets one wins). */
+  markerImageUrl?: string | null;
 };
 /**
  * Authorized external (provider-referenced) places for the same layer/type/
@@ -94,36 +90,36 @@ export async function collectExternalReferences(
   const byId = new Map<string, ExternalReference>();
   const add = (row: {
     subject_id: string;
-    marker_image_url?: string | null;
     provider_place_id: string | null;
     note: string | null;
     link_name: string | null;
     city_review_status: "unreviewed" | "approved";
+    marker_image_url?: string | null;
     slug: string;
   }) => {
     const existing = byId.get(row.subject_id);
-      existing.markerImageUrl ??= row.marker_image_url || null;
     if (existing) {
       if (!existing.layers.includes(row.slug)) existing.layers.push(row.slug);
       existing.localNote ??= row.note || null;
       existing.name ??= row.link_name || null;
+      existing.markerImageUrl ??= row.marker_image_url || null;
       return;
     }
     const ref: ExternalReference = {
       subjectId: row.subject_id,
       canonicalKey: subjectKey(row.subject_id),
       providerPlaceId: row.provider_place_id,
-      markerImageUrl: row.marker_image_url || null,
       localNote: row.note || null,
       name: row.link_name || null,
       layers: [row.slug],
       cityReviewStatus: row.city_review_status,
+      markerImageUrl: row.marker_image_url || null,
     };
-  const marker = `(SELECT mi.url FROM image mi WHERE mi.id=i.marker_image_id) AS marker_image_url`;
     byId.set(row.subject_id, ref);
     ordered.push(ref);
   };
   const provider = `(SELECT r.provider_place_id FROM place_provider_reference r WHERE r.subject_id=s.id AND r.state='current' LIMIT 1) AS provider_place_id`;
+  const marker = `(SELECT mi.url FROM image mi WHERE mi.id=i.marker_image_id) AS marker_image_url`;
   for (const { layer, access } of resolved) {
     if (layer.rule?.kind === "saves") {
       if (!actor) continue;

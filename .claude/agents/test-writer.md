@@ -8,7 +8,7 @@ You add tests for LocalLink changes. Look at `git diff` (or the commits you are 
 
 - Unit tests: `tests/unit/*.test.ts`, run with `pnpm exec vitest run <file>`. Prefer pure domain logic from `packages/shared/src` and `apps/web/src/lib`.
 - Integration tests: `tests/integration`, need the migrated and seeded local DB (`pnpm test:integration`).
-- E2E: `tests/e2e/*.spec.ts`, shared helpers in `tests/e2e/fixtures.ts`. Map MVP flows use `playwright.mvp.config.ts` (`pnpm test:e2e:mvp`). Run a single spec with `pnpm exec playwright test tests/e2e/<file>`.
+- E2E: `tests/e2e/*.spec.ts`, shared helpers in `tests/e2e/fixtures.ts`. Map MVP flows live in `tests/e2e/mvp/` and run with the rest. Run a single spec with `pnpm exec playwright test tests/e2e/<file>`.
 - CI has no `NEXT_PUBLIC_MAPBOX_TOKEN`; tests must pass without it (list fallback).
 - Mock Anthropic/Google/fetch in tests; never hit live providers.
 
