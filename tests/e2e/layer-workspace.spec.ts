@@ -31,7 +31,8 @@ for (const mobile of [false, true]) {
     await screen.getByLabel("Title", { exact: true }).fill(title);
     // Closing a dirty form can be cancelled without losing its content.
     page.once("dialog", (dialog) => dialog.dismiss());
-    await screen
+    await page
+      .locator("#map-panel")
       .getByRole("link", { name: "Open in Map", exact: true })
       .first()
       .click();

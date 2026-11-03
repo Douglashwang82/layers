@@ -5,6 +5,12 @@ and content management use the map's existing floating panel (bottom sheet on
 phones). The map instance survives panel navigation. The standalone pages remain
 available when the map-home flag is disabled.
 
+The panel is one shell (`components/map/map-sidebar.tsx`): a fixed header with the
+way back, title and panel controls, then a single scrolling area. `resolvePanelView`
+in `lib/map-panel.ts` picks the screen, in priority order: layer screen, route
+planner, place details, then results or Layers. Screens supply only their content,
+and Google places load through `useExternalReferences` whichever screen is open.
+
 The Layers control lists applied layers and visibility checkboxes. Layer names
 open details without changing visibility. Find layers opens the library, including
 Discover, Following, Mine, and Groups. Layer settings and Add items are separate

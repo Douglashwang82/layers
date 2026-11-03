@@ -68,7 +68,7 @@ test("the floating list remembers its preference, closes with Escape and yields 
   await expect(panel).toBeVisible();
   await expect(page.locator(".item-preview")).toBeVisible();
   await page
-    .getByRole("button", { name: "Back to results", exact: true })
+    .getByRole("button", { name: "Back to layers", exact: true })
     .click();
   await expect(page).not.toHaveURL(/item=/);
   await page.goto(shared);
@@ -114,7 +114,7 @@ test("flat map fills the viewport with a quiet atlas, a collapsed list and a usa
   // Selection is a quiet ring and label; the companion is not mounted on the map home.
   await expect(page.locator(".map-pet-host")).toHaveCount(0);
   await page
-    .getByRole("button", { name: "Back to results", exact: true })
+    .getByRole("button", { name: "Back to layers", exact: true })
     .click();
   await expect(page.locator(".map-pet-host")).toHaveCount(0);
   await page.setViewportSize({ width: 390, height: 844 });

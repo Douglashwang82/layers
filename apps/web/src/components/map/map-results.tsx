@@ -250,9 +250,15 @@ export function ResultRow({
     </li>
   );
 }
-export function MapResults({
+/** One row of the list: a catalog item or a Google place. */
+type ListEntry<Place> = { layers: string[] } & (
+  { item: MapItem; place?: never } | { item?: never; place: Place }
+);
+export function MapResults<Place extends { layers: string[] }>({
   items,
   unmapped,
+  places = [],
+  renderPlace,
   t,
   locale,
   selectedKey,
@@ -266,6 +272,9 @@ export function MapResults({
 }: {
   items: MapItem[];
   unmapped: MapItem[];
+  /** Google places, listed with the catalog rows of the layers holding them. */
+  places?: Place[];
+  renderPlace?: (place: Place, keyPrefix: string) => ReactNode;
   t: Copy;
   locale: Locale;
   selectedKey: string | null;
@@ -279,43 +288,40 @@ export function MapResults({
   layers?: LayerAvailability[];
 }) {
   const visible = items.slice(0, limit);
-  const row = (item: MapItem, prefix = "") => (
-    <ResultRow
-      key={prefix + item.key}
-      {...{ item, t, locale, onSelect, onHover, timeZone }}
-      events={events[item.key]}
-      selected={item.key === selectedKey}
-    />
-  );
-  const { groups, rest } = groupByLayer(visible, layers);
+  const entries: ListEntry<Place>[] = [
+    ...visible.map((item) => ({ item, layers: item.layers })),
+    ...places.map((place) => ({ place, layers: place.layers })),
+  ];
+  const row = (entry: ListEntry<Place>, prefix = "") =>
+    entry.item ? (
+      <ResultRow
+        key={prefix + entry.item.key}
+        {...{ t, locale, onSelect, onHover, timeZone }}
+        item={entry.item}
+        events={events[entry.item.key]}
+        selected={entry.item.key === selectedKey}
+      />
+    ) : (
+      renderPlace?.(entry.place, prefix)
+    );
+  const { groups, rest } = groupByLayer(entries, layers);
   return (
     <>
-      {layers && groups.length > 0 ? (
-        <>
-          {groups.map(({ layer, rows }) => (
-            <LayerSection
-              key={layer.slug}
-              layer={layer}
-              locale={locale}
-              count={rows.length}
-            >
-              <ul
-                className="result-list"
-                aria-label={layerTitle(layer, locale)}
-              >
-                {rows.map((item) => row(item, `${layer.slug}:`))}
-              </ul>
-            </LayerSection>
-          ))}
-          {rest.length > 0 && (
-            <ul className="result-list" aria-label={t.resultsTab}>
-              {rest.map((item) => row(item))}
-            </ul>
-          )}
-        </>
-      ) : (
+      {groups.map(({ layer, rows }) => (
+        <LayerSection
+          key={layer.slug}
+          layer={layer}
+          locale={locale}
+          count={rows.length}
+        >
+          <ul className="result-list" aria-label={layerTitle(layer, locale)}>
+            {rows.map((entry) => row(entry, `${layer.slug}:`))}
+          </ul>
+        </LayerSection>
+      ))}
+      {rest.length > 0 && (
         <ul className="result-list" aria-label={t.resultsTab}>
-          {visible.map((item) => row(item))}
+          {rest.map((entry) => row(entry))}
         </ul>
       )}
       {items.length > limit && (

@@ -1,18 +1,15 @@
 "use client";
 import { useId, useState } from "react";
 import { LayerLink as Link } from "../layers/workspace-navigation";
-import {
-  ChevronRight,
-  Folder as FolderIcon,
-  Plus,
-  Layers as LayersIcon,
-} from "lucide-react";
+import { ChevronRight, Folder as FolderIcon, Plus } from "lucide-react";
 import { FolderLink } from "../layers/folder-link";
 import type { LayerAvailability } from "@/features/map/query";
 import type { CollectionNode } from "@/features/layers/collections-types";
 import { type Copy, type Locale, format } from "@/lib/dictionary";
 import { maxAppliedCollections, maxAppliedLayers } from "@taiwanhub/shared";
+import { layerColor } from "@/components/map/layer-section";
 import { layerTitle, ownerLabel, scheduleLabel } from "@/lib/layer-labels";
+import { panelTitleId } from "./map-sidebar";
 
 function folderName(folder: CollectionNode, locale: Locale) {
   return locale === "zh-TW" && folder.titleChinese
@@ -162,8 +159,8 @@ export function ActiveLayersPanel({
   layers,
   hidden,
   library,
-  folders = [],
-  appliedFolders = [],
+  folders,
+  appliedFolders,
   onToggleFolder,
   t,
   locale,
@@ -173,16 +170,13 @@ export function ActiveLayersPanel({
 }: {
   layers: LayerAvailability[];
   hidden: LayerAvailability[];
-  /**
-   * Map MVP: the member's own, group and followed layers, listed so any of
-   * them can be loaded here; null when the picker is the library page.
-   */
-  library?: LayerAvailability[] | null;
+  /** The member's own, group and followed layers, loadable from here. */
+  library: LayerAvailability[];
   /** The member's top-level folders with their trees. */
-  folders?: CollectionNode[];
+  folders: CollectionNode[];
   /** Slugs of the folders on the map. */
-  appliedFolders?: string[];
-  onToggleFolder?: (slug: string, applied: boolean) => void;
+  appliedFolders: string[];
+  onToggleFolder: (slug: string, applied: boolean) => void;
   t: Copy;
   locale: Locale;
   refreshing: boolean;
@@ -196,20 +190,23 @@ export function ActiveLayersPanel({
   const rows = [
     ...layers.map((l) => ({ layer: l, applied: true })),
     ...hidden.map((l) => ({ layer: l, applied: false })),
-    ...(library ?? [])
+    ...library
       .filter((l) => !listed.has(l.slug))
       .map((l) => ({ layer: l, applied: false })),
   ];
-  const showFolders = folders.length > 0 && !!onToggleFolder;
+  const showFolders = folders.length > 0;
   return (
-    <section className="active-layers" aria-labelledby="active-layers-heading">
-      <div className="panel-heading">
-        <h2 id="active-layers-heading">
-          <LayersIcon size={18} aria-hidden="true" />
-          {library ? t.yourLayers : t.onYourMap}
-        </h2>
-        <span className="count-pill">{used}</span>
-      </div>
+    <section className="active-layers" aria-labelledby={panelTitleId}>
+      {(showFolders || appliedFolders.length > 0) && (
+        <p className="fine-print" role="status">
+          {format(t.folderSlots, { used, max: maxAppliedLayers })}
+        </p>
+      )}
+      {slotsFull && (
+        <p className="fine-print">
+          {format(t.layerLimit, { max: maxAppliedLayers })}
+        </p>
+      )}
       {showFolders && (
         <>
           <h3 id="folder-tree-heading" className="folder-heading">
@@ -233,9 +230,17 @@ export function ActiveLayersPanel({
         </>
       )}
       {rows.length === 0 && !showFolders && (
-        <p className="muted">{library ? t.noLayersYet : t.chooseLayer}</p>
+        <p className="muted">{t.noLayersYet}</p>
       )}
-      <ul className="layer-rows">
+      {showFolders && rows.length > 0 && (
+        <h3 id="layer-list-heading" className="folder-heading">
+          {t.layersTab}
+        </h3>
+      )}
+      <ul
+        className="layer-rows"
+        aria-labelledby={showFolders ? "layer-list-heading" : panelTitleId}
+      >
         {rows.map(({ layer, applied: isApplied }) => (
           <li key={layer.slug} className={`layer-row status-${layer.status}`}>
             <div className="layer-toggle">
@@ -251,6 +256,13 @@ export function ActiveLayersPanel({
               />
               <span className="layer-text">
                 <span className="layer-title">
+                  {layer.status === "ok" && (
+                    <span
+                      className="layer-swatch"
+                      style={{ background: layerColor(layer.slug) }}
+                      aria-hidden="true"
+                    />
+                  )}
                   {layer.status === "unavailable" ? (
                     t.layerUnavailable
                   ) : (
@@ -274,45 +286,29 @@ export function ActiveLayersPanel({
                 </span>
               )}
             </div>
-            {layer.status === "ok" && (
+            {layer.status === "ok" && isApplied && used > 1 && (
               <span className="layer-actions">
-                <Link className="text-button" href={`/layers/${layer.slug}`}>
-                  {t.viewLayer}
-                </Link>
-                {isApplied && used > 1 && (
-                  <button
-                    type="button"
-                    className="text-button"
-                    onClick={() => onOnly(layer.slug)}
-                  >
-                    {t.showOnlyThis}
-                  </button>
-                )}
+                <button
+                  type="button"
+                  className="text-button"
+                  onClick={() => onOnly(layer.slug)}
+                >
+                  {t.showOnlyThis}
+                </button>
               </span>
             )}
           </li>
         ))}
       </ul>
-      {(showFolders || appliedFolders.length > 0) && (
-        <p className="fine-print" role="status">
-          {format(t.folderSlots, { used, max: maxAppliedLayers })}
-        </p>
-      )}
-      {slotsFull && (
-        <p className="fine-print">
-          {format(t.layerLimit, { max: maxAppliedLayers })}
-        </p>
-      )}
-      {library && (
-        <Link className="button small find-layers" href="/layers/new">
+      <div className="layer-panel-actions">
+        <Link className="button small" href="/layers/new">
           <Plus size={16} aria-hidden="true" />
           {t.createFromGoogle}
         </Link>
-      )}
-      <Link className="button secondary small find-layers" href="/layers">
-        {!library && <Plus size={16} aria-hidden="true" />}
-        {t.findLayers}
-      </Link>
+        <Link className="button secondary small" href="/layers">
+          {t.findLayers}
+        </Link>
+      </div>
     </section>
   );
 }

@@ -9,6 +9,7 @@ import {
   type TravelMode,
 } from "@/lib/route-link";
 import { track } from "@/lib/track";
+import { panelTitleId } from "./map-sidebar";
 /** A planned stop: the map key it came from and a LocalLink-side label. */
 export type PlannedStop = RouteStop & { key: string; label: string };
 /**
@@ -47,8 +48,7 @@ export function RoutePlanner({
     transit: t.routeTransit,
   };
   return (
-    <section className="route-planner" aria-labelledby="route-heading">
-      <h2 id="route-heading">{t.routeTitle}</h2>
+    <section className="route-planner" aria-labelledby={panelTitleId}>
       <p className="fine-print">
         {format(t.routeHint, { max: maxRouteStops })}
       </p>

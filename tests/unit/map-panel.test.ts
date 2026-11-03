@@ -3,6 +3,7 @@ import {
   initialPanelOpen,
   mapPadding,
   panelVisible,
+  resolvePanelView,
   storedPanelOpen,
 } from "@/lib/map-panel";
 
@@ -94,5 +95,59 @@ describe("map padding for floating chrome", () => {
     const tall = mapPadding({ ...base, mobile: true, panelHeight: 900 });
     expect(tall.bottom).toBe(648);
     expect(844 - tall.top - tall.bottom).toBeGreaterThanOrEqual(64);
+  });
+});
+
+describe("panel view", () => {
+  const onMap = {
+    layerScreen: false,
+    routeOpen: false,
+    detailOpen: false,
+    listView: false,
+    fallback: false,
+    unlocatedPlaces: 0,
+    layersRequested: false,
+  };
+
+  it("is the Layers list while the map shows the places", () => {
+    expect(resolvePanelView(onMap)).toBe("layers");
+  });
+
+  it("lists results with no map to show them, or a place with no pin", () => {
+    for (const patch of [
+      { listView: true },
+      { fallback: true },
+      { unlocatedPlaces: 1 },
+    ])
+      expect(resolvePanelView({ ...onMap, ...patch })).toBe("results");
+  });
+
+  it("goes back to Layers over the list on request", () => {
+    expect(
+      resolvePanelView({ ...onMap, listView: true, layersRequested: true }),
+    ).toBe("layers");
+  });
+
+  it("orders layer screens over the planner, the planner over details", () => {
+    const all = {
+      ...onMap,
+      layerScreen: true,
+      routeOpen: true,
+      detailOpen: true,
+    };
+    expect(resolvePanelView(all)).toBe("layer-screen");
+    expect(resolvePanelView({ ...all, layerScreen: false })).toBe("route");
+    expect(
+      resolvePanelView({ ...all, layerScreen: false, routeOpen: false }),
+    ).toBe("detail");
+  });
+
+  it("shows details over the list and over Layers", () => {
+    expect(
+      resolvePanelView({ ...onMap, detailOpen: true, listView: true }),
+    ).toBe("detail");
+    expect(
+      resolvePanelView({ ...onMap, detailOpen: true, layersRequested: true }),
+    ).toBe("detail");
   });
 });

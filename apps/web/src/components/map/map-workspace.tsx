@@ -8,7 +8,6 @@ import {
   type CSSProperties,
   type ReactNode,
 } from "react";
-import { LayerLink as Link } from "../layers/workspace-navigation";
 import { createPortal } from "react-dom";
 import { useRouter, useSearchParams } from "next/navigation";
 import { LayerWorkspaceContext } from "../layers/workspace-navigation";
@@ -18,16 +17,11 @@ import {
   withoutLayerPanel,
 } from "@/lib/layer-workspace";
 import {
-  CalendarDays,
-  ChevronDown,
-  ChevronUp,
   ExternalLink,
-  Folder as FolderIcon,
   List,
   Map as MapIcon,
   Layers as LayersIcon,
   Crosshair,
-  Info,
   Route,
   X,
 } from "lucide-react";
@@ -63,19 +57,26 @@ import {
 } from "./map-canvas";
 import { getPlacesProvider } from "@/lib/places/provider";
 import { BusinessPanel } from "@/components/places/business-panel";
-import { ExternalReferences } from "@/components/places/external-references";
+import { ExternalRow } from "@/components/places/external-row";
+import { useExternalReferences } from "@/components/places/use-external-references";
 import {
   markerCssVars,
   markerKind,
   markerLabel,
 } from "@/lib/marker-presentation";
 import { useMapTheme } from "@/lib/map-theme";
-import { layerColor } from "@/components/map/layer-section";
-import { layerTitle } from "@/lib/layer-labels";
 import { ActiveLayersPanel } from "./active-layers-panel";
 import { MapResults, TabelogLink } from "./map-results";
 import { tabelogLink } from "@/lib/tabelog";
 import { ItemPreview } from "./item-preview";
+import { MapSidebar, type PanelBack } from "./map-sidebar";
+import {
+  AttachedEvents,
+  LayerChips,
+  MapEmptyState,
+  ResultsSummary,
+  SidebarFooter,
+} from "./map-sidebar-sections";
 import { PlaceAttachments } from "./place-attachments";
 import {
   TipReviews,
@@ -92,14 +93,16 @@ import {
 } from "@/lib/route-link";
 import { DailyPickCard } from "@/components/daily-pick/daily-pick-card";
 import { track } from "@/lib/track";
-import { eventRange, eventTitle } from "@/lib/event-time";
 import { mapSessionKey } from "@/lib/map-session";
 import {
   initialPanelOpen,
+  listAvailable,
   mapPadding,
   panelStorageKey,
   panelVisible,
+  resolvePanelView,
   storedPanelOpen,
+  type PanelView,
 } from "@/lib/map-panel";
 /** Mobile sheet height; the sheet is closed when the panel is not open. */
 type Sheet = "half" | "expanded";
@@ -372,19 +375,6 @@ export function MapWorkspace({
     commit({ layers: next.length ? next : "none" });
     track(applied ? "layer_applied" : "layer_hidden", { layer: slug });
   };
-  const folderTitles = useMemo(() => {
-    const map = new Map<string, CollectionNode>();
-    const walk = (nodes: CollectionNode[]) => {
-      for (const node of nodes) {
-        map.set(node.slug, node);
-        walk(
-          node.children.flatMap((c) => (c.kind === "folder" ? [c.folder] : [])),
-        );
-      }
-    };
-    walk(folders);
-    return map;
-  }, [folders]);
   const toggleFolder = (slug: string, applied: boolean) => {
     if (applied && shownFolders.includes(slug)) return;
     if (applied && slotsUsed >= maxAppliedLayers) {
@@ -502,6 +492,8 @@ export function MapWorkspace({
   }, [selectedKey]);
   const reveal = () => {
     setDetailHidden(false);
+    // Picking a place shows it: the planner keeps its stops and reopens from the bar.
+    setRouteOpen(false);
     setPanelOpen(true);
   };
   const select = (key: string) => {
@@ -557,8 +549,13 @@ export function MapWorkspace({
   const [locatedPlaces, setLocatedPlaces] = useState<
     Record<string, { lat: number; lng: number }>
   >({});
-  const [pendingExternal, setPendingExternal] = useState(0);
-  const [externalPoints, setExternalPoints] = useState<ExtraPoint[]>([]);
+  const external = useExternalReferences({
+    queryKey,
+    locatedPlaces,
+    area: state.area,
+    reload: force,
+  });
+  const externalPoints = external.points;
   const extraPoints = useMemo(() => {
     const points = [...externalPoints];
     if (business?.location && !points.some((p) => p.key === business.key))
@@ -625,7 +622,7 @@ export function MapWorkspace({
   };
   const closeBusiness = () => {
     setBusiness(null);
-    panelRef.current?.focus();
+    focusPanel();
   };
   /*
    * Route planning (map MVP, docs/plans/map-route-links-plan.md): stops are
@@ -741,23 +738,9 @@ export function MapWorkspace({
   const fallback = !token || canvasStatus === "failed";
   const visible =
     !!layerPanel || panelVisible({ open: panelOpen, listView, fallback });
-  // The sidebar is the Layers panel; results only list when there is no map to show them.
-  const showResults = listView || fallback || pendingExternal > 0;
-  const savedScroll = useRef(0);
-  const wasDetail = useRef(false);
-  useEffect(() => {
-    const node = panelRef.current;
-    if (!node) return;
-    const showingDetail = (!!selected || !!business) && !detailHidden;
-    if (showingDetail !== wasDetail.current) {
-      if (showingDetail) {
-        node.scrollTop = 0;
-      } else {
-        node.scrollTop = savedScroll.current;
-      }
-      wasDetail.current = showingDetail;
-    }
-  }, [selected, business, detailHidden]);
+  const scrollRef = useRef<HTMLDivElement>(null);
+  /** Focus lands on the scrolling area, so the keyboard scrolls the panel. */
+  const focusPanel = () => scrollRef.current?.focus();
   // Shared item links, list view and fallback win over the remembered preference.
   useEffect(() => {
     const forced = !!state.item || listView || !token;
@@ -780,8 +763,8 @@ export function MapWorkspace({
   const panelRef = useRef<HTMLDivElement>(null);
   useEffect(() => {
     if (!layerPanel) return;
-    panelRef.current?.focus();
-    panelRef.current?.scrollTo(0, 0);
+    scrollRef.current?.focus();
+    scrollRef.current?.scrollTo(0, 0);
   }, [layerScreenKey, layerPanel]);
   const togglePanel = (open: boolean) => {
     if (!open && layerPanel) {
@@ -804,7 +787,7 @@ export function MapWorkspace({
       }
     // Focus follows the control the user just used; hidden content leaves the tab order.
     window.requestAnimationFrame(() =>
-      (open ? panelRef.current : launcher.current)?.focus(),
+      (open ? scrollRef.current : launcher.current)?.focus(),
     );
   };
   const [sheet, setSheet] = useState<Sheet>("half");
@@ -817,18 +800,47 @@ export function MapWorkspace({
       ? "layers"
       : "results",
   );
+  const listInputs = {
+    listView,
+    fallback,
+    unlocatedPlaces: external.unlocated,
+  };
+  const hasList = listAvailable(listInputs);
+  const detailInPanel =
+    !layerPanel && (!!selected || !!business) && !detailHidden;
+  const view = resolvePanelView({
+    ...listInputs,
+    layerScreen: !!layerPanel,
+    routeOpen,
+    detailOpen: detailInPanel,
+    layersRequested: tab === "layers",
+  });
+  const routeInPanel = view === "route";
+  // Details open at the top and return to where the list was; other screens start at the top.
+  const savedScroll = useRef(0);
+  const scrolledView = useRef<PanelView>(view);
+  const openPlaceKey = business?.key ?? selectedKey;
+  useEffect(() => {
+    const node = scrollRef.current;
+    const from = scrolledView.current;
+    scrolledView.current = view;
+    if (!node || (from === view && view !== "detail")) return;
+    const backToList =
+      from === "detail" && (view === "results" || view === "layers");
+    node.scrollTop = backToList ? savedScroll.current : 0;
+  }, [view, openPlaceKey]);
   /**
    * Expose list-only places once per query instead of silently hiding them
    * when their cached coordinates are missing or expired.
    */
   const revealedFor = useRef<string | null>(null);
   useEffect(() => {
-    if (layerPanel || !pendingExternal || revealedFor.current === queryKey)
+    if (layerPanel || !external.unlocated || revealedFor.current === queryKey)
       return;
     revealedFor.current = queryKey;
     setTab("results");
     setPanelOpen(true);
-  }, [layerPanel, pendingExternal, queryKey]);
+  }, [layerPanel, external.unlocated, queryKey]);
   const [limit, setLimit] = useState(20);
   const [panelHeight, setPanelHeight] = useState(0);
   const [panelRight, setPanelRight] = useState(0);
@@ -923,15 +935,16 @@ export function MapWorkspace({
     }
     setTab("layers");
     setDetailHidden(true);
+    setRouteOpen(false);
     setPanelOpen(true);
-    window.requestAnimationFrame(() => panelRef.current?.focus());
+    window.requestAnimationFrame(focusPanel);
   };
   const editRoute = () => {
     setRouteOpen(true);
     setPanelOpen(true);
     setSheet("half");
     setTip(null);
-    window.requestAnimationFrame(() => panelRef.current?.focus());
+    window.requestAnimationFrame(focusPanel);
   };
   const setView = (view: MapState["view"]) => {
     commit({ view }, "replace");
@@ -1019,7 +1032,6 @@ export function MapWorkspace({
       }}
       t={t}
       locale={locale}
-      onClose={closeBusiness}
       onLocation={(place) => {
         if (!place.location) return;
         const location = place.location;
@@ -1032,10 +1044,6 @@ export function MapWorkspace({
       }}
     />
   );
-  // Details share the one floating panel with results and layers (business wins when both exist).
-  const detailInPanel =
-    !layerPanel && (!!selected || !!business) && !detailHidden;
-  const routeInPanel = !layerPanel && routeOpen;
   // The open place as a route stop: the keyboard and list path into a route.
   const openStop: PlannedStop | null = business
     ? business.location && !business.temporary
@@ -1199,7 +1207,6 @@ export function MapWorkspace({
       locale={locale}
       timeZone={city.timezone}
       citySlug={city.slug}
-      onClose={closeDetail}
       onRefresh={() => {
         loadDetail(selected.key);
         // The Daily Pick card shows the same place's save state; re-query it too.
@@ -1207,7 +1214,6 @@ export function MapWorkspace({
           setForce((n) => n + 1);
       }}
       layerWrites={layerWrites}
-      backLabel={t.backToResults}
       provider={provider}
     />
   );
@@ -1232,49 +1238,6 @@ export function MapWorkspace({
       onOnly={onlyLayer}
     />
   );
-  const summary = (
-    <div className="results-summary">
-      <p className="result-count" role="status" aria-live="polite">
-        {refreshing
-          ? t.previousResults
-          : format(t.resultsInArea, { count: placeCount })}
-        {!refreshing && result.unmapped > 0 && (
-          <small>
-            {" "}
-            ·{" "}
-            {format(t.mappedSummary, {
-              mapped: result.mapped,
-              unmapped: result.unmapped,
-            })}
-          </small>
-        )}
-      </p>
-      <span className="sr-only" aria-live="polite">
-        {announce}
-      </span>
-      {result.searchScope === "city" && (
-        <p className="fine-print">
-          {format(t.searchOverlay, { city: city.name })}
-        </p>
-      )}
-      {pendingArea && state.area && (
-        <p className="fine-print">{t.previousArea}</p>
-      )}
-      {result.truncated && <p className="fine-print">{t.zoomIn}</p>}
-      {loadError && (
-        <p className="message error-message" role="alert">
-          {loadError}{" "}
-          <button
-            type="button"
-            className="text-button"
-            onClick={() => setForce((n) => n + 1)}
-          >
-            {t.retry}
-          </button>
-        </p>
-      )}
-    </div>
-  );
   // First run: a signed-in member with no layers of their own gets a starter.
   const dailyPickSlug =
     (library ?? []).find((l) => l.ownerKind === "system")?.slug ?? null;
@@ -1282,55 +1245,17 @@ export function MapWorkspace({
     authenticated &&
     library != null &&
     !library.some((l) => l.ownerKind !== "system");
-  const emptyState =
-    firstRun && !hasApplied ? (
-      <div className="empty first-run-starter">
-        <h3>{t.starterTitle}</h3>
-        <p>{t.starterBody}</p>
-        <div className="actions">
-          {dailyPickSlug && (
-            <button
-              type="button"
-              className="button secondary small"
-              onClick={() => toggleLayer(dailyPickSlug, true)}
-            >
-              {t.starterSeePick}
-            </button>
-          )}
-          <Link className="button small" href="/layers/new">
-            {t.starterStartLayer}
-          </Link>
-        </div>
-        <p className="fine-print">{t.starterJoinGroup}</p>
-      </div>
-    ) : !hasApplied ? (
-      <div className="empty">
-        <h3>{t.mvpEmptyTitle}</h3>
-        <p>{authenticated ? t.mvpEmptyBody : t.signInForLayers}</p>
-        <div className="actions">
-          {authenticated ? (
-            <>
-              {showResults && (
-                <button
-                  type="button"
-                  className="button secondary small"
-                  onClick={() => setTab("layers")}
-                >
-                  {t.yourLayers}
-                </button>
-              )}
-              <Link className="button small" href="/layers/new">
-                {t.createFromGoogle}
-              </Link>
-            </>
-          ) : (
-            <Link className="button small" href="/sign-in?next=%2F">
-              {t.signIn}
-            </Link>
-          )}
-        </div>
-      </div>
-    ) : null;
+  const emptyState = !hasApplied && (
+    <MapEmptyState
+      authenticated={authenticated}
+      firstRun={firstRun}
+      dailyPickSlug={dailyPickSlug}
+      canShowLayers={hasList}
+      t={t}
+      onSeePick={(slug) => toggleLayer(slug, true)}
+      onShowLayers={() => setTab("layers")}
+    />
+  );
   const dailyPick = result.dailyPick && (
     <DailyPickCard
       key={`${result.dailyPick.pick?.id ?? "none"}:${result.dailyPick.saved}`}
@@ -1365,53 +1290,8 @@ export function MapWorkspace({
       }}
     />
   );
-  const externalReferences = (
-    <ExternalReferences
-      reload={force}
-      locatedPlaces={locatedPlaces}
-      queryKey={queryKey}
-      area={state.area}
-      selectedSubjectId={business?.subjectId ?? null}
-      t={t}
-      locale={locale}
-      timeZone={city.timezone}
-      events={result.events}
-      autoLoad
-      layers={panelLayers}
-      onPending={setPendingExternal}
-      onPoints={setExternalPoints}
-      onSelect={(ref, location) =>
-        selectBusiness({
-          key: ref.canonicalKey,
-          placeId: ref.providerPlaceId,
-          name: ref.name,
-          subjectId: ref.subjectId,
-          location,
-          temporary: false,
-        })
-      }
-    />
-  );
-  // Attached events at the selected place, shown above its details.
+  // Attached events at the selected place, shown with its details.
   const selectedEvents = result.events[business?.key ?? selectedKey ?? ""];
-  const attachedEvents = selectedEvents?.length ? (
-    <section className="attached-events" aria-labelledby="attached-events">
-      <h3 id="attached-events">
-        <CalendarDays size={16} aria-hidden="true" /> {t.upcomingEvents}
-      </h3>
-      <ul className="event-list">
-        {selectedEvents.map((event) => (
-          <li key={event.id}>
-            <span className="event-when">
-              {eventRange(event, locale, city.timezone)}
-            </span>
-            <b>{eventTitle(event, locale)}</b>
-            {event.note && <span className="muted">{event.note}</span>}
-          </li>
-        ))}
-      </ul>
-    </section>
-  ) : null;
   // Add events and tips to the selected place right here, per layer holding it.
   const attachKey = business?.key ?? selected?.key ?? null;
   const attachments =
@@ -1436,124 +1316,160 @@ export function MapWorkspace({
         onEventsChanged={() => setForce((n) => n + 1)}
       />
     ) : null;
-  const layerChips = (
-    <div className="layer-chips" role="group" aria-label={t.onYourMap}>
-      {shownFolders.map((slug) => {
-        const node = folderTitles.get(slug);
-        const known = result.collections?.find((c) => c.slug === slug);
-        const name = node
-          ? locale === "zh-TW" && node.titleChinese
-            ? node.titleChinese
-            : node.title
-          : known
-            ? locale === "zh-TW" && known.titleChinese
-              ? known.titleChinese
-              : known.title
-            : "";
-        return (
-          <button
-            key={`folder:${slug}`}
-            type="button"
-            className="layer-chip"
-            aria-pressed
-            aria-label={format(t.folderHideFromMap, {
-              title: name || t.folderUnavailable,
-            })}
-            onClick={() => toggleFolder(slug, false)}
-          >
-            <FolderIcon size={14} aria-hidden="true" />
-            {name || t.folderUnavailable}
-          </button>
-        );
-      })}
-      {[
-        ...panelLayers,
-        ...hiddenLayers.filter((h) => !shownSlugs.includes(h.slug)),
-      ]
-        .filter((l) => l.status === "ok")
-        .map((layer) => {
-          const on = shownSlugs.includes(layer.slug);
-          return (
-            <button
-              key={layer.slug}
-              type="button"
-              className="layer-chip"
-              aria-pressed={on}
-              disabled={!on && slotsUsed >= maxAppliedLayers}
-              onClick={() => toggleLayer(layer.slug, !on)}
-            >
-              <span
-                className="layer-swatch"
-                style={{ background: layerColor(layer.slug) }}
-                aria-hidden="true"
-              />
-              {layerTitle(layer, locale)}
-            </button>
-          );
-        })}
-      <button
-        type="button"
-        className="layer-chip manage"
-        onClick={() => setTab("layers")}
-      >
-        {t.manageLayers}
-      </button>
-    </div>
-  );
   const resultsPanel = (
     <>
-      {layerChips}
+      <LayerChips
+        folders={folders}
+        collections={result.collections}
+        shownFolders={shownFolders}
+        shownSlugs={shownSlugs}
+        layers={[
+          ...panelLayers,
+          ...hiddenLayers.filter((h) => !shownSlugs.includes(h.slug)),
+        ]}
+        slotsUsed={slotsUsed}
+        t={t}
+        locale={locale}
+        onToggleFolder={toggleFolder}
+        onToggleLayer={toggleLayer}
+        onManage={() => setTab("layers")}
+      />
       {dailyPick}
-      {summary}
-      {routeThroughButton}
-      {emptyState ?? (
-        <MapResults
-          items={mapped}
-          unmapped={unmapped}
-          t={t}
-          locale={locale}
-          selectedKey={selectedKey}
-          onSelect={select}
-          limit={limit}
-          onMore={() => setLimit((n) => n + 20)}
-          onHover={setListHoverKey}
-          events={result.events}
-          timeZone={city.timezone}
-          layers={panelLayers}
-        />
+      {emptyState || (
+        <>
+          <ResultsSummary
+            result={result}
+            refreshing={refreshing}
+            placeCount={placeCount}
+            cityName={city.name}
+            previousArea={!!pendingArea && !!state.area}
+            pendingPlaces={external.pending}
+            shownPlaces={external.rows.length}
+            placesFailed={external.error}
+            onRetryPlaces={external.retry}
+            action={routeThroughButton}
+            t={t}
+          />
+          <MapResults
+            items={mapped}
+            unmapped={unmapped}
+            places={external.rows}
+            renderPlace={(row, prefix) => (
+              <ExternalRow
+                key={prefix + row.subjectId}
+                row={row}
+                selected={row.subjectId === business?.subjectId}
+                events={result.events[row.canonicalKey]}
+                t={t}
+                locale={locale}
+                timeZone={city.timezone}
+                onSelect={(place) =>
+                  selectBusiness({
+                    key: place.canonicalKey,
+                    placeId: place.providerPlaceId,
+                    name: place.name,
+                    subjectId: place.subjectId,
+                    location: place.location,
+                    temporary: false,
+                  })
+                }
+              />
+            )}
+            t={t}
+            locale={locale}
+            selectedKey={selectedKey}
+            onSelect={select}
+            limit={limit}
+            onMore={() => setLimit((n) => n + 20)}
+            onHover={setListHoverKey}
+            events={result.events}
+            timeZone={city.timezone}
+            layers={panelLayers}
+          />
+        </>
       )}
     </>
   );
-  const footer = (
-    <div className="map-footer">
-      {hasDemo && (
-        <details className="map-demo">
-          <summary>{t.demoNotice}</summary>
-          <p>{t.demo}</p>
-        </details>
-      )}
-      <details className="map-about">
-        <summary>
-          <Info size={14} aria-hidden="true" /> {t.aboutHelp}
-        </summary>
-        <p>{t.footer}</p>
-        <p>
-          <small>{t.footerSmall}</small>
-        </p>
-        <p>
-          <small>
-            {t.layerWord}: {t.layerHelp}
-          </small>
-        </p>
-        <p>
-          <small>{t.keyboardHint}</small>
-        </p>
-        <p>
-          <small>{t.attribution}</small>
-        </p>
-      </details>
-    </div>
-  );
+  const backToList = hasList ? t.backToResults : t.backToLayers;
+  /** Each screen's header and body; the shell around them never changes. */
+  const screen: {
+    title?: string;
+    count?: number;
+    back?: PanelBack;
+    body: ReactNode;
+  } = (() => {
+    switch (view) {
+      case "layer-screen":
+        return {
+          back: { label: t.mapEntry, href: "/" },
+          body: (
+            <div
+              className="panel-body layer-workspace-screen"
+              key={layerScreenKey}
+            >
+              {layerScreen}
+            </div>
+          ),
+        };
+      case "route":
+        return {
+          title: t.routeTitle,
+          back: { label: t.close, onClick: () => setRouteOpen(false) },
+          body: (
+            <div className="panel-body">
+              <RoutePlanner
+                stops={routeStops}
+                mode={travelMode}
+                notice={routeNotice}
+                t={t}
+                onMode={setTravelMode}
+                onChange={setRouteStops}
+                onDone={() => setRouteOpen(false)}
+              />
+            </div>
+          ),
+        };
+      case "detail":
+        return {
+          back: {
+            label: backToList,
+            onClick: business ? closeBusiness : closeDetail,
+          },
+          body: (
+            <>
+              {routeAction}
+              {businessPanel ?? preview}
+              <AttachedEvents
+                events={selectedEvents}
+                locale={locale}
+                timeZone={city.timezone}
+                t={t}
+              />
+              {attachments}
+            </>
+          ),
+        };
+      case "layers":
+        return {
+          title: t.yourLayers,
+          count: slotsUsed,
+          back: hasList
+            ? { label: t.backToResults, onClick: () => setTab("results") }
+            : undefined,
+          body: (
+            <div className="panel-body">
+              {!hasList && emptyState}
+              {layersPanel}
+            </div>
+          ),
+        };
+      case "results":
+        return {
+          title: t.resultsTab,
+          body: <div className="panel-body">{resultsPanel}</div>,
+        };
+    }
+  })();
   return (
     <LayerWorkspaceContext.Provider
       value={{
@@ -1662,7 +1578,7 @@ export function MapWorkspace({
               <button
                 type="button"
                 className="map-float-button"
-                aria-expanded={visible && !detailInPanel && tab === "layers"}
+                aria-expanded={visible && view === "layers"}
                 aria-controls="map-panel"
                 onClick={showLayers}
               >
@@ -1926,10 +1842,6 @@ export function MapWorkspace({
           aria-label={t.mapNav}
           tabIndex={-1}
           hidden={!visible}
-          onScroll={(event) => {
-            if (!detailInPanel)
-              savedScroll.current = event.currentTarget.scrollTop;
-          }}
           onKeyDown={(event) => {
             // Escape closes the panel unless a field or open menu owns the key.
             if (event.key !== "Escape" || event.defaultPrevented) return;
@@ -1941,111 +1853,40 @@ export function MapWorkspace({
             togglePanel(false);
           }}
         >
-          <div id="map-sidebar-content" className="map-sidebar-content">
-            <div className="sheet-handle">
-              <span className="sheet-buttons">
-                <button
-                  type="button"
-                  className="icon-button"
-                  aria-label={t.shrinkPanel}
-                  disabled={sheet === "half"}
-                  onClick={() => setSheet("half")}
-                >
-                  <ChevronDown size={18} aria-hidden="true" />
-                </button>
-                <button
-                  type="button"
-                  className="icon-button"
-                  aria-label={t.expand}
-                  disabled={sheet === "expanded"}
-                  onClick={() => setSheet("expanded")}
-                >
-                  <ChevronUp size={18} aria-hidden="true" />
-                </button>
-              </span>
-              {!listView && !fallback && (
-                <button
-                  type="button"
-                  className="icon-button"
-                  aria-label={t.hideList}
-                  title={t.hideList}
-                  onClick={() => togglePanel(false)}
-                >
-                  <X size={18} aria-hidden="true" />
-                </button>
-              )}
-            </div>
-            {layerPanel ? (
-              <div
-                className="panel-body layer-workspace-screen"
-                key={layerScreenKey}
-              >
-                <Link className="text-button" href="/">
-                  {t.mapEntry}
-                </Link>
-                {layerScreen}
-                {loadError && (
-                  <p className="message error-message" role="alert">
-                    {loadError}
-                  </p>
-                )}
-              </div>
-            ) : routeInPanel ? (
-              <div className="panel-body">
-                <RoutePlanner
-                  stops={routeStops}
-                  mode={travelMode}
-                  notice={routeNotice}
-                  t={t}
-                  onMode={setTravelMode}
-                  onChange={setRouteStops}
-                  onDone={() => setRouteOpen(false)}
-                />
-              </div>
-            ) : detailInPanel ? (
-              <>
-                {routeAction}
-                {attachedEvents}
-                {attachments}
-                {businessPanel ?? preview}
-              </>
-            ) : !showResults ? (
-              <div className="panel-body">
-                {!hasApplied && emptyState}
-                {layersPanel}
-              </div>
-            ) : tab === "layers" ? (
-              <div className="panel-body">
-                <button
-                  type="button"
-                  className="text-button"
-                  onClick={() => setTab("results")}
-                >
-                  {t.backToResults}
-                </button>
-                {layersPanel}
-              </div>
-            ) : (
-              <div className="panel-body">{resultsPanel}</div>
-            )}
-            {
-              // Google place pins come from these rows, so they stay mounted
-              // (hidden) whichever view the panel shows.
-              <div
-                className="panel-body mvp-places"
-                hidden={
-                  !!layerPanel ||
-                  routeInPanel ||
-                  detailInPanel ||
-                  !showResults ||
-                  tab !== "results"
-                }
-              >
-                {externalReferences}
-              </div>
+          <MapSidebar
+            title={screen.title}
+            count={screen.count}
+            back={screen.back}
+            sheet={sheet}
+            onSheet={setSheet}
+            onClose={
+              listView || fallback ? undefined : () => togglePanel(false)
             }
-            {footer}
-          </div>
+            announce={announce}
+            notice={
+              loadError && (
+                <p className="message error-message" role="alert">
+                  {loadError}{" "}
+                  <button
+                    type="button"
+                    className="text-button"
+                    onClick={() => setForce((n) => n + 1)}
+                  >
+                    {t.retry}
+                  </button>
+                </p>
+              )
+            }
+            footer={<SidebarFooter hasDemo={hasDemo} t={t} />}
+            scrollRef={scrollRef}
+            onScroll={(event) => {
+              if (view === "results" || view === "layers")
+                savedScroll.current = event.currentTarget.scrollTop;
+            }}
+            t={t}
+          >
+            {screen.body}
+          </MapSidebar>
         </div>
       </div>
     </LayerWorkspaceContext.Provider>

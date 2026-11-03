@@ -202,7 +202,10 @@ test("daily pick: saving from the card and the detail stay in agreement", async 
   await expect(
     detail.getByRole("button", { name: "Save", exact: true }),
   ).toBeVisible();
-  await detail.getByRole("button", { name: "Back to results" }).click();
+  await page
+    .locator("#map-panel")
+    .getByRole("button", { name: "Back to results" })
+    .click();
   await expect(
     card.getByRole("button", { name: "Save", exact: true }),
   ).toHaveAttribute("aria-pressed", "false");

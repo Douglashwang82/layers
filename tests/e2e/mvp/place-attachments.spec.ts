@@ -24,7 +24,7 @@ test("a member attaches an event and a tip to a place in the map view", async ({
 
   await page.goto(`/?layers=${slug}`);
   await openMapList(page);
-  const places = page.locator(".mvp-places .external-references li");
+  const places = page.locator(".external-row");
   await expect(places).toHaveCount(1);
   await places.first().getByRole("button", { name: "Open place page" }).click();
 

@@ -2,7 +2,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { Bookmark, Check, Plus, X } from "lucide-react";
+import { Bookmark, Check, Plus } from "lucide-react";
 import { StatusMessage } from "@/components/actions";
 import { type Copy, type Locale, format } from "@/lib/dictionary";
 import type { PlacesProvider, ProviderPlace } from "@/lib/places/provider";
@@ -86,7 +86,6 @@ export function BusinessPanel({
   flags,
   t,
   locale,
-  onClose,
   onLocation,
 }: {
   provider: PlacesProvider | null;
@@ -98,7 +97,6 @@ export function BusinessPanel({
   flags: PlaceFlags;
   t: Copy;
   locale: Locale;
-  onClose?: () => void;
   onLocation?: (place: ProviderPlace) => void;
 }) {
   const pathname = usePathname();
@@ -363,16 +361,6 @@ export function BusinessPanel({
       <div className="business-head">
         <h2>{name || t.routeGooglePlace}</h2>
         {temporary && <span className="eyebrow">{t.temporaryResult}</span>}
-        {onClose && (
-          <button
-            type="button"
-            className="icon-button"
-            aria-label={t.closeBusiness}
-            onClick={onClose}
-          >
-            <X size={18} aria-hidden="true" />
-          </button>
-        )}
       </div>
       <section className="provider-region">
         {provider && effectivePlaceId ? (

@@ -3,14 +3,12 @@ import { useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import {
-  ArrowLeft,
   Bookmark,
   Check,
   MapPin,
   Users,
   ExternalLink,
   Layers as LayersIcon,
-  X,
 } from "lucide-react";
 import type { MapItem } from "@/features/map/query";
 import type { ItemDetail } from "@/features/map/detail";
@@ -48,10 +46,8 @@ export function ItemPreview({
   locale,
   timeZone,
   citySlug,
-  onClose,
   onRefresh,
   layerWrites,
-  backLabel,
   provider = null,
 }: {
   item: MapItem;
@@ -63,10 +59,8 @@ export function ItemPreview({
   locale: Locale;
   timeZone: string;
   citySlug: string;
-  onClose: () => void;
   onRefresh: () => void;
   layerWrites: boolean;
-  backLabel: string;
   /** Renders a custom place's matched Google card, only when asked for. */
   provider?: PlacesProvider | null;
 }) {
@@ -132,19 +126,6 @@ export function ItemPreview({
   const rsvpBlocked = eventState !== "open" && !state.going;
   return (
     <article className="item-preview" aria-labelledby="preview-title">
-      <div className="preview-bar">
-        <button type="button" className="text-button" onClick={onClose}>
-          <ArrowLeft size={16} aria-hidden="true" /> {backLabel}
-        </button>
-        <button
-          type="button"
-          className="icon-button"
-          aria-label={t.close}
-          onClick={onClose}
-        >
-          <X size={18} aria-hidden="true" />
-        </button>
-      </div>
       {item.image && (
         <figure className="preview-image">
           <Image src={item.image} alt={name} fill sizes="400px" />

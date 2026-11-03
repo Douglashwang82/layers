@@ -73,3 +73,37 @@ export function mapPadding(input: {
   const room = Math.max(0, input.viewportHeight - top - 64);
   return { ...none, top, bottom: Math.round(Math.min(wanted, room)) };
 }
+
+/** The one screen the panel shows at a time. */
+export type PanelView =
+  "layer-screen" | "route" | "detail" | "layers" | "results";
+
+/** Whether the results list exists: no map to show it, or places without pins. */
+export function listAvailable(input: {
+  listView: boolean;
+  fallback: boolean;
+  unlocatedPlaces: number;
+}) {
+  return input.listView || input.fallback || input.unlocatedPlaces > 0;
+}
+
+/**
+ * Which screen the panel shows, highest priority first. Layer screens are URL
+ * state and win; the route planner opens over an open place and returns to it.
+ * Otherwise the panel is the Layers list unless there is a results list to show.
+ */
+export function resolvePanelView(input: {
+  layerScreen: boolean;
+  routeOpen: boolean;
+  detailOpen: boolean;
+  listView: boolean;
+  fallback: boolean;
+  unlocatedPlaces: number;
+  /** The Layers screen was asked for over the list. */
+  layersRequested: boolean;
+}): PanelView {
+  if (input.layerScreen) return "layer-screen";
+  if (input.routeOpen) return "route";
+  if (input.detailOpen) return "detail";
+  return listAvailable(input) && !input.layersRequested ? "results" : "layers";
+}

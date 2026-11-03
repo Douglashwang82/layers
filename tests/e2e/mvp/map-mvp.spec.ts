@@ -77,14 +77,14 @@ test("a member builds a layer from Google Maps links and attaches an event", asy
   await page.getByRole("button", { name: "Apply to map", exact: true }).click();
   await expect(page).toHaveURL(/layers=weekend-eats-/);
   await page
-    .locator(".layer-workspace-screen")
+    .locator("#map-panel")
     .getByRole("link", { name: "Open in Map", exact: true })
     .first()
     .click();
   // The map shows the layer's places, and there is still no search.
   await openMapList(page);
   await expect(page.getByRole("searchbox")).toHaveCount(0);
-  const places = page.locator(".mvp-places .external-references li");
+  const places = page.locator(".external-row");
   await expect(places).toHaveCount(2);
   await expect(places.first()).toContainText("Tiger Den");
   const backToResults = page.getByRole("button", { name: "Back to results" });
@@ -97,7 +97,7 @@ test("a member builds a layer from Google Maps links and attaches an event", asy
   await expect(page.locator(".business-panel .fake-provider")).toHaveCount(0);
   await page.getByRole("button", { name: "Load Google details" }).click();
   await expect(page.locator(".business-panel .fake-provider")).toHaveCount(1);
-  await page.getByRole("button", { name: "Close business details" }).click();
+  await page.getByRole("button", { name: "Back to results" }).click();
   // The header button shows the Layers panel with or without a map.
   await page.getByRole("button", { name: /^Layers \d/ }).click();
   await expect(
@@ -225,7 +225,7 @@ test("large layers page through local summaries without loading provider cards",
   });
   await page.goto(`/?layers=${slug}`);
   await openMapList(page);
-  const rows = page.locator(".external-references li.external-row");
+  const rows = page.locator(".external-row");
   await expect(rows).toHaveCount(65);
   expect(cursors).toContain(60);
   await rows.last().scrollIntoViewIfNeeded();
