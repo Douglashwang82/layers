@@ -137,6 +137,17 @@ import {
 } from "@/features/place-subjects/router";
 import { handleRestaurantAdminRoute } from "@/features/restaurant-admin/router";
 import {
+  createTrip,
+  deleteTrip,
+  getTripView,
+  listTrips,
+  optimizeTrip,
+  patchTripDay,
+  patchTripStop,
+  previewTrip,
+  removeUnavailableStops,
+} from "@/features/trips/service";
+import {
   getVisibleCustomPlace,
   listScopePlaces,
 } from "@/features/custom-places/repository";
@@ -244,6 +255,11 @@ async function handler(
     if (method === "GET" && resource === "admin" && id === "daily-picks") {
       const { city } = await getActiveCity(query.city);
       return ok(await listAdminDailyPicks(actor, city.slug));
+    }
+    if (method === "GET" && resource === "trips") {
+      if (id && !action) return ok(await getTripView(id, actor));
+      if (!id) return ok(await listTrips(actor));
+      throw new AppError(404, "NOT_FOUND", "Endpoint not found.");
     }
     if (method === "GET" && resource === "custom-places" && id && !action) {
       if (!flags.layerCustomPlaces)
@@ -619,6 +635,35 @@ async function handler(
         return ok(await acceptInvite(a, id));
       if (resource === "map" && id === "preference" && method === "POST")
         return ok(await setMapPreference(a.id, mapPreferenceInput.parse(body)));
+      if (resource === "trips") {
+        if (id === "preview" && !action && method === "POST")
+          return ok(await previewTrip(a, body));
+        if (!id && method === "POST") return ok(await createTrip(a, body), 201);
+        if (id && !action && method === "DELETE")
+          return ok(await deleteTrip(a, z.uuid().parse(id)));
+        if (id && action === "stops" && path[3] && method === "PATCH")
+          return ok(
+            await patchTripStop(
+              a,
+              z.uuid().parse(id),
+              z.uuid().parse(path[3]),
+              body,
+            ),
+          );
+        if (id && action === "days" && path[3] && method === "PATCH")
+          return ok(
+            await patchTripDay(
+              a,
+              z.uuid().parse(id),
+              z.uuid().parse(path[3]),
+              body,
+            ),
+          );
+        if (id && action === "optimize" && method === "POST")
+          return ok(await optimizeTrip(a, z.uuid().parse(id), body));
+        if (id && action === "remove-unavailable" && method === "POST")
+          return ok(await removeUnavailableStops(a, z.uuid().parse(id), body));
+      }
       if (resource === "layer-collections") {
         if (!id && method === "POST")
           return ok(await createCollection(a, body), 201);

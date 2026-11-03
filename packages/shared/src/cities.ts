@@ -53,3 +53,14 @@ export function localizedCityName(
 ) {
   return (locale === "zh-TW" && cityNameChinese(city.slug)) || city.name;
 }
+/** Display unit for straight-line trip distances: miles in the US, else km. */
+export function distanceUnit(citySlug: string): "mi" | "km" {
+  return launchCities.find((c) => c.slug === citySlug)?.country === "USA"
+    ? "mi"
+    : "km";
+}
+/** "0.8 km" / "12 mi": one decimal below 10, whole numbers above. */
+export function formatDistance(meters: number, unit: "mi" | "km") {
+  const value = unit === "mi" ? meters / 1609.344 : meters / 1000;
+  return `${value < 10 ? value.toFixed(1) : Math.round(value)} ${unit}`;
+}

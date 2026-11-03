@@ -2274,3 +2274,124 @@ export const messagingReceipt = pgTable(
     index("messaging_receipt_user_idx").on(t.userId, t.receivedAt),
   ],
 );
+/* ---------------------------------------------------------------------------
+   Trips: a multi-day plan over layer items, ordered per day by a straight-line
+   heuristic. Stores only item references and order — never coordinates,
+   names or distances, which are derived per viewer on read.
+   See docs/plans/trip-scheduler-design.md.
+   --------------------------------------------------------------------------- */
+export const trip = pgTable(
+  "trip",
+  {
+    id: id(),
+    title: text("title").notNull(),
+    cityId: uuid("city_id")
+      .notNull()
+      .references(() => city.id),
+    ownerUserId: uuid("owner_user_id").references(() => user.id, {
+      onDelete: "cascade",
+    }),
+    ownerGroupId: uuid("owner_group_id").references(() => group.id, {
+      onDelete: "cascade",
+    }),
+    audience: text("audience", { enum: ["private", "group"] }).notNull(),
+    startsOn: date("starts_on").notNull(),
+    endsOn: date("ends_on").notNull(),
+    stopsPerDay: smallint("stops_per_day").default(6).notNull(),
+    optimizerVersion: smallint("optimizer_version").default(1).notNull(),
+    revision: integer("revision").default(1).notNull(),
+    status: text("status", { enum: ["active", "deleted"] })
+      .default("active")
+      .notNull(),
+    deletedAt: timestamp("deleted_at", { withTimezone: true }),
+    createdBy: uuid("created_by").references(() => user.id, {
+      onDelete: "set null",
+    }),
+    updatedBy: uuid("updated_by").references(() => user.id, {
+      onDelete: "set null",
+    }),
+    ...timestamps(),
+  },
+  (t) => [
+    index("trip_owner_user_idx")
+      .on(t.ownerUserId)
+      .where(sql`${t.status} = 'active'`),
+    index("trip_owner_group_idx")
+      .on(t.ownerGroupId)
+      .where(sql`${t.status} = 'active'`),
+    check(
+      "trip_owner_check",
+      sql`(${t.audience} = 'private' AND ${t.ownerUserId} IS NOT NULL AND ${t.ownerGroupId} IS NULL) OR (${t.audience} = 'group' AND ${t.ownerGroupId} IS NOT NULL AND ${t.ownerUserId} IS NULL)`,
+    ),
+    check(
+      "trip_dates_check",
+      sql`${t.startsOn} <= ${t.endsOn} AND ${t.endsOn} - ${t.startsOn} < 14`,
+    ),
+    check("trip_stops_per_day_check", sql`${t.stopsPerDay} BETWEEN 2 AND 12`),
+    check("trip_status_check", sql`${t.status} IN ('active', 'deleted')`),
+    check("trip_title_check", sql`length(${t.title}) BETWEEN 1 AND 120`),
+  ],
+);
+export const tripDay = pgTable(
+  "trip_day",
+  {
+    id: id(),
+    tripId: uuid("trip_id")
+      .notNull()
+      .references(() => trip.id, { onDelete: "cascade" }),
+    onDate: date("on_date").notNull(),
+    orderMode: text("order_mode", { enum: ["auto", "manual"] })
+      .default("auto")
+      .notNull(),
+    ...timestamps(),
+  },
+  (t) => [
+    uniqueIndex("trip_day_date_unique").on(t.tripId, t.onDate),
+    check(
+      "trip_day_order_mode_check",
+      sql`${t.orderMode} IN ('auto', 'manual')`,
+    ),
+  ],
+);
+export const tripStop = pgTable(
+  "trip_stop",
+  {
+    id: id(),
+    tripId: uuid("trip_id")
+      .notNull()
+      .references(() => trip.id, { onDelete: "cascade" }),
+    /** Null once the source item is deleted; the stop then drops out of the route. */
+    layerItemId: uuid("layer_item_id").references(() => layerItem.id, {
+      onDelete: "set null",
+    }),
+    /** Null = not scheduled (see unscheduledReason). Kept on removal for Undo. */
+    dayId: uuid("day_id").references(() => tripDay.id, {
+      onDelete: "set null",
+    }),
+    position: integer("position").default(0).notNull(),
+    /** The user put this stop on its day; re-planning keeps it there. */
+    pinned: boolean("pinned").default(false).notNull(),
+    unscheduledReason: text("unscheduled_reason", {
+      enum: ["overflow", "no_location", "day_removed", "user"],
+    }),
+    status: text("status", { enum: ["active", "removed"] })
+      .default("active")
+      .notNull(),
+    addedBy: uuid("added_by").references(() => user.id, {
+      onDelete: "set null",
+    }),
+    ...timestamps(),
+  },
+  (t) => [
+    uniqueIndex("trip_stop_item_unique")
+      .on(t.tripId, t.layerItemId)
+      .where(sql`${t.status} = 'active' AND ${t.layerItemId} IS NOT NULL`),
+    index("trip_stop_day_idx").on(t.tripId, t.dayId, t.position),
+    index("trip_stop_item_idx").on(t.layerItemId),
+    check("trip_stop_status_check", sql`${t.status} IN ('active', 'removed')`),
+    check(
+      "trip_stop_reason_check",
+      sql`${t.unscheduledReason} IS NULL OR ${t.unscheduledReason} IN ('overflow', 'no_location', 'day_removed', 'user')`,
+    ),
+  ],
+);

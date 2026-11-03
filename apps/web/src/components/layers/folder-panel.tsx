@@ -42,10 +42,13 @@ export function FolderPanel({
   slug,
   t,
   locale,
+  planTripLabel,
 }: {
   slug: string | undefined;
   t: Copy;
   locale: Locale;
+  /** Set when trips are enabled and the viewer is signed in. */
+  planTripLabel?: string;
 }) {
   const router = useRouter();
   const workspace = useContext(LayerWorkspaceContext);
@@ -247,6 +250,14 @@ export function FolderPanel({
         >
           {t.folderShowOnMapButton}
         </button>
+        {planTripLabel && folder.children.length > 0 && (
+          <a
+            className="button secondary"
+            href={`/trips/new?folder=${encodeURIComponent(folder.id)}`}
+          >
+            {planTripLabel}
+          </a>
+        )}
       </div>
 
       {edit && (

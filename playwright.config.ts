@@ -59,6 +59,7 @@ export default defineConfig({
       FEATURE_PLACE_REVIEW_WRITES: "true",
       FEATURE_EXTERNAL_PLACE_COLLECTIONS: "true",
       FEATURE_LAYER_CUSTOM_PLACES: "true",
+      FEATURE_TRIPS: "true",
       NEXT_PUBLIC_GOOGLE_PLACES_UI_KIT_KEY: "fake",
       // Google links resolve through the deterministic fake resolver.
       GOOGLE_MAPS_LINK_API_KEY: "fake",

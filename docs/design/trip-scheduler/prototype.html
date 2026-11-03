@@ -1,0 +1,1017 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Trip Scheduler prototype (LocalLink design mock)</title>
+    <!--
+  Design mock for docs/plans/trip-scheduler-design.md. Self-contained, no network.
+  Places are fictional samples on a fictional grid; nothing here is real data.
+  The planner below is a simplified sketch of section 5 (capacitated clustering,
+  nearest-neighbor + 2-opt), not production code.
+-->
+    <style>
+      :root {
+        --canvas: #f7fcf8;
+        --surface: #ffffff;
+        --soft: #eff8f1;
+        --text: #14261f;
+        --muted: #53665c;
+        --primary: #c7f464;
+        --brand: #006a51;
+        --divider: #dde9e0;
+        --border: #7b8f83;
+        --focus: #2855d9;
+        --warn-fg: #805600;
+        --warn-bg: #fff5d6;
+        --err-fg: #b4233a;
+        --err-bg: #fff0f2;
+        font-family:
+          system-ui,
+          -apple-system,
+          BlinkMacSystemFont,
+          "Segoe UI",
+          "PingFang TC",
+          "Microsoft JhengHei",
+          sans-serif;
+        color: var(--text);
+        background: var(--canvas);
+      }
+      * {
+        box-sizing: border-box;
+      }
+      body {
+        margin: 0;
+      }
+      button {
+        font: inherit;
+        cursor: pointer;
+      }
+      :focus-visible {
+        outline: 3px solid var(--focus);
+        outline-offset: 2px;
+      }
+      .proto-bar {
+        display: flex;
+        gap: 8px;
+        flex-wrap: wrap;
+        align-items: center;
+        padding: 8px 12px;
+        background: var(--surface);
+        border-bottom: 1px solid var(--divider);
+        font-size: 13px;
+      }
+      .proto-bar strong {
+        margin-right: auto;
+      }
+      .demo-tag {
+        background: var(--warn-bg);
+        color: var(--warn-fg);
+        border-radius: 999px;
+        padding: 2px 10px;
+        font-size: 12px;
+      }
+      .app {
+        position: relative;
+        height: calc(100vh - 46px);
+        min-height: 560px;
+      }
+      #map {
+        position: absolute;
+        inset: 0;
+        background: #edebe6;
+      }
+      #map svg {
+        width: 100%;
+        height: 100%;
+        display: block;
+      }
+      .legend {
+        position: absolute;
+        top: 12px;
+        right: 12px;
+        background: rgba(255, 255, 255, 0.95);
+        border-radius: 12px;
+        padding: 6px 10px;
+        font-size: 12px;
+        color: var(--muted);
+        max-width: 240px;
+        box-shadow: 0 2px 8px rgba(20, 38, 31, 0.12);
+      }
+      .fallback {
+        position: absolute;
+        inset: 0;
+        display: none;
+        align-items: flex-start;
+        justify-content: center;
+        padding: 16px;
+        background: var(--canvas);
+        color: var(--muted);
+        font-size: 14px;
+      }
+      .nomap #map {
+        display: none;
+      }
+      .nomap .fallback {
+        display: flex;
+      }
+      .nomap .panel {
+        position: static;
+        max-height: none;
+        width: 100%;
+        border-radius: 0;
+        margin-top: 56px;
+      }
+      .panel {
+        position: absolute;
+        left: 0;
+        right: 0;
+        bottom: 0;
+        max-height: 62%;
+        overflow: auto;
+        background: var(--surface);
+        border-radius: 20px 20px 0 0;
+        box-shadow: 0 -4px 20px rgba(20, 38, 31, 0.15);
+        padding: 8px 16px 16px;
+      }
+      .grab {
+        width: 40px;
+        height: 4px;
+        border-radius: 2px;
+        background: var(--divider);
+        margin: 4px auto 8px;
+      }
+      @media (min-width: 1100px) {
+        .panel {
+          top: 12px;
+          left: 12px;
+          bottom: 12px;
+          right: auto;
+          width: 400px;
+          max-height: none;
+          border-radius: 20px;
+        }
+        .grab {
+          display: none;
+        }
+      }
+      h1 {
+        font-size: 20px;
+        margin: 4px 0 2px;
+      }
+      h2 {
+        font-size: 15px;
+        margin: 16px 0 6px;
+      }
+      .sub {
+        color: var(--muted);
+        font-size: 13px;
+        margin: 0 0 8px;
+      }
+      .chips {
+        display: flex;
+        gap: 6px;
+        overflow-x: auto;
+        padding: 4px 0 8px;
+      }
+      .chip {
+        flex: none;
+        border: 1px solid var(--border);
+        background: var(--surface);
+        color: var(--text);
+        border-radius: 999px;
+        padding: 6px 12px;
+        min-height: 36px;
+        display: flex;
+        gap: 6px;
+        align-items: center;
+        font-size: 13px;
+      }
+      .chip[aria-selected="true"] {
+        background: var(--soft);
+        border-color: var(--brand);
+        font-weight: 600;
+      }
+      .dot {
+        width: 10px;
+        height: 10px;
+        border-radius: 50%;
+        display: inline-block;
+      }
+      .note {
+        font-size: 12px;
+        color: var(--muted);
+        margin: 4px 0;
+      }
+      .banner {
+        border-radius: 12px;
+        padding: 8px 12px;
+        font-size: 13px;
+        margin: 8px 0;
+      }
+      .banner.warn {
+        background: var(--warn-bg);
+        color: var(--warn-fg);
+      }
+      .banner.info {
+        background: var(--soft);
+        color: var(--text);
+      }
+      ol.stops {
+        list-style: none;
+        margin: 0;
+        padding: 0;
+      }
+      .stop {
+        display: grid;
+        grid-template-columns: 32px 1fr auto;
+        gap: 8px;
+        align-items: center;
+        padding: 8px 0;
+        border-bottom: 1px solid var(--divider);
+        min-height: 56px;
+      }
+      .num {
+        width: 28px;
+        height: 28px;
+        border-radius: 50%;
+        color: #fff;
+        display: grid;
+        place-items: center;
+        font-size: 13px;
+        font-weight: 700;
+      }
+      .num.base {
+        background: var(--text);
+      }
+      .name {
+        font-size: 14px;
+        font-weight: 600;
+      }
+      .meta {
+        font-size: 12px;
+        color: var(--muted);
+      }
+      .event {
+        font-size: 12px;
+        color: var(--warn-fg);
+      }
+      .actions {
+        display: flex;
+        gap: 2px;
+      }
+      .icon {
+        width: 44px;
+        height: 44px;
+        border: 0;
+        background: transparent;
+        border-radius: 10px;
+        color: var(--text);
+        font-size: 16px;
+      }
+      .icon:hover {
+        background: var(--soft);
+      }
+      .icon:disabled {
+        opacity: 0.35;
+        cursor: default;
+      }
+      .btn {
+        border: 0;
+        border-radius: 999px;
+        padding: 10px 16px;
+        min-height: 44px;
+        background: var(--primary);
+        color: var(--text);
+        font-weight: 600;
+      }
+      .btn.secondary {
+        background: var(--surface);
+        border: 1px solid var(--border);
+      }
+      .btn.text {
+        background: transparent;
+        color: var(--brand);
+        padding: 10px 4px;
+      }
+      .row {
+        display: flex;
+        gap: 8px;
+        flex-wrap: wrap;
+        align-items: center;
+        margin: 8px 0;
+      }
+      .pill {
+        font-size: 11px;
+        border-radius: 999px;
+        padding: 2px 8px;
+        background: var(--soft);
+        color: var(--brand);
+      }
+      .toast {
+        position: fixed;
+        left: 50%;
+        bottom: 20px;
+        transform: translateX(-50%);
+        background: var(--text);
+        color: #fff;
+        border-radius: 12px;
+        padding: 10px 14px;
+        font-size: 14px;
+        display: none;
+        gap: 12px;
+        align-items: center;
+        z-index: 9;
+      }
+      .toast button {
+        background: transparent;
+        color: var(--primary);
+        border: 0;
+        font-weight: 700;
+        min-height: 36px;
+      }
+      .sr {
+        position: absolute;
+        width: 1px;
+        height: 1px;
+        overflow: hidden;
+        clip: rect(0 0 0 0);
+      }
+      @media (prefers-reduced-motion: no-preference) {
+        .chip,
+        .icon,
+        .btn {
+          transition: background 120ms;
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <div class="proto-bar">
+      <strong>Trip Scheduler, design mock</strong>
+      <span class="demo-tag" data-k="sample">Sample places, not real data</span>
+      <button class="btn secondary" id="lang" type="button">中文</button>
+      <button
+        class="btn secondary"
+        id="maptoggle"
+        type="button"
+        aria-pressed="false"
+        data-k="noMapToggle"
+      >
+        Simulate no map token
+      </button>
+    </div>
+    <div class="app" id="app">
+      <div id="map" aria-hidden="true">
+        <svg
+          id="svg"
+          viewBox="0 0 1000 700"
+          preserveAspectRatio="xMidYMid slice"
+        ></svg>
+        <div class="legend" data-k="legend">
+          Straight lines show visiting order, not roads.
+        </div>
+      </div>
+      <div class="fallback" data-k="fallback">
+        Map unavailable. Your trip still works as a list.
+      </div>
+      <section class="panel" aria-labelledby="trip-title">
+        <div class="grab"></div>
+        <h1 id="trip-title" data-k="title">Taipei eats trip</h1>
+        <p class="sub" id="dates"></p>
+        <div class="chips" role="tablist" id="chips" aria-label="Days"></div>
+        <div id="body"></div>
+      </section>
+    </div>
+    <div class="toast" id="toast" role="status">
+      <span id="toastText"></span
+      ><button type="button" id="undo" data-k="undo">Undo</button>
+    </div>
+    <div class="sr" aria-live="polite" id="live"></div>
+    <script>
+      const COPY = {
+        en: {
+          sample: "Sample places, not real data",
+          noMapToggle: "Simulate no map token",
+          legend: "Straight lines show visiting order, not roads.",
+          fallback: "Map unavailable. Your trip still works as a list.",
+          title: "Taipei eats trip",
+          undo: "Undo",
+          dates:
+            "Fri 3/6 – Sun 3/8 · Days follow Taipei time · 6 places per day",
+          allDays: "All days",
+          day: "Day {n}",
+          from: "From: {name}",
+          back: "Back to: {name}",
+          leg: "about {d} straight-line",
+          total: "Day total about {d} straight-line",
+          estimate:
+            "Distances are straight-line estimates. Use Google Maps for directions and travel times.",
+          open: "Open Day {n} in Google Maps",
+          reorder: "Re-order this day",
+          replan: "Re-plan all days",
+          notScheduled: "Not scheduled",
+          overflow: "{c} places didn't fit in 3 days at 6 per day.",
+          noLoc: "No map location",
+          removedList: "Removed from this trip",
+          addBack: "Add back",
+          remove: "Remove {name} from trip",
+          up: "Move {name} earlier",
+          down: "Move {name} later",
+          moveDay: "Move {name} to another day",
+          removed: "Removed. Day {n} re-ordered.",
+          replanned: "Re-planned. {m} places changed days.",
+          yourOrder: "Your order",
+          auto: "Let LocalLink order this day",
+          single: "Add another place to see a route.",
+          empty: "This trip has no places. Add places from your layers.",
+          free: "Free day — nothing planned.",
+          event: "For {e} at {t}",
+          eventNote:
+            "Timed events are put in order; the plan doesn't check travel time between them.",
+          pinned: "Kept on Day {n}",
+          hotel: "Hotel (sample)",
+          moved: "Moved to Day {n}.",
+          announce: "Day {n}: {c} stops, about {d}.",
+        },
+        zh: {
+          sample: "範例地點，非真實資料",
+          noMapToggle: "模擬沒有地圖金鑰",
+          legend: "直線僅表示造訪順序，並非實際道路。",
+          fallback: "地圖暫時無法使用，行程仍可用清單檢視。",
+          title: "台北美食行程",
+          undo: "復原",
+          dates: "3/6（五）– 3/8（日）· 日期以台北時間為準 · 每天 6 個地點",
+          allDays: "全部天數",
+          day: "第 {n} 天",
+          from: "出發：{name}",
+          back: "回到：{name}",
+          leg: "直線距離約 {d}",
+          total: "本日直線總距離約 {d}",
+          estimate: "距離為直線估算，路線與交通時間請以 Google 地圖為準。",
+          open: "在 Google 地圖開啟第 {n} 天",
+          reorder: "重新排序這一天",
+          replan: "重新規劃所有天數",
+          notScheduled: "未排入",
+          overflow: "{c} 個地點無法在 3 天內排入（每天 6 個）。",
+          noLoc: "無地圖位置",
+          removedList: "已從此行程移除",
+          addBack: "加回",
+          remove: "將 {name} 從行程移除",
+          up: "將 {name} 往前移",
+          down: "將 {name} 往後移",
+          moveDay: "將 {name} 移到其他天",
+          removed: "已移除，第 {n} 天已重新排序。",
+          replanned: "已重新規劃，{m} 個地點換了日期。",
+          yourOrder: "自訂順序",
+          auto: "讓 LocalLink 排序這一天",
+          single: "再加一個地點即可看到路線。",
+          empty: "此行程還沒有地點，從你的圖層加入地點吧。",
+          free: "自由日，尚未安排。",
+          event: "配合 {e}（{t}）",
+          eventNote: "有時間的活動會依序排列，但不會檢查之間的交通時間。",
+          pinned: "已固定在第 {n} 天",
+          hotel: "住宿（範例）",
+          moved: "已移到第 {n} 天。",
+          announce: "第 {n} 天：{c} 站，約 {d}。",
+        },
+      };
+      let lang = "en";
+      const t = (k, v = {}) =>
+        COPY[lang][k].replace(/\{(\w+)\}/g, (_, x) => v[x] ?? "");
+      const COLORS = [
+        "#006A51",
+        "#3B4FC4",
+        "#A3480F",
+        "#7A3E9D",
+        "#805600",
+        "#0E6E8C",
+        "#14261F",
+      ];
+      // Fictional grid coordinates (x, y in "meters / 10"). Not real places.
+      const BASE = { id: "base", x: 500, y: 380 };
+      const PLACES = [
+        ["a01", "Sample Noodle Bar", "範例麵店", 220, 180],
+        ["a02", "Sample Tea House", "範例茶館", 260, 230],
+        ["a03", "Sample Night Market", "範例夜市", 190, 260],
+        ["a04", "Sample Dumplings", "範例水餃", 300, 160],
+        ["a05", "Sample Bakery", "範例麵包店", 240, 310],
+        ["a06", "Sample Shaved Ice", "範例剉冰", 160, 200],
+        ["a07", "Sample Hot Pot", "範例火鍋", 720, 170],
+        ["a08", "Sample Coffee", "範例咖啡", 780, 220],
+        ["a09", "Sample Temple Snacks", "範例廟口小吃", 690, 260],
+        ["a10", "Sample Bookshop Cafe", "範例書店咖啡", 820, 140],
+        ["a11", "Sample Rice Bowl", "範例滷肉飯", 760, 300],
+        ["a12", "Sample Soy Milk", "範例豆漿", 850, 250],
+        ["a13", "Sample Beef Noodles", "範例牛肉麵", 460, 560],
+        ["a14", "Sample Oyster Omelet", "範例蚵仔煎", 540, 600],
+        ["a15", "Sample Bubble Tea", "範例珍奶", 600, 540],
+        ["a16", "Sample Market Stall", "範例市場攤", 420, 620],
+        ["a17", "Sample Pineapple Cake", "範例鳳梨酥", 520, 500],
+        ["a18", "Sample Herbal Soup", "範例藥燉湯", 640, 620],
+        ["a19", "Sample Far Viewpoint", "範例遠方觀景", 960, 660],
+        ["a20", "Sample Riverside Stand", "範例河濱攤", 60, 640],
+        ["a21", "Sample Pop-up (no pin)", "範例快閃店（無位置）", null, null],
+      ].map(([id, en, zh, x, y]) => ({ id, en, zh, x, y }));
+      const EVENT = {
+        stop: "a15",
+        day: 2,
+        en: "Sample street concert",
+        zh: "範例街頭音樂會",
+        time: "7:00 PM",
+      };
+      const PER_DAY = 6,
+        DAYS = 3;
+      const dist = (a, b) => Math.hypot(a.x - b.x, a.y - b.y) * 10; // meters on the fictional grid
+      const fmt = (m) =>
+        (m / 1000).toFixed(1) + (lang === "en" ? " km" : " 公里");
+      const byId = (id) => PLACES.find((p) => p.id === id);
+      const nameOf = (p) => p[lang];
+      // --- Simplified planner sketch (section 5) ---
+      function orderDay(ids) {
+        if (ids.length < 2) return ids.slice();
+        const pts = ids.map(byId);
+        let path = [],
+          rest = pts.slice().sort((a, b) => (a.id < b.id ? -1 : 1)),
+          here = BASE;
+        while (rest.length) {
+          let k = 0;
+          rest.forEach((p, i) => {
+            if (dist(here, p) < dist(here, rest[k]) - 1) k = i;
+          });
+          here = rest[k];
+          path.push(rest.splice(k, 1)[0]);
+        }
+        const len = (p) =>
+          [BASE, ...p, BASE].reduce(
+            (s, q, i, a) => (i ? s + dist(a[i - 1], q) : 0),
+            0,
+          );
+        // Event-order rule (5.4): with one timed event per day in this mock, every order keeps events chronological.
+        const ok = () => true;
+        for (let pass = 0, better = true; better && pass < 100; pass++) {
+          better = false;
+          for (let i = 0; i < path.length - 1; i++)
+            for (let j = i + 1; j < path.length; j++) {
+              const c = [
+                ...path.slice(0, i),
+                ...path.slice(i, j + 1).reverse(),
+                ...path.slice(j + 1),
+              ];
+              if (ok(c) && len(c) < len(path) - 1) {
+                path = c;
+                better = true;
+              }
+            }
+        }
+        return path.map((p) => p.id);
+      }
+      function planAll(state) {
+        // Fixed = manual days, pinned stops, and the event-anchored stop on its event's day (unless the user pinned it elsewhere).
+        const fixed = state.days.map((d, i) =>
+          d.manual
+            ? d.stops.slice()
+            : d.stops.filter((id) => state.pinned.has(id)),
+        );
+        const anchored =
+          state.active.includes(EVENT.stop) &&
+          !state.pinned.has(EVENT.stop) &&
+          !fixed.flat().includes(EVENT.stop);
+        if (anchored && !state.days[EVENT.day - 1].manual)
+          fixed[EVENT.day - 1].push(EVENT.stop);
+        const fixedSet = new Set(fixed.flat());
+        const free = state.active
+          .filter((id) => !fixedSet.has(id) && byId(id).x !== null)
+          .sort();
+        const cap = state.days.map((d, i) =>
+          d.manual ? 0 : Math.max(0, PER_DAY - fixed[i].length),
+        );
+        // seeds: fixed centroid or farthest-point
+        const cen = (ids) => ({
+          x: ids.reduce((s, id) => s + byId(id).x, 0) / ids.length,
+          y: ids.reduce((s, id) => s + byId(id).y, 0) / ids.length,
+        });
+        let seeds = state.days.map((d, i) =>
+          fixed[i].length && cap[i] ? cen(fixed[i]) : null,
+        );
+        const all = free.length ? cen(free) : BASE;
+        seeds.forEach((s, i) => {
+          if (s || !cap[i] || !free.length) return;
+          const others = seeds.filter(Boolean);
+          const far = free.map(byId).reduce(
+            (b, p) => {
+              const score = others.length
+                ? Math.min(...others.map((o) => dist(o, p)))
+                : dist(all, p);
+              return score > b.s ? { p, s: score } : b;
+            },
+            { p: null, s: -1 },
+          );
+          seeds[i] = far.p ? { x: far.p.x, y: far.p.y } : null;
+        });
+        let assign = {};
+        for (let it = 0; it < 10; it++) {
+          const left = cap.slice(),
+            next = {};
+          const regret = (id) => {
+            const d = seeds
+              .map((s, i) => (s && cap[i] ? dist(s, byId(id)) : Infinity))
+              .sort((a, b) => a - b);
+            return (d[1] ?? 0) - d[0];
+          };
+          free
+            .slice()
+            .sort((a, b) => regret(b) - regret(a) || (a < b ? -1 : 1))
+            .forEach((id) => {
+              let best = -1;
+              seeds.forEach((s, i) => {
+                if (
+                  s &&
+                  left[i] > 0 &&
+                  (best < 0 ||
+                    dist(s, byId(id)) < dist(seeds[best], byId(id)) - 1)
+                )
+                  best = i;
+              });
+              if (best >= 0) {
+                next[id] = best;
+                left[best]--;
+              }
+            });
+          const stable = JSON.stringify(next) === JSON.stringify(assign);
+          assign = next;
+          seeds = seeds.map((s, i) => {
+            const ids = [...fixed[i], ...free.filter((id) => assign[id] === i)];
+            return s && ids.length ? cen(ids) : s;
+          });
+          if (stable) break;
+        }
+        const days = state.days.map((d, i) => ({
+          manual: d.manual,
+          stops: d.manual
+            ? fixed[i]
+            : orderDay([...fixed[i], ...free.filter((id) => assign[id] === i)]),
+        }));
+        const placed = new Set(days.flatMap((d) => d.stops));
+        const unscheduled = state.active
+          .filter((id) => !placed.has(id))
+          .map((id) => ({
+            id,
+            reason: byId(id).x === null ? "noLoc" : "overflow",
+          }));
+        return { ...state, days, unscheduled };
+      }
+      // --- State ---
+      let state = planAll({
+        active: PLACES.map((p) => p.id),
+        pinned: new Set(),
+        removed: [],
+        days: Array.from({ length: DAYS }, () => ({
+          manual: false,
+          stops: [],
+        })),
+        unscheduled: [],
+      });
+      let focus = 0,
+        undoState = null,
+        nomap = false;
+      const clone = (s) => ({
+        ...s,
+        pinned: new Set(s.pinned),
+        removed: s.removed.slice(),
+        days: s.days.map((d) => ({ ...d, stops: d.stops.slice() })),
+        unscheduled: s.unscheduled.slice(),
+      });
+      function commit(next, msg) {
+        undoState = clone(state);
+        state = next;
+        render();
+        toast(msg);
+      }
+      function remove(id) {
+        const di = state.days.findIndex((d) => d.stops.includes(id));
+        const n = clone(state);
+        n.active = n.active.filter((x) => x !== id);
+        n.removed.push(id);
+        n.unscheduled = n.unscheduled.filter((u) => u.id !== id);
+        if (di >= 0) {
+          const d = n.days[di];
+          d.stops = d.stops.filter((x) => x !== id);
+          if (!d.manual) d.stops = orderDay(d.stops);
+        } // re-order that day only
+        commit(n, di >= 0 ? t("removed", { n: di + 1 }) : "");
+      }
+      function addBack(id) {
+        const n = clone(state);
+        n.removed = n.removed.filter((x) => x !== id);
+        n.active.push(id);
+        n.unscheduled.push({
+          id,
+          reason: byId(id).x === null ? "noLoc" : "overflow",
+        });
+        commit(n, "");
+      }
+      function move(id, delta) {
+        const n = clone(state);
+        const d = n.days[focus];
+        const i = d.stops.indexOf(id);
+        const j = i + delta;
+        if (j < 0 || j >= d.stops.length) return;
+        [d.stops[i], d.stops[j]] = [d.stops[j], d.stops[i]];
+        d.manual = true;
+        commit(n, "");
+      }
+      function moveDay(id) {
+        const n = clone(state);
+        const from = n.days.findIndex((d) => d.stops.includes(id));
+        const to = (from + 1) % DAYS;
+        n.days[from].stops = n.days[from].stops.filter((x) => x !== id);
+        n.days[to].stops.push(id);
+        n.pinned.add(id);
+        [from, to].forEach((k) => {
+          if (!n.days[k].manual) n.days[k].stops = orderDay(n.days[k].stops);
+        });
+        commit(n, t("moved", { n: to + 1 }));
+      }
+      function reorderDay() {
+        const n = clone(state);
+        n.days[focus].manual = false;
+        n.days[focus].stops = orderDay(n.days[focus].stops);
+        commit(n, "");
+      }
+      function replanAll() {
+        const before = new Map(
+          state.days.flatMap((d, i) => d.stops.map((id) => [id, i])),
+        );
+        const n = planAll(clone(state));
+        const moved = n.days.reduce(
+          (c, d, i) =>
+            c +
+            d.stops.filter((id) => before.has(id) && before.get(id) !== i)
+              .length,
+          0,
+        );
+        commit(n, t("replanned", { m: moved }));
+      }
+      function dayLen(ids) {
+        const pts = ids.map(byId).filter((p) => p.x !== null);
+        return pts.length
+          ? [BASE, ...pts, BASE].reduce(
+              (s, q, i, a) => (i ? s + dist(a[i - 1], q) : 0),
+              0,
+            )
+          : 0;
+      }
+      // --- Render ---
+      function toast(msg) {
+        const el = document.getElementById("toast");
+        if (!msg) {
+          el.style.display = "none";
+          return;
+        }
+        document.getElementById("toastText").textContent = msg;
+        el.style.display = "flex";
+        clearTimeout(toast.h);
+        toast.h = setTimeout(() => (el.style.display = "none"), 6000);
+      }
+      function render() {
+        document.documentElement.lang = lang === "en" ? "en" : "zh-Hant";
+        document.querySelectorAll("[data-k]").forEach((el) => {
+          if (COPY.en[el.dataset.k]) el.textContent = t(el.dataset.k);
+        });
+        document.getElementById("lang").textContent =
+          lang === "en" ? "中文" : "English";
+        document.getElementById("dates").textContent = t("dates");
+        const chips = document.getElementById("chips");
+        chips.innerHTML = "";
+        [-1, ...state.days.keys()].forEach((i) => {
+          const b = document.createElement("button");
+          b.type = "button";
+          b.className = "chip";
+          b.setAttribute("role", "tab");
+          b.setAttribute("aria-selected", String(focus === i));
+          b.innerHTML =
+            i < 0
+              ? t("allDays")
+              : `<span class="dot" style="background:${COLORS[i]}"></span>${t("day", { n: i + 1 })} · 3/${6 + i}`;
+          b.onclick = () => {
+            focus = i;
+            render();
+          };
+          chips.appendChild(b);
+        });
+        const body = document.getElementById("body");
+        body.innerHTML = "";
+        const over = state.unscheduled.filter(
+          (u) => u.reason === "overflow",
+        ).length;
+        if (over)
+          body.insertAdjacentHTML(
+            "beforeend",
+            `<div class="banner warn">${t("overflow", { c: over })}</div>`,
+          );
+        const showDays = focus < 0 ? [...state.days.keys()] : [focus];
+        if (!state.active.length)
+          body.insertAdjacentHTML(
+            "beforeend",
+            `<p class="note">${t("empty")}</p>`,
+          );
+        showDays.forEach((i) => body.appendChild(dayBlock(i)));
+        body.insertAdjacentHTML(
+          "beforeend",
+          `<p class="note">${t("estimate")}</p>`,
+        );
+        const row = document.createElement("div");
+        row.className = "row";
+        if (focus >= 0)
+          row.appendChild(btn(t("reorder"), "btn secondary", reorderDay));
+        row.appendChild(btn(t("replan"), "btn secondary", replanAll));
+        body.appendChild(row);
+        if (state.unscheduled.length) {
+          body.insertAdjacentHTML(
+            "beforeend",
+            `<h2>${t("notScheduled")} (${state.unscheduled.length})</h2>`,
+          );
+          const ol = document.createElement("ol");
+          ol.className = "stops";
+          state.unscheduled.forEach((u) =>
+            ol.appendChild(
+              stopRow(u.id, null, null, u.reason === "noLoc" ? t("noLoc") : ""),
+            ),
+          );
+          body.appendChild(ol);
+        }
+        if (state.removed.length) {
+          body.insertAdjacentHTML("beforeend", `<h2>${t("removedList")}</h2>`);
+          state.removed.forEach((id) => {
+            const r = document.createElement("div");
+            r.className = "row";
+            r.innerHTML = `<span class="meta">${nameOf(byId(id))}</span>`;
+            r.appendChild(btn(t("addBack"), "btn text", () => addBack(id)));
+            body.appendChild(r);
+          });
+        }
+        drawMap();
+        if (focus >= 0) {
+          const d = state.days[focus];
+          document.getElementById("live").textContent = t("announce", {
+            n: focus + 1,
+            c: d.stops.length,
+            d: fmt(dayLen(d.stops)),
+          });
+        }
+      }
+      function btn(label, cls, fn) {
+        const b = document.createElement("button");
+        b.type = "button";
+        b.className = cls;
+        b.textContent = label;
+        b.onclick = fn;
+        return b;
+      }
+      function dayBlock(i) {
+        const d = state.days[i],
+          wrap = document.createElement("div");
+        wrap.insertAdjacentHTML(
+          "beforeend",
+          `<h2><span class="dot" style="background:${COLORS[i]}"></span> ${t("day", { n: i + 1 })} ${d.manual ? `<span class="pill">${t("yourOrder")}</span>` : ""}</h2>`,
+        );
+        if (d.manual)
+          wrap.appendChild(
+            btn(t("auto"), "btn text", () => {
+              focus = i;
+              reorderDay();
+            }),
+          );
+        if (!d.stops.length) {
+          wrap.insertAdjacentHTML(
+            "beforeend",
+            `<p class="note">${t("free")}</p>`,
+          );
+          return wrap;
+        }
+        wrap.insertAdjacentHTML(
+          "beforeend",
+          `<div class="stop"><span class="num base" aria-hidden="true">⌂</span><span class="meta">${t("from", { name: t("hotel") })}</span><span></span></div>`,
+        );
+        const ol = document.createElement("ol");
+        ol.className = "stops";
+        let prev = BASE;
+        d.stops.forEach((id, k) => {
+          const p = byId(id);
+          const leg =
+            p.x !== null ? t("leg", { d: fmt(dist(prev, p)) }) : t("noLoc");
+          if (p.x !== null) prev = p;
+          ol.appendChild(stopRow(id, k + 1, COLORS[i], leg, i));
+        });
+        wrap.appendChild(ol);
+        wrap.insertAdjacentHTML(
+          "beforeend",
+          `<div class="stop"><span class="num base" aria-hidden="true">⌂</span><span class="meta">${t("back", { name: t("hotel") })} · ${t("leg", { d: fmt(dist(prev, BASE)) })}</span><span></span></div>`,
+        );
+        wrap.insertAdjacentHTML(
+          "beforeend",
+          `<p class="note"><strong>${t("total", { d: fmt(dayLen(d.stops)) })}</strong></p>`,
+        );
+        if (d.stops.length === 1)
+          wrap.insertAdjacentHTML(
+            "beforeend",
+            `<p class="note">${t("single")}</p>`,
+          );
+        if (d.stops.includes(EVENT.stop))
+          wrap.insertAdjacentHTML(
+            "beforeend",
+            `<p class="note">${t("eventNote")}</p>`,
+          );
+        const link = btn(t("open", { n: i + 1 }), "btn", () =>
+          alert(
+            "Would open Google Maps directions links from routeLinks() (split into parts of at most 5 stops).",
+          ),
+        );
+        wrap.appendChild(link);
+        return wrap;
+      }
+      function stopRow(id, n, color, meta, day) {
+        const p = byId(id),
+          li = document.createElement("li");
+        li.className = "stop";
+        li.innerHTML = `<span class="num" style="background:${color || "#7B8F83"}" aria-hidden="true">${n ?? "–"}</span>
+    <div><div class="name">${nameOf(p)}</div><div class="meta">${meta}</div>
+    ${id === EVENT.stop ? `<div class="event">${t("event", { e: EVENT[lang], t: EVENT.time })}</div>` : ""}
+    ${state.pinned.has(id) && day !== undefined ? `<div class="meta">${t("pinned", { n: day + 1 })}</div>` : ""}</div>`;
+        const a = document.createElement("div");
+        a.className = "actions";
+        const nm = nameOf(p);
+        if (n && focus >= 0) {
+          const d = state.days[focus];
+          const up = btn("↑", "icon", () => move(id, -1));
+          up.setAttribute("aria-label", t("up", { name: nm }));
+          up.disabled = n === 1;
+          a.appendChild(up);
+          const dn = btn("↓", "icon", () => move(id, 1));
+          dn.setAttribute("aria-label", t("down", { name: nm }));
+          dn.disabled = n === d.stops.length;
+          a.appendChild(dn);
+          const md = btn("⇄", "icon", () => moveDay(id));
+          md.setAttribute("aria-label", t("moveDay", { name: nm }));
+          a.appendChild(md);
+        }
+        const rm = btn("✕", "icon", () => remove(id));
+        rm.setAttribute("aria-label", t("remove", { name: nm }));
+        a.appendChild(rm);
+        li.appendChild(a);
+        return li;
+      }
+      function drawMap() {
+        const svg = document.getElementById("svg");
+        let s = "";
+        for (let x = 0; x <= 1000; x += 100)
+          s += `<line x1="${x}" y1="0" x2="${x}" y2="700" stroke="#E2DFD8"/>`;
+        for (let y = 0; y <= 700; y += 100)
+          s += `<line x1="0" y1="${y}" x2="1000" y2="${y}" stroke="#E2DFD8"/>`;
+        s += `<path d="M0 420 C 250 380, 420 470, 1000 430" stroke="#C9D6DE" stroke-width="26" fill="none"/>`;
+        state.days.forEach((d, i) => {
+          const on = focus < 0 || focus === i;
+          const pts = d.stops.map(byId).filter((p) => p.x !== null);
+          if (on && pts.length) {
+            const path = [BASE, ...pts, BASE]
+              .map((p) => `${p.x},${p.y}`)
+              .join(" ");
+            s += `<polyline points="${path}" fill="none" stroke="${COLORS[i]}" stroke-width="4" stroke-dasharray="10 7" stroke-linecap="round" opacity=".85"/>`;
+          }
+          pts.forEach((p, k) => {
+            s += on
+              ? `<circle cx="${p.x}" cy="${p.y}" r="15" fill="${COLORS[i]}" stroke="#fff" stroke-width="3"/><text x="${p.x}" y="${p.y + 5}" text-anchor="middle" font-size="14" font-weight="700" fill="#fff">${focus < 0 ? i + 1 + "·" + (k + 1) : k + 1}</text>`
+              : `<circle cx="${p.x}" cy="${p.y}" r="6" fill="${COLORS[i]}" opacity=".55"/>`;
+          });
+        });
+        state.unscheduled.forEach((u) => {
+          const p = byId(u.id);
+          if (p.x !== null)
+            s += `<circle cx="${p.x}" cy="${p.y}" r="7" fill="#fff" stroke="#7B8F83" stroke-width="2"/>`;
+        });
+        s += `<rect x="${BASE.x - 16}" y="${BASE.y - 16}" width="32" height="32" rx="8" fill="#14261F"/><text x="${BASE.x}" y="${BASE.y + 6}" text-anchor="middle" font-size="16" fill="#fff">⌂</text>`;
+        svg.innerHTML = s;
+      }
+      document.getElementById("lang").onclick = () => {
+        lang = lang === "en" ? "zh" : "en";
+        render();
+      };
+      document.getElementById("maptoggle").onclick = (e) => {
+        nomap = !nomap;
+        document.getElementById("app").classList.toggle("nomap", nomap);
+        e.currentTarget.setAttribute("aria-pressed", String(nomap));
+      };
+      document.getElementById("undo").onclick = () => {
+        if (undoState) {
+          state = undoState;
+          undoState = null;
+          render();
+          toast("");
+        }
+      };
+      focus = 0;
+      render();
+    </script>
+  </body>
+</html>

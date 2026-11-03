@@ -21,6 +21,7 @@ export * from "./marker-kind";
 export * from "./google-links";
 export * from "./layer-events";
 export * from "./cities";
+export * from "./trip-plan";
 import { placeCategories } from "./categories";
 export const eventCategories = [
   "Food",
