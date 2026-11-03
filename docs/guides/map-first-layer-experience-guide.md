@@ -139,20 +139,20 @@ Desktop uses the existing 72 px header with these destinations. Mobile uses four
 
 ### Route migration
 
-| Route                                                                   | New responsibility / migration                                                              |
-| ----------------------------------------------------------------------- | ------------------------------------------------------------------------------------------- |
-| `/`                                                                     | Canonical map workspace                                                                     |
-| `/layers`                                                               | Layer library; selected library tab may be a query parameter                                |
-| `/layers/[slug]`                                                        | Layer preview/detail with owner, audience, description, schedule and contents               |
-| `/layers/new`                                                           | Authenticated layer creation                                                                |
-| `/layers/[slug]/edit`                                                   | Authorized layer editing                                                                    |
-| `/groups/[slug]`                                                        | Group identity, member access and group layers, in the group phase                          |
-| `/content/[slug]`                                                       | Standalone approved content detail, in the content phase                                    |
-| `/places/[slug]`, `/events/[slug]`                                      | Preserve canonical details, metadata and direct links                                       |
-| `/products/*`, `/organizations/*`                                       | Preserve enabled catalog/detail destinations; expose via relevant layers/results            |
-| `/explore`, `/places`, `/events`, `/search`                             | Retain working list pages during migration, add Map entry with equivalent supported filters |
-| `/saved`, `/profile`, `/profile/contributions`, `/submit/*`, `/admin/*` | Retain capabilities and restyle only as needed                                              |
-| `/city/[slug]`                                                          | Validate city and open the map with that city selected                                      |
+| Route                                                      | New responsibility / migration                                                              |
+| ---------------------------------------------------------- | ------------------------------------------------------------------------------------------- |
+| `/`                                                        | Canonical map workspace                                                                     |
+| `/layers`                                                  | Layer library; selected library tab may be a query parameter                                |
+| `/layers/[slug]`                                           | Layer preview/detail with owner, audience, description, schedule and contents               |
+| `/layers/new`                                              | Authenticated layer creation                                                                |
+| `/layers/[slug]/edit`                                      | Authorized layer editing                                                                    |
+| `/groups/[slug]`                                           | Group identity, member access and group layers, in the group phase                          |
+| `/content/[slug]`                                          | Standalone approved content detail, in the content phase                                    |
+| `/places/[slug]`, `/events/[slug]`                         | Preserve canonical details, metadata and direct links                                       |
+| `/products/*`, `/organizations/*`                          | Preserve enabled catalog/detail destinations; expose via relevant layers/results            |
+| `/explore`, `/places`, `/events`, `/search`                | Retain working list pages during migration, add Map entry with equivalent supported filters |
+| `/saved`, `/profile`, `/profile/contributions`, `/admin/*` | Retain capabilities and restyle only as needed                                              |
+| `/city/[slug]`                                             | Validate city and open the map with that city selected                                      |
 
 After parity is verified, `/explore` can redirect to the map. Do not blanket-redirect useful indexable catalog pages or silently drop incoming filters. A fresh detail URL renders a full page. In-map selection opens a contextual detail panel and offers “Open full details.”
 

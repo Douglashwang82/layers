@@ -18,6 +18,10 @@ export const LayerWorkspaceContext = createContext<{
   selectItem: (key: string, slug: string) => void;
   deleted: (slug: string) => void;
   applied: string[];
+  /** Folders on the map; they take slots alongside layers. */
+  appliedFolders?: number;
+  /** Put a folder on the map by itself and return to the results. */
+  showFolder?: (slug: string) => void;
 } | null>(null);
 
 /** Navigation guards belong to the draft, including links outside its form. */
@@ -83,7 +87,9 @@ export function LayerLink({ href, ...props }: ComponentProps<typeof Link>) {
   const integrated = !!workspace;
   const resolved =
     integrated && typeof href === "string"
-      ? href === "/" ? withoutLayerPanel(params.toString()) : layerWorkspaceHref(href, params.toString())
+      ? href === "/"
+        ? withoutLayerPanel(params.toString())
+        : layerWorkspaceHref(href, params.toString())
       : href;
   return (
     <Link
@@ -92,9 +98,19 @@ export function LayerLink({ href, ...props }: ComponentProps<typeof Link>) {
       scroll={integrated ? false : props.scroll}
       onNavigate={(event) => {
         props.onNavigate?.(event);
-        if (!integrated || typeof href !== "string" || (href !== "/" && !/^\/layers(?:[/?]|$)/.test(href))) return;
+        if (
+          !integrated ||
+          typeof href !== "string" ||
+          (href !== "/" && !/^\/layers(?:[/?]|$)/.test(href))
+        )
+          return;
         event.preventDefault();
-        router.push(href === "/" ? withoutLayerPanel(window.location.search) : layerWorkspaceHref(href, window.location.search), { scroll: false });
+        router.push(
+          href === "/"
+            ? withoutLayerPanel(window.location.search)
+            : layerWorkspaceHref(href, window.location.search),
+          { scroll: false },
+        );
       }}
     />
   );

@@ -9,17 +9,19 @@ import {
 import { importRequest } from "@taiwanhub/shared/map-import";
 import { flags } from "@/lib/config";
 import {
-  getLayer,
   getMemberships,
   requireEditableLayer,
 } from "@/features/layers/repository";
 import {
   attachLayerItem,
   insertLayer,
+  slugify,
   notProjected,
 } from "@/features/layers/service";
 import { maxCustomPlacesPerScope } from "@/features/custom-places/service";
+import { resolverDeps } from "@/features/google-links/deps";
 import { myMapsUrl } from "./download";
+import { matchPoints } from "./match";
 
 export function importActor(actor: Actor | null) {
   if (!flags.layerWrites || !flags.layerCustomPlaces)
@@ -32,7 +34,39 @@ export type ImportResult = {
   added: number;
   reused: number;
   skipped: number;
+  /** Markers linked to a Google place (absent on receipts from before matching). */
+  matched?: number;
 };
+/** Markers a member may match against Google per day; bounds the lookups behind imports. */
+export const matchBudget = { markers: 2000, hours: 24 };
+/**
+ * Google place IDs for the selected markers, keyed by marker id. Matching is
+ * best effort: without a configured key, over the daily budget, or on any
+ * provider failure, markers import as plain custom places, as before.
+ */
+async function importMatches(
+  actor: Actor,
+  points: { id: string; name: string; latitude: number; longitude: number }[],
+) {
+  if (!points.length) return new Map<string, string>();
+  let deps;
+  try {
+    deps = resolverDeps();
+  } catch {
+    return new Map<string, string>();
+  }
+  const spent = await pool.query<{ count: number }>(
+    `INSERT INTO rate_limit(key,count,expires_at) VALUES($1,$2::int,now()+make_interval(hours=>$3::int))
+     ON CONFLICT(key) DO UPDATE SET
+       count=CASE WHEN rate_limit.expires_at<now() THEN $2::int ELSE rate_limit.count+$2::int END,
+       expires_at=CASE WHEN rate_limit.expires_at<now() THEN now()+make_interval(hours=>$3::int) ELSE rate_limit.expires_at END
+     RETURNING count`,
+    [`map-import-match:${actor.id}`, points.length, matchBudget.hours],
+  );
+  if (spent.rows[0].count > matchBudget.markers)
+    return new Map<string, string>();
+  return matchPoints(points, deps);
+}
 /** Advisory preview; the transaction repeats all authorization and dedupe checks. */
 export async function reviewMapImport(actor: Actor | null, body: unknown) {
   const a = importActor(actor);
@@ -118,6 +152,20 @@ export async function commitMapImport(
   const digest = createHash("sha256")
     .update(JSON.stringify(input))
     .digest("hex");
+  // Provider lookups run before the transaction; a replayed request skips them.
+  const replay = await pool.query(
+    "SELECT 1 FROM map_import_receipt WHERE user_id=$1 AND request_id=$2",
+    [a.id, input.requestId],
+  );
+  const chosen = new Set(input.selected);
+  const matches = replay.rows[0]
+    ? new Map<string, string>()
+    : await importMatches(
+        a,
+        input.document.layers
+          .flatMap((l) => l.points)
+          .filter((p) => chosen.has(p.id)),
+      );
   const tx = await pool.connect();
   try {
     await tx.query("BEGIN");
@@ -196,6 +244,7 @@ export async function commitMapImport(
       added: 0,
       reused: 0,
       skipped: input.document.skipped,
+      matched: 0,
     };
     const targets =
       input.mode === "collection"
@@ -234,9 +283,18 @@ export async function commitMapImport(
           `SELECT id FROM custom_place WHERE (owner_user_id=$1 OR owner_group_id=$2) AND city_id=$3 AND status='active' AND lower(name)=lower($4) AND latitude=$5 AND longitude=$6 ORDER BY created_at LIMIT 1`,
           [userId, groupId, layer.cityId, p.name, p.latitude, p.longitude],
         );
+        const googlePlaceId = matches.get(p.id) ?? null;
+        if (googlePlaceId) result.matched!++;
         let placeId = match.rows[0]?.id;
-        if (placeId) result.reused++;
-        else {
+        if (placeId) {
+          result.reused++;
+          // Importing again links an earlier, unmatched copy of this marker.
+          if (googlePlaceId)
+            await tx.query(
+              "UPDATE custom_place SET google_place_id=$2, updated_at=now() WHERE id=$1 AND google_place_id IS NULL",
+              [placeId, googlePlaceId],
+            );
+        } else {
           if (++placeCount > maxCustomPlacesPerScope)
             throw new AppError(
               429,
@@ -244,7 +302,7 @@ export async function commitMapImport(
               "This import would exceed the 1,000 custom-place limit. Nothing was saved.",
             );
           const row = await tx.query<{ id: string }>(
-            `INSERT INTO custom_place(owner_user_id,owner_group_id,city_id,name,address,location_status,latitude,longitude,location,note,created_by) VALUES($1,$2,$3,$4,$5,'approximate',$6::float8,$7::float8,ST_SetSRID(ST_MakePoint($7::float8,$6::float8),4326),$8,$9) RETURNING id`,
+            `INSERT INTO custom_place(owner_user_id,owner_group_id,city_id,name,address,location_status,latitude,longitude,location,note,created_by,google_place_id) VALUES($1,$2,$3,$4,$5,'approximate',$6::float8,$7::float8,ST_SetSRID(ST_MakePoint($7::float8,$6::float8),4326),$8,$9,$10) RETURNING id`,
             [
               userId,
               groupId,
@@ -255,6 +313,7 @@ export async function commitMapImport(
               p.longitude,
               p.description,
               a.id,
+              googlePlaceId,
             ],
           );
           placeId = row.rows[0].id;
@@ -274,11 +333,27 @@ export async function commitMapImport(
       ]);
     }
     if (input.mode === "collection") {
-      const collection = await tx.query<{ id: string }>(
-        "INSERT INTO layer_collection(title,owner_user_id,owner_group_id,source_url) VALUES($1,$2,$3,$4) RETURNING id",
-        [input.title, userId, groupId, sourceUrl],
+      const collectionId = crypto.randomUUID();
+      await tx.query(
+        "INSERT INTO layer_collection(id,slug,title,city_id,owner_user_id,owner_group_id,audience,source_url,created_by,updated_by) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$9)",
+        [
+          collectionId,
+          slugify(input.title, collectionId),
+          input.title,
+          (
+            await tx.query<{ id: string }>(
+              "SELECT id FROM city WHERE slug=$1",
+              [input.city],
+            )
+          ).rows[0].id,
+          userId,
+          groupId,
+          groupId ? "group" : "private",
+          sourceUrl,
+          a.id,
+        ],
       );
-      result.collectionId = collection.rows[0].id;
+      result.collectionId = collectionId;
       for (const [position, layer] of result.layers.entries())
         await tx.query(
           "INSERT INTO layer_collection_member(collection_id,layer_id,position) VALUES($1,$2,$3)",
@@ -304,33 +379,4 @@ export async function commitMapImport(
   } finally {
     tx.release();
   }
-}
-
-export async function listCollections(actor: Actor | null) {
-  const a = requireActor(actor);
-  const collections = await pool.query<{
-    id: string;
-    title: string;
-    source_url: string;
-  }>(
-    `SELECT id,title,source_url FROM layer_collection WHERE owner_user_id=$1 OR owner_group_id IN (SELECT group_id FROM group_member WHERE user_id=$1) ORDER BY created_at DESC LIMIT 100`,
-    [a.id],
-  );
-  return Promise.all(
-    collections.rows.map(async (collection) => {
-      const members = await pool.query<{ layer_id: string }>(
-        "SELECT layer_id FROM layer_collection_member WHERE collection_id=$1 ORDER BY position",
-        [collection.id],
-      );
-      const visible = await Promise.all(
-        members.rows.map((m) => getLayer(m.layer_id, a)),
-      );
-      return {
-        ...collection,
-        layers: visible
-          .filter((l) => l?.access.view && l.layer.lifecycle !== "archived")
-          .map((l) => l!.layer),
-      };
-    }),
-  );
 }

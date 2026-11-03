@@ -5,13 +5,21 @@ import type { Actor } from "../../packages/shared/src";
 import { flags } from "../../apps/web/src/lib/config";
 import {
   commitMapImport,
-  listCollections,
   reviewMapImport,
 } from "../../apps/web/src/features/map-import/service";
 import { parseKml } from "../../apps/web/src/features/map-import/parser";
 import { getLayer } from "../../apps/web/src/features/layers/repository";
+import { listCollections as listFolders } from "../../apps/web/src/features/layers/collections";
 import { createGroup } from "../../apps/web/src/features/groups/service";
 import { getLayerContents } from "../../apps/web/src/features/layers/contents";
+/** Own and group folders, like the old single list. */
+async function listCollections(actor: Actor) {
+  const [mine, groups] = await Promise.all([
+    listFolders("mine", actor),
+    listFolders("groups", actor),
+  ]);
+  return [...mine, ...groups];
+}
 const owner: Actor = { id: crypto.randomUUID(), role: "USER" };
 const stranger: Actor = { id: crypto.randomUUID(), role: "USER" };
 const viewer: Actor = { id: crypto.randomUUID(), role: "USER" };
@@ -19,6 +27,8 @@ const document = parseKml(
   readFileSync("tests/fixtures/shared-map.kml", "utf8"),
 );
 const oldFlags = { ...flags };
+// A local .env may hold a real key; these tests never make live Places calls.
+const oldLinkKey = process.env.GOOGLE_MAPS_LINK_API_KEY;
 function request(extra: Record<string, unknown> = {}) {
   return {
     requestId: crypto.randomUUID(),
@@ -32,6 +42,7 @@ function request(extra: Record<string, unknown> = {}) {
   };
 }
 beforeAll(async () => {
+  delete process.env.GOOGLE_MAPS_LINK_API_KEY;
   flags.layerWrites = true;
   flags.layerCustomPlaces = true;
   for (const actor of [owner, stranger, viewer])
@@ -51,6 +62,8 @@ afterAll(async () => {
     [owner.id, stranger.id, viewer.id],
   ]);
   Object.assign(flags, oldFlags);
+  if (oldLinkKey === undefined) delete process.env.GOOGLE_MAPS_LINK_API_KEY;
+  else process.env.GOOGLE_MAPS_LINK_API_KEY = oldLinkKey;
   await pool.end();
 });
 describe("transactional map imports", () => {
@@ -94,7 +107,7 @@ describe("transactional map imports", () => {
     });
     expect(
       (await listCollections(owner)).some(
-        (c) => c.id === result.collectionId && c.layers.length === 2,
+        (c) => c.id === result.collectionId && c.children.length === 2,
       ),
     ).toBe(true);
     expect(await listCollections(stranger)).toEqual([]);
@@ -223,5 +236,51 @@ describe("transactional map imports", () => {
         }),
       ),
     ).rejects.toMatchObject({ code: "PRIVATE_REQUIRED" });
+  });
+  it("links markers to Google places by ID only, keeping their own pins", async () => {
+    const places = (layerId: string) =>
+      pool.query<{
+        name: string;
+        google_place_id: string | null;
+        latitude: number;
+        longitude: number;
+      }>(
+        "SELECT c.name,c.google_place_id,c.latitude,c.longitude FROM layer_item i JOIN custom_place c ON c.id=i.custom_place_id WHERE i.layer_id=$1 ORDER BY c.name",
+        [layerId],
+      );
+    // Without a configured key, markers import unmatched, as before.
+    const plain = await commitMapImport(owner, request());
+    expect(plain.matched).toBe(0);
+    const before = await places(plain.layers[0].id);
+    expect(before.rows.every((r) => r.google_place_id === null)).toBe(true);
+    process.env.GOOGLE_MAPS_LINK_API_KEY = "fake";
+    try {
+      // Importing the same markers again links the earlier, unmatched copies.
+      const again = await commitMapImport(owner, request());
+      expect(again.matched).toBe(before.rowCount);
+      expect(again.reused).toBe(before.rowCount);
+      const after = await places(plain.layers[0].id);
+      for (const [i, row] of after.rows.entries()) {
+        expect(row.google_place_id).toMatch(/^fake-link-/);
+        expect([row.latitude, row.longitude]).toEqual([
+          before.rows[i].latitude,
+          before.rows[i].longitude,
+        ]);
+      }
+      // A replayed request returns its receipt without new lookups.
+      const spent = () =>
+        pool.query<{ count: number }>(
+          "SELECT count FROM rate_limit WHERE key=$1",
+          [`map-import-match:${owner.id}`],
+        );
+      const count = (await spent()).rows[0].count;
+      const input = request();
+      await commitMapImport(owner, input);
+      const replay = await commitMapImport(owner, input);
+      expect(replay.matched).toBe(before.rowCount);
+      expect((await spent()).rows[0].count).toBe(count + before.rowCount!);
+    } finally {
+      delete process.env.GOOGLE_MAPS_LINK_API_KEY;
+    }
   });
 });

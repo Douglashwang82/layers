@@ -1,7 +1,8 @@
 import { AsyncLocalStorage } from "node:async_hooks";
 import { betterAuth } from "better-auth";
 import { drizzleAdapter } from "better-auth/adapters/drizzle";
-import { bearer, emailOTP } from "better-auth/plugins";
+import { bearer, emailOTP, jwt } from "better-auth/plugins";
+import { oauthProvider } from "@better-auth/oauth-provider";
 import { db, schema } from "@taiwanhub/database";
 import {
   resolveMailer,
@@ -11,6 +12,12 @@ import {
   type MailErrorCode,
 } from "@taiwanhub/shared/mail";
 import { hasLiveInvitationForEmail } from "@/features/membership/repository";
+import {
+  mcpEnabled,
+  mcpIssuer,
+  mcpResource,
+  mcpScopes,
+} from "@/features/mcp/config";
 /**
  * Better Auth awaits sendVerificationOTP but swallows (and logs) its errors,
  * so a caller that needs the delivery outcome - the invitation join flow, which
@@ -45,6 +52,9 @@ export const auth = betterAuth({
     },
   },
   advanced: { database: { generateId: () => crypto.randomUUID() } },
+  // The jwt plugin's session-to-JWT endpoint is not used; access tokens for
+  // the MCP connector come only from the OAuth token endpoint.
+  disabledPaths: ["/token"],
   user: {
     additionalFields: {
       role: { type: "string", defaultValue: "USER", input: false },
@@ -64,6 +74,31 @@ export const auth = betterAuth({
       : {},
   plugins: [
     bearer(),
+    // OAuth 2.1 authorization server for the MCP connector (ChatGPT/Claude),
+    // docs/guides/mcp-connector.md. Signing in still goes through /sign-in, so
+    // the invitation and admission gates are unchanged; the MCP route
+    // re-checks admission on every call (lib/session.ts resolveMcpActor).
+    jwt({ jwt: { issuer: mcpIssuer } }),
+    oauthProvider({
+      loginPage: "/sign-in",
+      consentPage: "/oauth/consent",
+      scopes: [...mcpScopes],
+      resources: [
+        {
+          identifier: mcpResource,
+          name: "LocalLink MCP",
+          allowedScopes: [...mcpScopes],
+        },
+      ],
+      clientRegistrationDefaultResources: [mcpResource],
+      // ChatGPT and Claude register themselves (RFC 7591) as public PKCE
+      // clients; registration is closed while the connector flag is off.
+      allowDynamicClientRegistration: mcpEnabled(),
+      allowUnauthenticatedClientRegistration: mcpEnabled(),
+      clientRegistrationDefaultScopes: [...mcpScopes],
+      accessTokenExpiresIn: 3600,
+      refreshTokenExpiresIn: 60 * 60 * 24 * 30,
+    }),
     // disableSignUp is deliberately left false here: our own
     // /api/v1/membership/join/email/* endpoints call auth.api.sendVerificationOTP
     // and auth.api.signInEmailOTP in-process for a legitimately invited email

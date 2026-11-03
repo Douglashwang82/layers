@@ -8,6 +8,7 @@ import { getCities } from "@/features/catalog/repository";
 import { listEditableLayers } from "@/features/layers/repository";
 import { listEditableGroups } from "@/features/groups/repository";
 import { MapImportForm } from "@/components/layers/map-import-form";
+import { myMapsUrl } from "@/features/map-import/download";
 export const metadata = {
   title: "Import a shared map",
   robots: { index: false },
@@ -15,7 +16,7 @@ export const metadata = {
 export default async function MapImportPage({
   searchParams,
 }: {
-  searchParams: Promise<{ layer?: string }>;
+  searchParams: Promise<{ layer?: string; url?: string }>;
 }) {
   if (!flags.layerWrites || !flags.layerCustomPlaces) notFound();
   const actor = await currentActor();
@@ -29,6 +30,11 @@ export default async function MapImportPage({
   ]);
   const t = locale === "zh-TW" ? mapImportZh : mapImportEn;
   const layers = editable.filter((l) => l.audience !== "public");
+  // Prefill only a valid My Maps link, reduced to its canonical form.
+  let initialUrl: string | undefined;
+  try {
+    if (query.url) initialUrl = myMapsUrl(query.url);
+  } catch {}
   return (
     <div className="container">
       <nav>
@@ -50,6 +56,7 @@ export default async function MapImportPage({
           name: g.name,
           cityId: g.cityId,
         }))}
+        initialUrl={initialUrl}
         initialLayer={
           layers.some((l) => l.id === query.layer) ? query.layer : undefined
         }

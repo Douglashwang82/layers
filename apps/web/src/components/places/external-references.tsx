@@ -162,6 +162,7 @@ export function ExternalReferences({
               undefined,
             tabelog: url && r.name ? { name: r.name, url } : undefined,
             marker: r.types ? googleMarkerKind(r.types) : undefined,
+            markerImageUrl: r.markerImageUrl ?? null,
           };
         }),
     [visible],

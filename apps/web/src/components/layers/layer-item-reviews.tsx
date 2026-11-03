@@ -39,7 +39,7 @@ export const reviewsChangedEvent = "layer:item-reviews";
 const changed = reviewsChangedEvent;
 type LayerData = [
   { ratings: Ratings },
-  { items: { id: string; key: string }[] },
+  { items: { id: string; key: string; markerImageUrl?: string | null }[] },
 ];
 /** Rows of one layer share one request pair; entries expire so a stale view never outlives the TTL. */
 const cacheTtlMs = 30_000;
@@ -64,9 +64,9 @@ function fetchLayerData(layerId: string, since: number | null) {
     return hit.pending;
   const pending = Promise.all([
     subjectApi<{ ratings: Ratings }>(`layers/${layerId}/item-ratings`),
-    subjectApi<{ items: { id: string; key: string }[] }>(
-      `layers/${layerId}/items?order=1`,
-    ),
+    subjectApi<{
+      items: { id: string; key: string; markerImageUrl?: string | null }[];
+    }>(`layers/${layerId}/items?order=1`),
   ]);
   const entry = { startedAt: now, pending };
   shared.set(layerId, entry);
@@ -95,8 +95,10 @@ export function useLayerItemRatings(layerId: string | undefined) {
   const [state, setState] = useState<{
     ids: Map<string, string>;
     ratings: Ratings;
+    /** Custom marker image URL by item id. */
+    markers: Map<string, string>;
     available: boolean | null;
-  }>({ ids: new Map(), ratings: {}, available: null });
+  }>({ ids: new Map(), ratings: {}, markers: new Map(), available: null });
   const load = useCallback(
     async (since: number | null) => {
       if (!layerId) return;
@@ -105,6 +107,11 @@ export function useLayerItemRatings(layerId: string | undefined) {
         setState({
           ids: itemIdsByKey(items.items),
           ratings: ratings.ratings,
+          markers: new Map(
+            items.items.flatMap((i) =>
+              i.markerImageUrl ? [[i.id, i.markerImageUrl] as const] : [],
+            ),
+          ),
           available: true,
         });
       } catch {

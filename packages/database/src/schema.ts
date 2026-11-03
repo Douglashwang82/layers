@@ -5,6 +5,7 @@ import {
   timestamp,
   boolean,
   integer,
+  smallint,
   doublePrecision,
   jsonb,
   uniqueIndex,
@@ -378,6 +379,197 @@ export const authRateLimit = pgTable("auth_rate_limit", {
   count: integer("count").notNull(),
   lastRequest: doublePrecision("last_request").notNull(),
 });
+// OAuth 2.1 authorization server tables for the MCP connector
+// (@better-auth/oauth-provider + jwt plugins). Property names mirror the
+// plugins' field names, which the Drizzle adapter maps by key. Ids are text:
+// some rows (client-assertion replay tombstones) use non-UUID ids.
+const authTextId = () =>
+  text("id")
+    .default(sql`gen_random_uuid()::text`)
+    .primaryKey();
+const tz = (name: string) => timestamp(name, { withTimezone: true });
+export const jwks = pgTable("jwks", {
+  id: authTextId(),
+  publicKey: text("public_key").notNull(),
+  privateKey: text("private_key").notNull(),
+  createdAt: tz("created_at").notNull(),
+  expiresAt: tz("expires_at"),
+  alg: text("alg"),
+  crv: text("crv"),
+});
+export const oauthClient = pgTable(
+  "oauth_client",
+  {
+    id: authTextId(),
+    clientId: text("client_id").unique().notNull(),
+    clientSecret: text("client_secret"),
+    clientDiscoveryId: text("client_discovery_id"),
+    disabled: boolean("disabled").default(false),
+    skipConsent: boolean("skip_consent"),
+    enableEndSession: boolean("enable_end_session"),
+    subjectType: text("subject_type"),
+    scopes: text("scopes").array(),
+    clientCredentialsScopes: text("client_credentials_scopes").array(),
+    userId: uuid("user_id").references(() => user.id, { onDelete: "cascade" }),
+    createdAt: tz("created_at"),
+    updatedAt: tz("updated_at"),
+    name: text("name"),
+    uri: text("uri"),
+    icon: text("icon"),
+    contacts: text("contacts").array(),
+    tos: text("tos"),
+    policy: text("policy"),
+    softwareId: text("software_id"),
+    softwareVersion: text("software_version"),
+    softwareStatement: text("software_statement"),
+    redirectUris: text("redirect_uris").array().notNull(),
+    postLogoutRedirectUris: text("post_logout_redirect_uris").array(),
+    backchannelLogoutUri: text("backchannel_logout_uri"),
+    backchannelLogoutSessionRequired: boolean(
+      "backchannel_logout_session_required",
+    ),
+    tokenEndpointAuthMethod: text("token_endpoint_auth_method"),
+    applicationType: text("application_type"),
+    jwks: text("jwks"),
+    jwksUri: text("jwks_uri"),
+    grantTypes: text("grant_types").array(),
+    responseTypes: text("response_types").array(),
+    requirePKCE: boolean("require_pkce"),
+    dpopBoundAccessTokens: boolean("dpop_bound_access_tokens").default(false),
+    referenceId: text("reference_id"),
+    metadata: jsonb("metadata"),
+  },
+  (t) => [index("oauth_client_user_idx").on(t.userId)],
+);
+export const oauthResource = pgTable("oauth_resource", {
+  id: authTextId(),
+  identifier: text("identifier").unique().notNull(),
+  name: text("name").notNull(),
+  accessTokenTtl: integer("access_token_ttl"),
+  refreshTokenTtl: integer("refresh_token_ttl"),
+  signingAlgorithm: text("signing_algorithm"),
+  signingKeyId: text("signing_key_id"),
+  allowedScopes: text("allowed_scopes").array(),
+  customClaims: jsonb("custom_claims"),
+  dpopBoundAccessTokensRequired: boolean(
+    "dpop_bound_access_tokens_required",
+  ).default(false),
+  disabled: boolean("disabled").default(false),
+  createdAt: tz("created_at"),
+  updatedAt: tz("updated_at"),
+  policyVersion: integer("policy_version").default(1),
+  metadata: jsonb("metadata"),
+});
+export const oauthClientResource = pgTable(
+  "oauth_client_resource",
+  {
+    id: authTextId(),
+    clientId: text("client_id")
+      .notNull()
+      .references(() => oauthClient.clientId, { onDelete: "cascade" }),
+    resourceId: text("resource_id")
+      .notNull()
+      .references(() => oauthResource.identifier, { onDelete: "cascade" }),
+    metadata: jsonb("metadata"),
+    createdAt: tz("created_at"),
+  },
+  (t) => [
+    index("oauth_client_resource_client_idx").on(t.clientId),
+    index("oauth_client_resource_resource_idx").on(t.resourceId),
+  ],
+);
+export const oauthRefreshToken = pgTable(
+  "oauth_refresh_token",
+  {
+    id: authTextId(),
+    token: text("token").unique().notNull(),
+    clientId: text("client_id")
+      .notNull()
+      .references(() => oauthClient.clientId, { onDelete: "cascade" }),
+    sessionId: uuid("session_id").references(() => session.id, {
+      onDelete: "set null",
+    }),
+    userId: uuid("user_id")
+      .notNull()
+      .references(() => user.id, { onDelete: "cascade" }),
+    referenceId: text("reference_id"),
+    authorizationCodeId: text("authorization_code_id"),
+    resources: text("resources").array(),
+    requestedUserInfoClaims: text("requested_user_info_claims").array(),
+    expiresAt: tz("expires_at"),
+    createdAt: tz("created_at"),
+    revoked: tz("revoked"),
+    rotatedAt: tz("rotated_at"),
+    rotationReplayResponse: text("rotation_replay_response"),
+    rotationReplayExpiresAt: tz("rotation_replay_expires_at"),
+    authTime: tz("auth_time"),
+    confirmation: jsonb("confirmation"),
+    scopes: text("scopes").array().notNull(),
+  },
+  (t) => [
+    index("oauth_refresh_token_client_idx").on(t.clientId),
+    index("oauth_refresh_token_session_idx").on(t.sessionId),
+    index("oauth_refresh_token_user_idx").on(t.userId),
+    index("oauth_refresh_token_code_idx").on(t.authorizationCodeId),
+  ],
+);
+export const oauthAccessToken = pgTable(
+  "oauth_access_token",
+  {
+    id: authTextId(),
+    token: text("token").unique(),
+    clientId: text("client_id")
+      .notNull()
+      .references(() => oauthClient.clientId, { onDelete: "cascade" }),
+    sessionId: uuid("session_id").references(() => session.id, {
+      onDelete: "set null",
+    }),
+    userId: uuid("user_id").references(() => user.id, { onDelete: "cascade" }),
+    referenceId: text("reference_id"),
+    authorizationCodeId: text("authorization_code_id"),
+    resources: text("resources").array(),
+    requestedUserInfoClaims: text("requested_user_info_claims").array(),
+    refreshId: text("refresh_id").references(() => oauthRefreshToken.id, {
+      onDelete: "cascade",
+    }),
+    expiresAt: tz("expires_at"),
+    createdAt: tz("created_at"),
+    revoked: tz("revoked"),
+    confirmation: jsonb("confirmation"),
+    scopes: text("scopes").array().notNull(),
+  },
+  (t) => [
+    index("oauth_access_token_client_idx").on(t.clientId),
+    index("oauth_access_token_session_idx").on(t.sessionId),
+    index("oauth_access_token_user_idx").on(t.userId),
+    index("oauth_access_token_code_idx").on(t.authorizationCodeId),
+    index("oauth_access_token_refresh_idx").on(t.refreshId),
+  ],
+);
+export const oauthConsent = pgTable(
+  "oauth_consent",
+  {
+    id: authTextId(),
+    clientId: text("client_id")
+      .notNull()
+      .references(() => oauthClient.clientId, { onDelete: "cascade" }),
+    userId: uuid("user_id").references(() => user.id, { onDelete: "cascade" }),
+    referenceId: text("reference_id"),
+    resources: text("resources").array(),
+    requestedUserInfoClaims: text("requested_user_info_claims").array(),
+    scopes: text("scopes").array().notNull(),
+    createdAt: tz("created_at"),
+    updatedAt: tz("updated_at"),
+  },
+  (t) => [
+    index("oauth_consent_client_idx").on(t.clientId),
+    index("oauth_consent_user_idx").on(t.userId),
+  ],
+);
+export const oauthClientAssertion = pgTable("oauth_client_assertion", {
+  id: authTextId(),
+  expiresAt: tz("expires_at").notNull(),
+});
 // Collection evidence is separate from public catalog and community submissions.
 export const contentSource = pgTable("content_source", {
   id: id(),
@@ -737,6 +929,12 @@ export const customPlace = pgTable(
     catalogPlaceId: uuid("catalog_place_id").references(() => place.id, {
       onDelete: "set null",
     }),
+    /**
+     * Google place ID matched at import (a verified nearby Text Search hit).
+     * Only the ID is kept, which Google allows indefinitely; the place's own
+     * coordinates and note stay the member's. Null when nothing matched.
+     */
+    googlePlaceId: text("google_place_id"),
     status: text("status", { enum: ["active", "hidden", "deleted"] })
       .default("active")
       .notNull(),
@@ -759,6 +957,10 @@ export const customPlace = pgTable(
     check(
       "custom_place_status_check",
       sql`${t.status} IN ('active', 'hidden', 'deleted')`,
+    ),
+    check(
+      "custom_place_google_place_id_check",
+      sql`${t.googlePlaceId} ~ '^[A-Za-z0-9_-]+$' AND length(${t.googlePlaceId}) <= 512`,
     ),
   ],
 );
@@ -792,6 +994,13 @@ export const layerItem = pgTable(
      * never relabels the place elsewhere.
      */
     linkName: text("link_name"),
+    /**
+     * Optional custom map marker (a small transparent PNG sticker) chosen by
+     * a layer editor. Scoped to this layer; other layers keep their pins.
+     */
+    markerImageId: uuid("marker_image_id").references(() => image.id, {
+      onDelete: "set null",
+    }),
     position: integer("position").default(0).notNull(),
     validFrom: timestamp("valid_from", { withTimezone: true }),
     validUntil: timestamp("valid_until", { withTimezone: true }),
@@ -819,6 +1028,7 @@ export const layerItem = pgTable(
       .on(t.layerId, t.customPlaceId)
       .where(sql`${t.customPlaceId} IS NOT NULL`),
     index("layer_item_custom_place_idx").on(t.customPlaceId),
+    index("layer_item_marker_image_idx").on(t.markerImageId),
     check(
       "layer_item_one_entity",
       sql`num_nonnulls(${t.placeId}, ${t.eventId}, ${t.contentId}, ${t.subjectId}, ${t.customPlaceId}) = 1`,
@@ -880,14 +1090,48 @@ export const layerCollection = pgTable(
   "layer_collection",
   {
     id: id(),
+    slug: text("slug").unique().notNull(),
     title: text("title").notNull(),
+    titleChinese: text("title_chinese").default("").notNull(),
+    description: text("description").default("").notNull(),
+    descriptionChinese: text("description_chinese").default("").notNull(),
+    cityId: uuid("city_id")
+      .notNull()
+      .references(() => city.id),
     ownerUserId: uuid("owner_user_id").references(() => user.id, {
       onDelete: "cascade",
     }),
     ownerGroupId: uuid("owner_group_id").references(() => group.id, {
       onDelete: "cascade",
     }),
+    /** Folders nest up to 3 levels; deleting a folder deletes sub-folders, never layers. */
+    parentId: uuid("parent_id").references(
+      (): AnyPgColumn => layerCollection.id,
+      {
+        onDelete: "cascade",
+      },
+    ),
+    depth: smallint("depth").default(1).notNull(),
+    position: integer("position").default(0).notNull(),
+    audience: text("audience", { enum: ["public", "private", "group"] })
+      .default("private")
+      .notNull(),
+    reviewStatus: text("review_status", {
+      enum: ["unsubmitted", "pending", "approved", "rejected", "hidden"],
+    })
+      .default("unsubmitted")
+      .notNull(),
+    lifecycle: text("lifecycle", { enum: ["draft", "active", "archived"] })
+      .default("active")
+      .notNull(),
+    revision: integer("revision").default(1).notNull(),
     sourceUrl: text("source_url").default("").notNull(),
+    createdBy: uuid("created_by").references(() => user.id, {
+      onDelete: "set null",
+    }),
+    updatedBy: uuid("updated_by").references(() => user.id, {
+      onDelete: "set null",
+    }),
     ...timestamps(),
   },
   (t) => [
@@ -895,6 +1139,11 @@ export const layerCollection = pgTable(
       "layer_collection_owner_check",
       sql`num_nonnulls(${t.ownerUserId},${t.ownerGroupId})=1`,
     ),
+    check("layer_collection_depth_check", sql`${t.depth} BETWEEN 1 AND 3`),
+    index("layer_collection_parent_position_idx").on(t.parentId, t.position),
+    index("layer_collection_city_idx").on(t.cityId),
+    index("layer_collection_owner_user_idx").on(t.ownerUserId),
+    index("layer_collection_owner_group_idx").on(t.ownerGroupId),
   ],
 );
 export const layerCollectionMember = pgTable(
@@ -908,7 +1157,10 @@ export const layerCollectionMember = pgTable(
       .references(() => layer.id, { onDelete: "cascade" }),
     position: integer("position").notNull(),
   },
-  (t) => [primaryKey({ columns: [t.collectionId, t.layerId] })],
+  (t) => [
+    primaryKey({ columns: [t.collectionId, t.layerId] }),
+    index("layer_collection_member_layer_idx").on(t.layerId),
+  ],
 );
 /** Transactional retry receipt: no source document or imported private text. */
 export const mapImportReceipt = pgTable(
@@ -930,6 +1182,10 @@ export const userMapPreference = pgTable("user_map_preference", {
     .primaryKey()
     .references(() => user.id, { onDelete: "cascade" }),
   activeLayers: jsonb("active_layers").$type<string[]>().default([]).notNull(),
+  activeCollections: jsonb("active_collections")
+    .$type<string[]>()
+    .default([])
+    .notNull(),
   view: text("view", { enum: ["map", "list"] })
     .default("map")
     .notNull(),

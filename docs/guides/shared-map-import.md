@@ -7,8 +7,9 @@ enabled. Collections remain readable when layer writes are disabled.
 Paste a public Google My Maps viewer/edit link, or upload its KML/KMZ export.
 Link downloads are best-effort: Google's export endpoint is not a versioned API.
 If sharing permissions or an endpoint change prevent downloading, use My Maps'
-**Export to KML/KMZ** menu and upload the file. No Google credentials, paid Places
-lookups, geocoding, or LLM calls are needed.
+**Export to KML/KMZ** menu and upload the file. No geocoding or LLM calls are
+made. Matching markers to Google places (below) uses the server-only
+`GOOGLE_MAPS_LINK_API_KEY`; without it, imports still work, unmatched.
 
 The preview shows source folders, selectable named point markers, coordinates,
 plain-text descriptions, and a skipped-feature count. Review the destination and
@@ -40,6 +41,16 @@ by the import; arbitrary membership editing and collection deletion are not expo
   in the same owner scope and organizing city. Existing place details are kept.
   Repeated membership in one layer is skipped. Cross-scope places are never reused.
   This is conservative matching, not fuzzy business identification.
+- Google place matching: a KML export has no place IDs, so on commit each
+  selected marker gets one IDs-only Places Text Search (`places.id` field mask)
+  for its name, restricted to a box about 200 m around its own coordinates. A hit
+  is stored only as `custom_place.google_place_id`; the pin, name and note stay as
+  imported, so the marker keeps its pin without the 30-day coordinate cache. The
+  map detail then opens that place in Google Maps and loads its Google card only
+  on request. Misses, provider errors, a missing key, or more than 2,000 markers
+  per member per 24 hours leave markers unmatched. Importing the same marker
+  again links an earlier unmatched copy. Matching runs before the transaction,
+  with six lookups at a time, and is skipped for a replayed request.
 - Preview estimates may change if another editor changes data before saving.
   Saving rechecks permissions, revisions, capacity and duplicates transactionally.
 - A request ID plus payload digest protects retries, including after an uncertain
@@ -69,7 +80,7 @@ All endpoints are authenticated POSTs under `/api/v1/map-imports/`:
 | --------- | ------------------------------------ | -------------------------------------------------------------------------------- |
 | `preview` | `{url}` or `{file}` (base64 KML/KMZ) | Parsed document with source layers, markers and skipped count; no content writes |
 | `review`  | Import request                       | Selected marker count and estimated new/reused places; no content writes         |
-| `commit`  | Import request                       | `{collectionId,layers,added,reused,skipped}`                                     |
+| `commit`  | Import request                       | `{collectionId,layers,added,reused,skipped,matched}`                             |
 
 The request schema is `packages/shared/src/map-import.ts`: `permission:true`,
 `requestId`, parsed `document`, selected marker IDs, destination `mode`, `title`,
@@ -78,7 +89,8 @@ Submitted documents remain untrusted and are validated again on the server.
 
 Migration `0028_flippant_sheva_callister.sql` adds `layer_collection`,
 `layer_collection_member`, and `map_import_receipt`. Apply with the normal migration
-workflow before enabling the UI. Receipts retain only IDs, layer titles/slugs,
+workflow before enabling the UI. Migration `0035_medical_gabe_jones.sql` adds the
+nullable `custom_place.google_place_id`. Receipts retain only IDs, layer titles/slugs,
 counts and a payload hash; they cascade when the account is deleted. There is
 currently no automatic receipt retention period.
 

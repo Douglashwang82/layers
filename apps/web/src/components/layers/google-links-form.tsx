@@ -1,5 +1,6 @@
 "use client";
 import { useMemo, useState, type FormEvent } from "react";
+import Link from "next/link";
 import {
   useLayerRouter as useRouter,
   useLayerDraft,
@@ -31,6 +32,8 @@ function reasonText(reason: GoogleLinkReason | undefined, t: Copy) {
       return t.linkNotGoogleMaps;
     case "list":
       return t.linkList;
+    case "my_maps":
+      return t.linkMyMaps;
     case "no_place_name":
       return t.linkNoPlace;
     case "no_match":
@@ -413,6 +416,19 @@ export function GoogleLinksForm({
                   ) : (
                     <p className="message error-message">
                       {duplicate ? t.linkDuplicate : reasonText(r.reason, t)}
+                      {!duplicate && r.reason === "my_maps" && (
+                        <>
+                          {" "}
+                          <Link
+                            href={`/map-import?${new URLSearchParams({
+                              url: extractUrl(r.input) ?? r.input,
+                              ...(layerId ? { layer: layerId } : {}),
+                            })}`}
+                          >
+                            {t.linkMyMapsAction}
+                          </Link>
+                        </>
+                      )}
                     </p>
                   )}
                 </li>

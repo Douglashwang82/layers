@@ -26,6 +26,7 @@ export const googleLinkReasons = [
   "invalid_url",
   "not_google_maps",
   "list",
+  "my_maps",
   "no_place_name",
   "redirect_blocked",
   "expand_failed",
@@ -102,6 +103,9 @@ export function parseGoogleMapsLink(text: string): GoogleMapsLink {
   if (!isGoogleMapsUrl(url))
     return { kind: "unsupported", reason: "not_google_maps" };
   const path = url.pathname;
+  // A whole Google My Maps map: imported on /map-import, not as one place.
+  if (/^\/maps\/d\//.test(path))
+    return { kind: "unsupported", reason: "my_maps" };
   const data = path.match(/\/data=([^/?]*)/)?.[1] ?? "";
   if (
     path.includes("/placelists/") ||

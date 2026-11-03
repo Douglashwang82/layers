@@ -127,13 +127,6 @@ export default async function DetailPage({ params }: Props) {
         <MapPin size={16} aria-hidden="true" />
         {t.directions} ↗
       </a>
-    ) : kind === "products" && flags.submissions ? (
-      <Link
-        className="button"
-        href={"/submit/product-sighting?product=" + item.id}
-      >
-        {t.found}
-      </Link>
     ) : undefined;
   return (
     <div className="container">

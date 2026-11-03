@@ -20,13 +20,11 @@ import {
   withinBounds,
   placeRank,
 } from "@taiwanhub/shared";
-import {
-  type LayerRecord,
-  type LayerWithAccess,
-  resolveLayers,
-} from "../layers/repository";
+import { type LayerRecord, type LayerWithAccess } from "../layers/repository";
 import { listMapEvents } from "../layers/events";
 import { countExternalReferences } from "./external";
+import { explicitLayers, resolveAppliedLayers } from "./applied";
+import type { CollectionAvailability } from "../layers/collections-types";
 import { flags } from "@/lib/config";
 import { customMapItem } from "@/lib/custom-places";
 import { listActiveCustomPlaces } from "../custom-places/repository";
@@ -78,9 +76,17 @@ export type MapItem = {
   rank: number;
   /** Set for member-created places (`custom:` keys): who owns them. */
   customScope?: "user" | "group";
+  /** Google place matched to a custom place at import: details on request, never its pin. */
+  googlePlaceId?: string;
+  /** A layer editor's custom pin image for this item (first layer that sets one wins). */
+  markerImageUrl?: string | null;
 };
 export type LayerAvailability = {
   slug: string;
+  /** Layer id, for the item event/tip APIs; absent when unavailable. */
+  id?: string;
+  /** Whether the viewer may edit the layer (attach events); never an authorization check. */
+  canEdit?: boolean;
   title: string;
   titleChinese: string;
   ownerKind: LayerRecord["ownerKind"];
@@ -99,6 +105,8 @@ export type MapQueryResult = {
   city: MapCity;
   state: MapState;
   layers: LayerAvailability[];
+  /** Applied folders; their expanded layers are listed here, not in `layers`. */
+  collections: CollectionAvailability[];
   window: { start: string; end: string | null; label: string };
   items: MapItem[];
   total: number;
@@ -383,8 +391,9 @@ async function curatedMembers(
     position: number;
     valid_from: Date | null;
     valid_until: Date | null;
+    marker_image_url: string | null;
   }>(
-    "SELECT layer_id,place_id,event_id,content_id,custom_place_id,note,position,valid_from,valid_until FROM layer_item WHERE layer_id=ANY($1::uuid[]) ORDER BY position, created_at",
+    "SELECT i.layer_id,i.place_id,i.event_id,i.content_id,i.custom_place_id,i.note,i.position,i.valid_from,i.valid_until,mi.url AS marker_image_url FROM layer_item i LEFT JOIN image mi ON mi.id=i.marker_image_id WHERE i.layer_id=ANY($1::uuid[]) ORDER BY i.position, i.created_at",
     [layers.map((l) => l.id)],
   );
   const byKey = new Map<string, MapItem>();
@@ -450,6 +459,7 @@ async function curatedMembers(
       ...item,
       layers: [slug],
       note: row.note || null,
+      ...(row.marker_image_url ? { markerImageUrl: row.marker_image_url } : {}),
       rank: item.rank - row.position / 1e6,
     });
     groups.set(slug, list);
@@ -490,13 +500,10 @@ export async function runMapQuery(
 ): Promise<MapQueryResult> {
   const window = resolveDateWindow(state.date, city.timezone, now);
   const candidates = await loadCandidates(city, window.start);
-  const { resolved, unavailable, disabled } = await resolveLayers(
-    state.layers === "none" ? [] : state.layers,
-    actor,
-    city,
-  );
+  const applied = await resolveAppliedLayers(state, actor, city);
+  const { resolved, unavailable, disabled } = applied;
   // Disabled (system) layers leave the state as if never applied.
-  const slugs = (state.layers === "none" ? [] : state.layers).filter(
+  const slugs = explicitLayers(state).filter(
     (slug) => !disabled.includes(slug),
   );
   const searchAll = state.scope === "city" && state.q.length > 0;
@@ -609,10 +616,12 @@ export async function runMapQuery(
     counts.set(slug, (counts.get(slug) ?? 0) + n);
   const availability: LayerAvailability[] = [];
   const describe = (
-    { layer }: LayerWithAccess,
+    { layer, access }: LayerWithAccess,
     status: LayerAvailability["status"],
   ): LayerAvailability => ({
     slug: layer.slug,
+    id: layer.id,
+    canEdit: access.edit,
     title: layer.title,
     titleChinese: layer.titleChinese,
     ownerKind: layer.ownerKind,
@@ -643,6 +652,10 @@ export async function runMapQuery(
         count: 0,
       });
   }
+  const collections = applied.collections.map((c) => ({
+    ...c,
+    count: c.layerSlugs.reduce((n, slug) => n + (counts.get(slug) ?? 0), 0),
+  }));
   const events = searchAll ? {} : await listMapEvents(resolved, now);
   return {
     generatedAt: now.toISOString(),
@@ -650,6 +663,7 @@ export async function runMapQuery(
     state: { ...state, layers: state.layers === "none" ? "none" : slugs },
     events,
     layers: availability,
+    collections,
     window: {
       start: window.start.toISOString(),
       end: window.end?.toISOString() ?? null,

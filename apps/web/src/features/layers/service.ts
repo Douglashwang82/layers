@@ -5,6 +5,7 @@ import {
   AppError,
   layerInput,
   layerItemInput,
+  layerItemMarkerInput,
   layerPatchInput,
   parseLayerItemKey,
   requireActor,
@@ -20,7 +21,7 @@ import {
 import { flags } from "@/lib/config";
 import { requeueLayerReviews } from "@/features/reviews/service";
 import { requireActionableSubject } from "@/features/place-subjects/service";
-async function transaction<T>(fn: (tx: PoolClient) => Promise<T>) {
+export async function transaction<T>(fn: (tx: PoolClient) => Promise<T>) {
   const tx = await pool.connect();
   try {
     await tx.query("BEGIN");
@@ -45,7 +46,7 @@ async function record(
     [userId, name, JSON.stringify(properties)],
   );
 }
-function writable() {
+export function writable() {
   if (!flags.layerWrites)
     throw new AppError(404, "DISABLED", "Layer editing is unavailable.");
 }
@@ -501,6 +502,60 @@ export async function removeLayerItem(
     return true;
   });
   return { removed, key };
+}
+/**
+ * Sets or clears the custom map marker of one item in a layer. Only layer
+ * editors may change it, and only with an image they uploaded themselves; a
+ * changed marker on an approved public layer goes back to moderation.
+ */
+export async function setLayerItemMarker(
+  actor: Actor | null,
+  id: string,
+  itemId: string,
+  body: unknown,
+) {
+  writable();
+  const a = requireActor(actor);
+  const input = layerItemMarkerInput.parse(body);
+  const found = await requireEditableLayer(id, a);
+  notProjected(found);
+  return transaction(async (tx) => {
+    const item = await tx.query<{ marker_image_id: string | null }>(
+      "SELECT marker_image_id FROM layer_item WHERE id=$1 AND layer_id=$2 FOR UPDATE",
+      [itemId, found.layer.id],
+    );
+    if (!item.rowCount)
+      throw new AppError(404, "NOT_FOUND", "This item is not in the layer.");
+    let url: string | null = null;
+    if (input.imageId) {
+      const image = await tx.query<{ url: string; mime_type: string }>(
+        "SELECT url,mime_type FROM image WHERE id=$1 AND user_id=$2",
+        [input.imageId, a.id],
+      );
+      if (!image.rowCount)
+        throw new AppError(400, "IMAGE", "Upload the marker image first.");
+      if (image.rows[0].mime_type !== "image/png")
+        throw new AppError(400, "IMAGE", "Markers must be PNG images.");
+      url = image.rows[0].url;
+    }
+    if (item.rows[0].marker_image_id === input.imageId)
+      return { itemId, markerImageUrl: url };
+    await tx.query(
+      "UPDATE layer_item SET marker_image_id=$2,updated_at=now() WHERE id=$1",
+      [itemId, input.imageId],
+    );
+    await tx.query(
+      "UPDATE layer SET updated_by=$2,updated_at=now() WHERE id=$1",
+      [found.layer.id, a.id],
+    );
+    // A new picture on a public layer is unreviewed content; clearing is not.
+    if (input.imageId) await requirePublicationReview(tx, found.layer.id, a.id);
+    await record(tx, a.id, "layer_item_marker_set", {
+      layerId: found.layer.id,
+      cleared: !input.imageId,
+    });
+    return { itemId, markerImageUrl: url };
+  });
 }
 /** Following retains a layer in the library; it never applies it to the map. */
 export async function followLayer(

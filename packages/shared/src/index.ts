@@ -277,6 +277,22 @@ export const locationStatuses = [
 ] as const;
 export type LocationStatus = (typeof locationStatuses)[number];
 export const maxAppliedLayers = 5;
+/** Folders nest at most this many levels (a top-level folder is depth 1). */
+export const maxCollectionDepth = 3;
+/** Layers one map query may expand from applied folders, across all of them. */
+export const maxExpandedLayers = 20;
+/** Folders applied at once; each also takes one of the `maxAppliedLayers` slots. */
+export const maxAppliedCollections = 3;
+/** Map slots used: every applied layer and every applied folder takes one. */
+export function appliedSlots(
+  layers: readonly string[] | "none" | undefined,
+  collections: readonly string[] | undefined,
+) {
+  return (
+    (layers === "none" || !layers ? 0 : layers.length) +
+    (collections?.length ?? 0)
+  );
+}
 export const maxMapPoints = 1000;
 export const mapPageSize = 20;
 /** `place:{uuid}` — the stable item identity shared by pins, rows and selection. */
@@ -309,19 +325,21 @@ export function itemHref(type: ItemType, slug: string) {
       : `/content/${slug}`;
 }
 export const slugPattern = /^[a-z0-9-]{1,80}$/;
-const slugList = z
-  .string()
-  .max(400)
-  .transform((v) =>
-    Array.from(
-      new Set(
-        v
-          .split(",")
-          .map((s) => s.trim())
-          .filter((s) => slugPattern.test(s)),
-      ),
-    ).slice(0, maxAppliedLayers),
-  );
+const slugListOf = (max: number) =>
+  z
+    .string()
+    .max(400)
+    .transform((v) =>
+      Array.from(
+        new Set(
+          v
+            .split(",")
+            .map((s) => s.trim())
+            .filter((s) => slugPattern.test(s)),
+        ),
+      ).slice(0, max),
+    );
+const slugList = slugListOf(maxAppliedLayers);
 /** upcoming | today | weekend | YYYY-MM-DD | YYYY-MM-DD..YYYY-MM-DD (at most 31 days) */
 export const dateFilter = z
   .string()
@@ -357,6 +375,11 @@ export const mapQueryInput = z.object({
     optionalString,
     z.union([z.literal("none"), slugList]).optional(),
   ),
+  /** Applied folder slugs; undefined when absent so a remembered preference can apply. */
+  collections: z.preprocess(
+    optionalString,
+    slugListOf(maxAppliedCollections).optional(),
+  ),
   date: dateFilter.default("upcoming"),
   types: z.preprocess(
     optionalString,
@@ -379,11 +402,21 @@ export const mapQueryInput = z.object({
 export type MapQueryInput = z.infer<typeof mapQueryInput>;
 export function parseMapQuery(params: Record<string, string | undefined>) {
   const parsed = mapQueryInput.safeParse(params);
-  if (parsed.success) return parsed.data;
+  if (parsed.success) return fitSlots(parsed.data);
   // Drop each invalid field rather than the whole state so a bad date never resets the city.
   const safe: Record<string, string | undefined> = { ...params };
   for (const issue of parsed.error.issues) delete safe[String(issue.path[0])];
-  return mapQueryInput.parse(safe);
+  return fitSlots(mapQueryInput.parse(safe));
+}
+/** Layers keep their slots; folders are trimmed to what is left of `maxAppliedLayers`. */
+export function fitSlots<
+  T extends { layers?: string[] | "none"; collections?: string[] },
+>(state: T): T {
+  if (!state.collections) return state;
+  const room = Math.max(0, maxAppliedLayers - appliedSlots(state.layers, []));
+  return state.collections.length > room
+    ? { ...state, collections: state.collections.slice(0, room) }
+    : state;
 }
 export type MapState = Omit<MapQueryInput, "layers"> & {
   layers: string[] | "none";
@@ -397,6 +430,8 @@ export function serializeMapQuery(
   if (options.includeCity && state.city) params.set("city", state.city);
   if (state.layers === "none") params.set("layers", "none");
   else if (state.layers?.length) params.set("layers", state.layers.join(","));
+  if (state.collections?.length)
+    params.set("collections", state.collections.join(","));
   if (state.date && state.date !== "upcoming") params.set("date", state.date);
   if (state.types?.length && state.types.length < itemTypes.length)
     params.set("types", state.types.join(","));
@@ -462,18 +497,21 @@ export function overlapsWindow(
   );
 }
 /** Merge memberships by identity: an item in three layers is one entity "in 3 layers". */
-export function unionItems<T extends { key: string; layers: string[] }>(
-  groups: T[][],
-): T[] {
+export function unionItems<
+  T extends { key: string; layers: string[]; markerImageUrl?: string | null },
+>(groups: T[][]): T[] {
   const byKey = new Map<string, T>();
   for (const group of groups)
     for (const item of group) {
       const existing = byKey.get(item.key);
-      if (existing)
+      if (existing) {
         existing.layers = Array.from(
           new Set([...existing.layers, ...item.layers]),
         );
-      else byKey.set(item.key, { ...item, layers: [...item.layers] });
+        // The first layer that gives the item a custom pin decides it.
+        if (!existing.markerImageUrl && item.markerImageUrl)
+          existing.markerImageUrl = item.markerImageUrl;
+      } else byKey.set(item.key, { ...item, layers: [...item.layers] });
     }
   return Array.from(byKey.values());
 }
@@ -529,6 +567,52 @@ export const layerPatchInput = z.object({
   order: z.array(z.uuid()).max(500).optional(),
 });
 export type LayerPatchInput = z.infer<typeof layerPatchInput>;
+const encoder = new TextEncoder();
+/** Characters and UTF-8 bytes: 120 Traditional Chinese characters are about 360 bytes. */
+const boundedText = (chars: number, bytes: number) =>
+  z
+    .string()
+    .trim()
+    .max(chars)
+    .refine((v) => encoder.encode(v).length <= bytes, "This text is too long.");
+/** A folder of layers. Sub-folders take owner, city and audience from their parent. */
+export const collectionInput = z
+  .object({
+    title: plainText(120).refine(
+      (v) => encoder.encode(v).length <= 480,
+      "This text is too long.",
+    ),
+    titleChinese: boundedText(120, 480).default(""),
+    description: boundedText(500, 2000).default(""),
+    descriptionChinese: boundedText(500, 2000).default(""),
+    city: z.string().regex(slugPattern),
+    audience: z.enum(["private", "group"]).default("private"),
+    groupId: z.uuid().optional(),
+    parentId: z.uuid().optional(),
+  })
+  .refine(
+    (v) => v.parentId || v.audience !== "group" || v.groupId,
+    "Choose a group for a group folder.",
+  );
+export type CollectionInput = z.infer<typeof collectionInput>;
+export const collectionPatchInput = z.object({
+  revision: z.number().int().min(1),
+  title: plainText(120)
+    .refine((v) => encoder.encode(v).length <= 480, "This text is too long.")
+    .optional(),
+  titleChinese: boundedText(120, 480).optional(),
+  description: boundedText(500, 2000).optional(),
+  descriptionChinese: boundedText(500, 2000).optional(),
+  /** null moves the folder to the top level. */
+  parentId: z.uuid().nullable().optional(),
+  /** The folder's direct children in their new order. */
+  order: z
+    .array(z.object({ kind: z.enum(["folder", "layer"]), id: z.uuid() }))
+    .max(200)
+    .optional(),
+});
+export type CollectionPatchInput = z.infer<typeof collectionPatchInput>;
+export const collectionLayerInput = z.object({ layerId: z.uuid() });
 /**
  * Layer membership keys: visible item keys plus `subject:{uuid}` for external
  * places and `custom:{uuid}` for member-created places. Map items keep
@@ -553,6 +637,10 @@ export const layerItemInput = z.object({
   note: z.string().trim().max(300).default(""),
   /** Lets a member add a business they just resolved but cannot otherwise see yet. */
   selectionGrant: selectionGrantToken.optional(),
+});
+/** Sets (an uploaded image the actor owns) or clears (null) a layer item's custom map marker. */
+export const layerItemMarkerInput = z.object({
+  imageId: z.uuid().nullable(),
 });
 /**
  * A member-created place in a private or group layer. Coordinates are only a
@@ -663,5 +751,9 @@ export const groupRoleInput = z.object({
 export * from "./instagram";
 export const mapPreferenceInput = z.object({
   layers: z.array(z.string().regex(slugPattern)).max(maxAppliedLayers),
+  collections: z
+    .array(z.string().regex(slugPattern))
+    .max(maxAppliedCollections)
+    .default([]),
   view: z.enum(["map", "list"]).default("map"),
 });

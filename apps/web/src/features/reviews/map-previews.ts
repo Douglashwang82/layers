@@ -1,6 +1,6 @@
 import { pool } from "@taiwanhub/database";
 import type { Actor, MapState } from "@taiwanhub/shared";
-import { resolveLayers } from "@/features/layers/repository";
+import { hasApplied, resolveAppliedLayers } from "@/features/map/applied";
 import { collectExternalReferences } from "@/features/map/external";
 import { runMapQuery, type MapCity } from "@/features/map/query";
 import { flags } from "@/lib/config";
@@ -132,10 +132,10 @@ export async function listMapReviewPreviews(
   city: MapCity,
   actor: Actor | null,
 ) {
-  if (state.layers === "none" || !state.layers.length) return { previews: {} };
+  if (!hasApplied(state)) return { previews: {} };
   const now = new Date();
   const [{ resolved }, result, external] = await Promise.all([
-    resolveLayers(state.layers, actor, city),
+    resolveAppliedLayers(state, actor, city),
     runMapQuery(state, city, actor, now),
     collectExternalReferences(state, city, actor, now),
   ]);

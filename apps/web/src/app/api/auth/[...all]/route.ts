@@ -31,6 +31,9 @@ const BLOCKED = new Set([
   "/api/auth/email-otp/change-email",
 ]);
 const MAX_BODY_BYTES = 4096;
+// Code verification may also carry the signed OAuth query of an MCP sign-in
+// (see auth-form.tsx), so it gets more room.
+const MAX_VERIFY_BODY_BYTES = 8192;
 const NO_STORE = { "Cache-Control": "no-store" };
 const sendInput = z.object({
   email: z.string().max(254),
@@ -39,6 +42,9 @@ const sendInput = z.object({
 const verifyInput = z.object({
   email: z.string().max(254),
   otp: z.string().max(32),
+  // Signed by the OAuth provider and verified by its sign-in hook; forwarded
+  // so a member signing in for an MCP connector continues authorization.
+  oauth_query: z.string().max(6144).optional(),
 });
 function json(
   body: unknown,
@@ -80,14 +86,14 @@ function canonicalPath(pathname: string) {
     .replace(/\/+$/, "")
     .toLowerCase();
 }
-async function readBody(request: NextRequest) {
+async function readBody(request: NextRequest, maxBytes = MAX_BODY_BYTES) {
   const origin = request.headers.get("origin");
   if (origin && origin !== new URL(appUrl).origin)
     throw new AppError(403, "BAD_ORIGIN", "Request origin is not allowed.");
-  if (Number(request.headers.get("content-length") ?? 0) > MAX_BODY_BYTES)
+  if (Number(request.headers.get("content-length") ?? 0) > maxBytes)
     throw new AppError(413, "TOO_LARGE", "Request is too large.");
   const raw = await request.text();
-  if (raw.length > MAX_BODY_BYTES)
+  if (raw.length > maxBytes)
     throw new AppError(413, "TOO_LARGE", "Request is too large.");
   try {
     return JSON.parse(raw) as unknown;
@@ -154,14 +160,20 @@ async function sendCode(request: NextRequest) {
  * collapsed into the same public answer ineligible accounts get.
  */
 async function verifyCode(request: NextRequest) {
-  const input = verifyInput.safeParse(await readBody(request));
+  const input = verifyInput.safeParse(
+    await readBody(request, MAX_VERIFY_BODY_BYTES),
+  );
   if (!input.success) return invalidCode();
   const email = normalizeEmail(input.data.email);
   if (!z.email().safeParse(email).success) return invalidCode();
   await enforceCodeVerifyLimits(email, trustedClientIp(request.headers));
   if (!/^\d{6}$/.test(input.data.otp)) return invalidCode();
   if (!(await isAdmittedEmail(email))) return invalidCode();
-  const native = await delegate(request, { email, otp: input.data.otp });
+  const native = await delegate(request, {
+    email,
+    otp: input.data.otp,
+    ...(input.data.oauth_query ? { oauth_query: input.data.oauth_query } : {}),
+  });
   if (native.status >= 500)
     return json(
       {

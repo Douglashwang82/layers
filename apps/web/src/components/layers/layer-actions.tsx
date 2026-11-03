@@ -16,6 +16,7 @@ import {
   Lock,
 } from "lucide-react";
 import {
+  appliedSlots,
   maxAppliedLayers,
   parseMapQuery,
   serializeMapQuery,
@@ -46,7 +47,12 @@ export function ApplyLayerButton({
   const [note, setNote] = useState<string | null>(null);
   const apply = () => {
     if (workspace) {
-      if (!only && !workspace.applied.includes(slug) && workspace.applied.length >= maxAppliedLayers) {
+      if (
+        !only &&
+        !workspace.applied.includes(slug) &&
+        workspace.applied.length + (workspace.appliedFolders ?? 0) >=
+          maxAppliedLayers
+      ) {
         setNote(format(t.layerLimit, { max: maxAppliedLayers }));
         return;
       }
@@ -59,12 +65,14 @@ export function ApplyLayerButton({
       return;
     }
     let current: string[] = [];
+    let folders: string[] = [];
     let extra = "";
     try {
       const stored = sessionStorage.getItem(mapSessionKey) ?? "";
       const parsed = parseMapQuery(
         Object.fromEntries(new URLSearchParams(stored.replace(/^\?/, ""))),
       );
+      folders = parsed.collections ?? [];
       current =
         parsed.layers === "none" || parsed.layers === undefined
           ? []
@@ -84,7 +92,7 @@ export function ApplyLayerButton({
       router.push(`/?layers=${current.join(",")}${extra ? "&" + extra : ""}`);
       return;
     }
-    if (current.length >= maxAppliedLayers) {
+    if (appliedSlots(current, folders) >= maxAppliedLayers) {
       setNote(format(t.layerLimit, { max: maxAppliedLayers }));
       return;
     }

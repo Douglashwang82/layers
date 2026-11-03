@@ -236,6 +236,30 @@ export async function getLayer(
   const access = accessFor(layer, actor, memberships, following.has(layer.id));
   return access.view ? { layer, access } : null;
 }
+/** Layers by id with the actor's access; unknown ids are absent. */
+export async function getLayersById(
+  ids: string[],
+  actor: Actor | null,
+): Promise<Map<string, LayerWithAccess>> {
+  const found = new Map<string, LayerWithAccess>();
+  if (!ids.length) return found;
+  const [memberships, following, result] = await Promise.all([
+    getMemberships(actor?.id),
+    followingSet(actor?.id),
+    pool.query<Record<string, unknown>>(
+      `SELECT ${columns} ${from} WHERE l.id=ANY($1::uuid[])`,
+      [ids],
+    ),
+  ]);
+  for (const row of result.rows) {
+    const layer = record(row);
+    found.set(layer.id, {
+      layer,
+      access: accessFor(layer, actor, memberships, following.has(layer.id)),
+    });
+  }
+  return found;
+}
 export async function requireEditableLayer(id: string, actor: Actor) {
   const found = await getLayer(id, actor);
   if (!found)
@@ -431,6 +455,7 @@ export async function listEditableLayers(actor: Actor) {
 export async function listLayerItemRefs(layerId: string) {
   const result = await pool.query<{
     id: string;
+    marker_image_url: string | null;
     place_id: string | null;
     event_id: string | null;
     content_id: string | null;
@@ -439,8 +464,9 @@ export async function listLayerItemRefs(layerId: string) {
     /** A custom place whose suggestion was approved is shown as that catalog place. */
     approved_catalog_id: string | null;
   }>(
-    `SELECT i.id,i.place_id,i.event_id,i.content_id,i.subject_id,i.custom_place_id,p.id AS approved_catalog_id
+    `SELECT i.id,i.place_id,i.event_id,i.content_id,i.subject_id,i.custom_place_id,p.id AS approved_catalog_id,mi.url AS marker_image_url
      FROM layer_item i
+     LEFT JOIN image mi ON mi.id=i.marker_image_id
      LEFT JOIN custom_place cp ON cp.id=i.custom_place_id
      LEFT JOIN place p ON p.id=cp.catalog_place_id AND p.status='approved'
      WHERE i.layer_id=$1 ORDER BY i.position, i.created_at`,
@@ -459,27 +485,39 @@ export async function listLayerItemRefs(layerId: string) {
             : r.custom_place_id
               ? `custom:${r.custom_place_id}`
               : `content:${r.content_id}`,
+    markerImageUrl: r.marker_image_url,
   }));
 }
 export async function getMapPreference(userId?: string) {
   if (!userId) return null;
   const result = await pool.query<{
     active_layers: string[];
+    active_collections: string[];
     view: "map" | "list";
-  }>("SELECT active_layers,view FROM user_map_preference WHERE user_id=$1", [
-    userId,
-  ]);
+  }>(
+    "SELECT active_layers,active_collections,view FROM user_map_preference WHERE user_id=$1",
+    [userId],
+  );
   return result.rows[0]
-    ? { layers: result.rows[0].active_layers, view: result.rows[0].view }
+    ? {
+        layers: result.rows[0].active_layers,
+        collections: result.rows[0].active_collections ?? [],
+        view: result.rows[0].view,
+      }
     : null;
 }
 export async function setMapPreference(
   userId: string,
-  preference: { layers: string[]; view: "map" | "list" },
+  preference: { layers: string[]; collections: string[]; view: "map" | "list" },
 ) {
   await pool.query(
-    `INSERT INTO user_map_preference(user_id,active_layers,view) VALUES($1,$2,$3) ON CONFLICT(user_id) DO UPDATE SET active_layers=$2,view=$3,updated_at=now()`,
-    [userId, JSON.stringify(preference.layers), preference.view],
+    `INSERT INTO user_map_preference(user_id,active_layers,active_collections,view) VALUES($1,$2,$3,$4) ON CONFLICT(user_id) DO UPDATE SET active_layers=$2,active_collections=$3,view=$4,updated_at=now()`,
+    [
+      userId,
+      JSON.stringify(preference.layers),
+      JSON.stringify(preference.collections),
+      preference.view,
+    ],
   );
   return preference;
 }
