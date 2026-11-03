@@ -1,10 +1,11 @@
-import { pool } from "@taiwanhub/database";
+import { pool, retireLayerItemReviews } from "@taiwanhub/database";
 import type { PoolClient } from "pg";
 import type { z } from "zod";
 import {
   AppError,
   layerInput,
   layerItemInput,
+  layerItemMarkerInput,
   layerPatchInput,
   parseLayerItemKey,
   requireActor,
@@ -141,6 +142,7 @@ export async function insertLayer(
   await record(tx, a.id, "layer_created", {
     layerId: id,
     owner: groupId ? "group" : "user",
+    audience: groupId ? "group" : "private",
   });
   return {
     id,
@@ -272,6 +274,12 @@ export async function addLayerItem(
       await record(tx, a.id, "layer_item_added", {
         layerId: found.layer.id,
         type: ref.type,
+        owner: found.layer.ownerKind,
+        // The actor's role on the layer: owner, editor, or a plain user.
+        role:
+          found.access.role === "owner" || found.access.role === "editor"
+            ? found.access.role
+            : "user",
       });
     const key = target.column === "place_id" ? `place:${target.id}` : input.key;
     return { added, key };
@@ -475,18 +483,79 @@ export async function removeLayerItem(
   const found = await requireEditableLayer(id, a);
   notProjected(found);
   // A catalog key also covers custom places shown as that approved catalog place.
-  const result = await pool.query(
-    ref.type === "place"
-      ? `DELETE FROM layer_item WHERE layer_id=$1 AND (place_id=$2 OR custom_place_id IN (SELECT id FROM custom_place WHERE catalog_place_id=$2))`
-      : `DELETE FROM layer_item WHERE layer_id=$1 AND ${itemColumns[ref.type]}=$2`,
-    [found.layer.id, ref.id],
-  );
-  if (result.rowCount)
-    await pool.query(
+  const removed = await transaction(async (tx) => {
+    const items = await tx.query<{ id: string }>(
+      ref.type === "place"
+        ? `SELECT id FROM layer_item WHERE layer_id=$1 AND (place_id=$2 OR custom_place_id IN (SELECT id FROM custom_place WHERE catalog_place_id=$2)) ORDER BY id FOR UPDATE`
+        : `SELECT id FROM layer_item WHERE layer_id=$1 AND ${itemColumns[ref.type]}=$2 ORDER BY id FOR UPDATE`,
+      [found.layer.id, ref.id],
+    );
+    if (!items.rowCount) return false;
+    const ids = items.rows.map((r) => r.id);
+    // Reviews are soft-deleted and detached so their history outlives the item.
+    await retireLayerItemReviews(tx, ids, a.id);
+    await tx.query("DELETE FROM layer_item WHERE id=ANY($1::uuid[])", [ids]);
+    await tx.query(
       "UPDATE layer SET updated_by=$2,updated_at=now() WHERE id=$1",
       [found.layer.id, a.id],
     );
-  return { removed: (result.rowCount ?? 0) > 0, key };
+    return true;
+  });
+  return { removed, key };
+}
+/**
+ * Sets or clears the custom map marker of one item in a layer. Only layer
+ * editors may change it, and only with an image they uploaded themselves; a
+ * changed marker on an approved public layer goes back to moderation.
+ */
+export async function setLayerItemMarker(
+  actor: Actor | null,
+  id: string,
+  itemId: string,
+  body: unknown,
+) {
+  writable();
+  const a = requireActor(actor);
+  const input = layerItemMarkerInput.parse(body);
+  const found = await requireEditableLayer(id, a);
+  notProjected(found);
+  return transaction(async (tx) => {
+    const item = await tx.query<{ marker_image_id: string | null }>(
+      "SELECT marker_image_id FROM layer_item WHERE id=$1 AND layer_id=$2 FOR UPDATE",
+      [itemId, found.layer.id],
+    );
+    if (!item.rowCount)
+      throw new AppError(404, "NOT_FOUND", "This item is not in the layer.");
+    let url: string | null = null;
+    if (input.imageId) {
+      const image = await tx.query<{ url: string; mime_type: string }>(
+        "SELECT url,mime_type FROM image WHERE id=$1 AND user_id=$2",
+        [input.imageId, a.id],
+      );
+      if (!image.rowCount)
+        throw new AppError(400, "IMAGE", "Upload the marker image first.");
+      if (image.rows[0].mime_type !== "image/png")
+        throw new AppError(400, "IMAGE", "Markers must be PNG images.");
+      url = image.rows[0].url;
+    }
+    if (item.rows[0].marker_image_id === input.imageId)
+      return { itemId, markerImageUrl: url };
+    await tx.query(
+      "UPDATE layer_item SET marker_image_id=$2,updated_at=now() WHERE id=$1",
+      [itemId, input.imageId],
+    );
+    await tx.query(
+      "UPDATE layer SET updated_by=$2,updated_at=now() WHERE id=$1",
+      [found.layer.id, a.id],
+    );
+    // A new picture on a public layer is unreviewed content; clearing is not.
+    if (input.imageId) await requirePublicationReview(tx, found.layer.id, a.id);
+    await record(tx, a.id, "layer_item_marker_set", {
+      layerId: found.layer.id,
+      cleared: !input.imageId,
+    });
+    return { itemId, markerImageUrl: url };
+  });
 }
 /** Following retains a layer in the library; it never applies it to the map. */
 export async function followLayer(

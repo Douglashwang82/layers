@@ -1,4 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
+// Local inference plus bounded Google matching can take several minutes.
+export const maxDuration = 240;
 import { z } from "zod";
 import {
   pool,
@@ -23,6 +25,13 @@ import {
   type Kind,
 } from "@taiwanhub/shared";
 import { currentActor } from "@/lib/session";
+import { handleMessagingRoute } from "@/features/messaging/router";
+import {
+  listItemReviews,
+  listLayerItemRatings,
+} from "@/features/reviews/repository";
+import { deleteItemReview, writeItemReview } from "@/features/reviews/service";
+import { listMapReviewPreviews } from "@/features/reviews/map-previews";
 import { getActiveCity } from "@/lib/city";
 import { runMapQuery } from "@/features/map/query";
 import { resolveMapRequest } from "@/features/map/request";
@@ -40,9 +49,15 @@ import {
   deleteLayer,
   addLayerItem,
   removeLayerItem,
+  setLayerItemMarker,
   followLayer,
   publishLayer,
 } from "@/features/layers/service";
+import {
+  createShareLink,
+  getShareLinkStatus,
+  revokeShareLink,
+} from "@/features/layers/share-links";
 import {
   createLayerEvent,
   deleteLayerEvent,
@@ -136,6 +151,10 @@ async function handler(
       const query = Object.fromEntries(request.nextUrl.searchParams);
       return handleMembershipRoute(request, path.slice(1), actor, query);
     }
+    if (resource === "messaging") {
+      const actor = await currentActor();
+      return await handleMessagingRoute(request, path.slice(1), actor);
+    }
     if (resource === "admin" && id === "place-subjects") {
       const actor = await currentActor();
       const query = Object.fromEntries(request.nextUrl.searchParams);
@@ -182,6 +201,8 @@ async function handler(
               .parse(query.cursor ?? 0),
           ),
         );
+      if (id === "review-previews")
+        return ok(await listMapReviewPreviews(state, city, actor));
       const result = await runMapQuery(state, city, actor);
       if (id === "results") {
         const start = (state.page - 1) * mapPageSize;
@@ -224,12 +245,34 @@ async function handler(
     }
     if (method === "GET" && resource === "layers") {
       const { city } = await getActiveCity(query.city);
+      if (id && action === "share-link")
+        return ok(await getShareLinkStatus(actor, id));
       if (id) {
-        const found = await getLayer(id, actor, city);
+        const found = await getLayer(id, actor);
         if (!found)
           throw new AppError(404, "NOT_FOUND", "This layer is unavailable.");
         if (action === "events")
           return ok({ events: await listLayerEvents(actor, id) });
+        if (action === "items" && path[3] && path[4] === "reviews") {
+          const result = await listItemReviews(
+            found.layer.id,
+            z.uuid().parse(path[3]),
+            actor,
+            typeof query.cursor === "string" ? query.cursor : undefined,
+          );
+          if (!result)
+            throw new AppError(404, "NOT_FOUND", "This item is unavailable.");
+          return ok({
+            ...result,
+            canReview: result.canReview && flags.placeReviewWrites,
+          });
+        }
+        if (action === "item-ratings") {
+          const result = await listLayerItemRatings(found.layer.id, actor);
+          if (!result)
+            throw new AppError(404, "NOT_FOUND", "This layer is unavailable.");
+          return ok(result);
+        }
         if (action === "items")
           return ok({ items: await listLayerItemRefs(found.layer.id) });
         if (action === "places") {
@@ -407,7 +450,13 @@ async function handler(
       const maxBody = resource === "google-links" ? 131072 : 16384;
       if (Number(request.headers.get("content-length") ?? 0) > maxBody)
         throw new AppError(413, "TOO_LARGE", "Request is too large.");
-      const raw = method === "DELETE" ? "{}" : await request.text();
+      // Item review deletes carry the expected revision in the body.
+      const deleteHasBody =
+        resource === "layers" && action === "items" && path[4] === "review";
+      const raw =
+        method === "DELETE" && !deleteHasBody
+          ? "{}"
+          : (await request.text()) || "{}";
       if (raw.length > maxBody)
         throw new AppError(413, "TOO_LARGE", "Request is too large.");
       const body: unknown = JSON.parse(raw);
@@ -561,6 +610,37 @@ async function handler(
           return ok(await updateLayer(a, id, body));
         if (id && !action && method === "DELETE")
           return ok(await deleteLayer(a, id));
+        if (
+          id &&
+          action === "items" &&
+          path[3] &&
+          path[4] === "review" &&
+          (method === "PUT" || method === "DELETE")
+        ) {
+          const layerUuid = z.uuid().parse(id);
+          const itemUuid = z.uuid().parse(path[3]);
+          return ok({
+            review:
+              method === "PUT"
+                ? await writeItemReview(a, layerUuid, itemUuid, body)
+                : await deleteItemReview(a, layerUuid, itemUuid, body),
+          });
+        }
+        if (
+          id &&
+          action === "items" &&
+          path[3] &&
+          path[4] === "marker" &&
+          method === "PATCH"
+        )
+          return ok(
+            await setLayerItemMarker(
+              a,
+              z.uuid().parse(id),
+              z.uuid().parse(path[3]),
+              body,
+            ),
+          );
         if (id && action === "items" && method === "POST")
           return ok(await addLayerItem(a, id, body), 201);
         if (id && action === "items" && method === "DELETE")
@@ -581,6 +661,10 @@ async function handler(
           (method === "POST" || method === "DELETE")
         )
           return ok(await followLayer(a, id, method === "POST"));
+        if (id && action === "share-link" && method === "POST")
+          return ok(await createShareLink(a, id), 201);
+        if (id && action === "share-link" && method === "DELETE")
+          return ok(await revokeShareLink(a, id));
         if (
           id &&
           action === "publish" &&

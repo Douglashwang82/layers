@@ -78,9 +78,17 @@ export type MapItem = {
   rank: number;
   /** Set for member-created places (`custom:` keys): who owns them. */
   customScope?: "user" | "group";
+  /** Google place matched to a custom place at import: details on request, never its pin. */
+  googlePlaceId?: string;
+  /** A layer editor's custom pin image for this item (first layer that sets one wins). */
+  markerImageUrl?: string | null;
 };
 export type LayerAvailability = {
   slug: string;
+  /** Layer id, for the item event/tip APIs; absent when unavailable. */
+  id?: string;
+  /** Whether the viewer may edit the layer (attach events); never an authorization check. */
+  canEdit?: boolean;
   title: string;
   titleChinese: string;
   ownerKind: LayerRecord["ownerKind"];
@@ -89,7 +97,7 @@ export type LayerAvailability = {
   schedule: LayerRecord["schedule"];
   startsOn: string | null;
   endsOn: string | null;
-  status: "ok" | "unavailable" | "other-city";
+  status: "ok" | "unavailable";
   /** Contribution to the current query, never the layer's total size. */
   count: number;
   cityName?: string;
@@ -383,8 +391,9 @@ async function curatedMembers(
     position: number;
     valid_from: Date | null;
     valid_until: Date | null;
+    marker_image_url: string | null;
   }>(
-    "SELECT layer_id,place_id,event_id,content_id,custom_place_id,note,position,valid_from,valid_until FROM layer_item WHERE layer_id=ANY($1::uuid[]) ORDER BY position, created_at",
+    "SELECT i.layer_id,i.place_id,i.event_id,i.content_id,i.custom_place_id,i.note,i.position,i.valid_from,i.valid_until,mi.url AS marker_image_url FROM layer_item i LEFT JOIN image mi ON mi.id=i.marker_image_id WHERE i.layer_id=ANY($1::uuid[]) ORDER BY i.position, i.created_at",
     [layers.map((l) => l.id)],
   );
   const byKey = new Map<string, MapItem>();
@@ -450,6 +459,7 @@ async function curatedMembers(
       ...item,
       layers: [slug],
       note: row.note || null,
+      ...(row.marker_image_url ? { markerImageUrl: row.marker_image_url } : {}),
       rank: item.rank - row.position / 1e6,
     });
     groups.set(slug, list);
@@ -490,12 +500,12 @@ export async function runMapQuery(
 ): Promise<MapQueryResult> {
   const window = resolveDateWindow(state.date, city.timezone, now);
   const candidates = await loadCandidates(city, window.start);
-  const { resolved, unavailable, otherCity, disabled } = await resolveLayers(
+  const { resolved, unavailable, disabled } = await resolveLayers(
     state.layers === "none" ? [] : state.layers,
     actor,
     city,
   );
-  // Disabled (system, under the map MVP) layers leave the state as if never applied.
+  // Disabled (system) layers leave the state as if never applied.
   const slugs = (state.layers === "none" ? [] : state.layers).filter(
     (slug) => !disabled.includes(slug),
   );
@@ -603,17 +613,18 @@ export async function runMapQuery(
   for (const item of items)
     for (const slug of item.layers)
       counts.set(slug, (counts.get(slug) ?? 0) + 1);
-  // MVP layers are mostly Google places, which the item list above never
-  // holds; count them too (the MVP has no area or date filter to apply).
-  if (flags.mapMvp)
-    for (const [slug, n] of await countExternalReferences(resolved, actor, now))
-      counts.set(slug, (counts.get(slug) ?? 0) + n);
+  // Layers are mostly Google places, which the item list above never
+  // holds; count them too (there is no area or date filter to apply).
+  for (const [slug, n] of await countExternalReferences(resolved, actor, now))
+    counts.set(slug, (counts.get(slug) ?? 0) + n);
   const availability: LayerAvailability[] = [];
   const describe = (
-    { layer }: LayerWithAccess,
+    { layer, access }: LayerWithAccess,
     status: LayerAvailability["status"],
   ): LayerAvailability => ({
     slug: layer.slug,
+    id: layer.id,
+    canEdit: access.edit,
     title: layer.title,
     titleChinese: layer.titleChinese,
     ownerKind: layer.ownerKind,
@@ -628,9 +639,7 @@ export async function runMapQuery(
   });
   for (const slug of slugs) {
     const ok = resolved.find((r) => r.layer.slug === slug);
-    const other = otherCity.find((r) => r.layer.slug === slug);
     if (ok) availability.push(describe(ok, "ok"));
-    else if (other) availability.push(describe(other, "other-city"));
     else if (unavailable.includes(slug))
       availability.push({
         slug,

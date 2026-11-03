@@ -16,6 +16,7 @@ import {
 } from "../../apps/web/src/features/reviews/service";
 import {
   listReviewScopes,
+  listItemReviews,
   listScopeReviews,
 } from "../../apps/web/src/features/reviews/repository";
 import { createGroup } from "../../apps/web/src/features/groups/service";
@@ -530,10 +531,22 @@ describe("catalog linking", () => {
       [layerId],
     );
     expect(items.rows).toEqual([{ place_id: catalogPlace, subject_id: null }]);
-    // Reviews stay attached to the subject and remain readable in their scope.
+    // The layer's reviews follow the item (now a catalog item) and stay readable there.
+    const moved = await pool.query(
+      "SELECT layer_item_id,subject_id FROM place_review WHERE layer_id=$1 AND status='approved'",
+      [layerId],
+    );
+    expect(moved.rows).toEqual([
+      { layer_item_id: expect.any(String), subject_id: null },
+    ]);
     expect(
-      await listScopeReviews(subjectId, layerScope, carol, 1),
-    ).toMatchObject({ totalReviews: 1 });
+      await listItemReviews(
+        layerId,
+        moved.rows[0].layer_item_id,
+        carol,
+        undefined,
+      ),
+    ).toMatchObject({ summary: { totalReviews: 1 } });
     const audit = await pool.query(
       "SELECT action FROM moderation_action WHERE entity_type='place_subjects' AND entity_id=$1 ORDER BY created_at",
       [subjectId],

@@ -4,7 +4,6 @@ import { pool } from "@taiwanhub/database";
 import { currentActor } from "@/lib/session";
 import { getCopy, getLocale, dateLabel, type Copy } from "@/lib/i18n";
 import { EmptyState } from "@/components/cards";
-import { flags } from "@/lib/config";
 const statusKey: Record<string, keyof Copy> = {
   pending: "statusPending",
   approved: "statusApproved",
@@ -49,11 +48,7 @@ export default async function Contributions() {
         <EmptyState
           t={t}
           body={t.joinBody}
-          action={
-            flags.submissions
-              ? { href: "/submit/place", label: t.submitPlace }
-              : undefined
-          }
+          action={{ href: "/", label: t.mascotBack }}
         />
       ) : (
         <ul className="contribution-list">

@@ -197,6 +197,62 @@
       "when": 1792706253917,
       "tag": "0027_noisy_the_anarchist",
       "breakpoints": true
+    },
+    {
+      "idx": 28,
+      "version": "7",
+      "when": 1793077416312,
+      "tag": "0028_flippant_sheva_callister",
+      "breakpoints": true
+    },
+    {
+      "idx": 29,
+      "version": "7",
+      "when": 1793336062238,
+      "tag": "0029_overconfident_gabe_jones",
+      "breakpoints": true
+    },
+    {
+      "idx": 30,
+      "version": "7",
+      "when": 1793336845508,
+      "tag": "0030_lovely_grim_reaper",
+      "breakpoints": true
+    },
+    {
+      "idx": 31,
+      "version": "7",
+      "when": 1793498186650,
+      "tag": "0031_nebulous_excalibur",
+      "breakpoints": true
+    },
+    {
+      "idx": 32,
+      "version": "7",
+      "when": 1793518476213,
+      "tag": "0032_quick_madrox",
+      "breakpoints": true
+    },
+    {
+      "idx": 33,
+      "version": "7",
+      "when": 1793592356750,
+      "tag": "0033_steep_cassandra_nova",
+      "breakpoints": true
+    },
+    {
+      "idx": 34,
+      "version": "7",
+      "when": 1793608139868,
+      "tag": "0034_mute_barracuda",
+      "breakpoints": true
+    },
+    {
+      "idx": 35,
+      "version": "7",
+      "when": 1793629095944,
+      "tag": "0035_medical_gabe_jones",
+      "breakpoints": true
     }
   ]
 }

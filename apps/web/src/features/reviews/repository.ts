@@ -1,6 +1,8 @@
 import { pool } from "@taiwanhub/database";
 import type { PoolClient } from "pg";
 import {
+  decodeReviewCursor,
+  encodeReviewCursor,
   reviewScopeKey,
   type Actor,
   type RatingSummary,
@@ -8,7 +10,11 @@ import {
   type ReviewStatus,
 } from "@taiwanhub/shared";
 import { getLayer } from "@/features/layers/repository";
-import { getVisibleSubject } from "@/features/place-subjects/repository";
+import {
+  findSubjectById,
+  getVisibleSubject,
+  isBlocked,
+} from "@/features/place-subjects/repository";
 type Queryable = Pick<PoolClient, "query">;
 export const reviewPageSize = 20;
 /** Scope filter on alias `r`. Parameter indexes are supplied by the caller; the column is allowlisted. */
@@ -73,7 +79,8 @@ export async function subjectInLayer(
 }
 export type ReviewRow = {
   id: string;
-  subject_id: string;
+  subject_id: string | null;
+  layer_item_id: string | null;
   user_id: string;
   scope_kind: "layer" | "group";
   layer_id: string | null;
@@ -87,18 +94,33 @@ export type ReviewRow = {
   created_at: Date;
   updated_at: Date;
 };
-export async function findOwnReview(
+/** What a review is about: a place subject, or any other layer item. */
+export type ReviewTarget = { subjectId: string } | { layerItemId: string };
+export async function findOwnTargetReview(
+  db: Queryable,
+  target: ReviewTarget,
+  userId: string,
+  scope: ReviewScope,
+  lock = false,
+) {
+  const [column, value] =
+    "subjectId" in target
+      ? ["r.subject_id", target.subjectId]
+      : ["r.layer_item_id", target.layerItemId];
+  const result = await db.query<ReviewRow>(
+    `SELECT r.* FROM place_review r WHERE ${column}=$1 AND r.user_id=$2 AND ${scopeColumn(scope)}=$3${lock ? " FOR UPDATE" : ""}`,
+    [value, userId, scope.id],
+  );
+  return result.rows[0] ?? null;
+}
+export function findOwnReview(
   db: Queryable,
   subjectId: string,
   userId: string,
   scope: ReviewScope,
   lock = false,
 ) {
-  const result = await db.query<ReviewRow>(
-    `SELECT r.* FROM place_review r WHERE r.subject_id=$1 AND r.user_id=$2 AND ${scopeColumn(scope)}=$3${lock ? " FOR UPDATE" : ""}`,
-    [subjectId, userId, scope.id],
-  );
-  return result.rows[0] ?? null;
+  return findOwnTargetReview(db, { subjectId }, userId, scope, lock);
 }
 /** The author's own view, including pending/hidden state; never shown to anyone else. */
 export function ownReviewView(row: ReviewRow | null) {
@@ -234,4 +256,155 @@ export async function listReviewScopes(subjectId: string, actor: Actor | null) {
     subjectId: subject.id,
     scopes: results.filter((r) => r !== null),
   };
+}
+export const itemReviewPageSize = 20;
+export type LayerItemRef = { id: string; subject_id: string | null };
+/** The item within its layer, or null; an item of another layer is never matched. */
+export async function findLayerItem(
+  db: Queryable,
+  layerId: string,
+  itemId: string,
+  lock = false,
+) {
+  const result = await db.query<LayerItemRef>(
+    `SELECT id,subject_id FROM layer_item WHERE id=$1 AND layer_id=$2${lock ? " FOR NO KEY UPDATE" : ""}`,
+    [itemId, layerId],
+  );
+  return result.rows[0] ?? null;
+}
+/** Place-subject items share the subject review in the layer scope; others use their own rows. */
+export function itemTarget(item: LayerItemRef): ReviewTarget {
+  return item.subject_id
+    ? { subjectId: item.subject_id }
+    : { layerItemId: item.id };
+}
+function targetWhere(target: ReviewTarget) {
+  return "subjectId" in target
+    ? { sql: "r.subject_id=$1", value: target.subjectId }
+    : { sql: "r.layer_item_id=$1", value: target.layerItemId };
+}
+/**
+ * Reviews of one layer item as the actor sees them: approved reviews by
+ * others plus the actor's own pending/approved one, newest first. Null when
+ * the layer is not viewable or does not contain the item.
+ */
+export async function listItemReviews(
+  layerId: string,
+  itemId: string,
+  actor: Actor | null,
+  cursorToken: string | undefined,
+) {
+  const scope: ReviewScope = { kind: "layer", id: layerId };
+  const access = await getScopeAccess(scope, actor);
+  if (!access) return null;
+  const item = await findLayerItem(pool, layerId, itemId);
+  if (!item) return null;
+  if (item.subject_id) {
+    const subject = await findSubjectById(pool, item.subject_id);
+    if (!subject || isBlocked(subject)) return null;
+  }
+  const target = targetWhere(itemTarget(item));
+  const cursor = decodeReviewCursor(cursorToken);
+  const params: unknown[] = [target.value, layerId, actor?.id ?? null];
+  let after = "";
+  if (cursor) {
+    params.push(cursor.createdAt, cursor.id);
+    after = "AND (r.created_at,r.id) < ($4::timestamptz,$5::uuid)";
+  }
+  const rows = await pool.query<{
+    id: string;
+    user_id: string;
+    stars: number | null;
+    body: string;
+    author_name: string;
+    author_image: string | null;
+    created_at: Date;
+    created_at_text: string;
+    updated_at: Date;
+  }>(
+    `SELECT r.id,r.user_id,r.stars,r.body,u.name AS author_name,u.image AS author_image,r.created_at,r.created_at::text AS created_at_text,r.updated_at
+     FROM place_review r JOIN "user" u ON u.id=r.user_id
+     WHERE ${target.sql} AND r.layer_id=$2
+       AND (r.status='approved' OR (r.user_id=$3::uuid AND r.status='pending')) ${after}
+     ORDER BY r.created_at DESC, r.id DESC LIMIT ${itemReviewPageSize + 1}`,
+    params,
+  );
+  const page = rows.rows.slice(0, itemReviewPageSize);
+  const last = page[page.length - 1];
+  const stats = await pool.query<{
+    total: number;
+    rated: number;
+    average: string | null;
+  }>(
+    `SELECT count(*)::int AS total,count(r.stars)::int AS rated,round(avg(r.stars)::numeric,1)::text AS average
+     FROM place_review r WHERE ${target.sql} AND r.layer_id=$2 AND r.status='approved'`,
+    [target.value, layerId],
+  );
+  const own = actor
+    ? ownReviewView(
+        await findOwnTargetReview(pool, itemTarget(item), actor.id, scope),
+      )
+    : null;
+  return {
+    summary: {
+      totalReviews: stats.rows[0].total,
+      ratedCount: stats.rows[0].rated,
+      averageStars:
+        stats.rows[0].average === null ? null : Number(stats.rows[0].average),
+    } satisfies RatingSummary,
+    reviews: page.map((r) => ({
+      id: r.id,
+      author: { name: r.author_name, image: r.author_image },
+      stars: r.stars,
+      body: r.body,
+      updatedAt: r.updated_at.toISOString(),
+      mine: actor !== null && r.user_id === actor.id,
+    })),
+    nextCursor:
+      rows.rows.length > itemReviewPageSize && last
+        ? encodeReviewCursor(last.created_at_text, last.id)
+        : null,
+    own: own ? stripScope(own) : null,
+    canReview: actor !== null,
+  };
+}
+/** The item-route author view omits the scope key (it is always the URL's layer). */
+export function stripScope<T extends { scope: string }>(view: T) {
+  const { scope: _scope, ...rest } = view;
+  void _scope;
+  return rest;
+}
+/** Approved rating per item of a viewable layer; items without approved reviews are absent. */
+export async function listLayerItemRatings(
+  layerId: string,
+  actor: Actor | null,
+) {
+  const access = await getScopeAccess({ kind: "layer", id: layerId }, actor);
+  if (!access) return null;
+  const result = await pool.query<{
+    id: string;
+    rated: number;
+    average: string | null;
+  }>(
+    `SELECT i.id,count(r.stars)::int AS rated,round(avg(r.stars)::numeric,1)::text AS average
+     FROM layer_item i
+     LEFT JOIN place_subject s ON s.id=i.subject_id
+     LEFT JOIN place sp ON sp.id=s.catalog_place_id
+     JOIN place_review r ON r.status='approved' AND r.layer_id=i.layer_id
+       AND (r.layer_item_id=i.id OR (i.subject_id IS NOT NULL AND r.subject_id=i.subject_id))
+     WHERE i.layer_id=$1
+       AND (i.subject_id IS NULL OR (s.status='active' AND (s.catalog_place_id IS NULL OR sp.status='approved')))
+     GROUP BY i.id`,
+    [layerId],
+  );
+  const ratings: Record<
+    string,
+    { averageStars: number | null; ratedCount: number }
+  > = {};
+  for (const r of result.rows)
+    ratings[r.id] = {
+      averageStars: r.average === null ? null : Number(r.average),
+      ratedCount: r.rated,
+    };
+  return { ratings };
 }

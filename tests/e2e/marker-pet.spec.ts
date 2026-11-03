@@ -1,10 +1,11 @@
 import { expect, test } from "@playwright/test";
+import { seededPlacesMap } from "./fixtures";
 
 test("provider failure leaves list selection usable without a floating orphan companion", async ({
   page,
 }) => {
   await page.route(/(\/\/|\.)mapbox\.com\//, (route) => route.abort());
-  await page.goto("/");
+  await page.goto(await seededPlacesMap());
   await page.getByRole("link", { name: /Morning Soy Kitchen/ }).click();
   await expect(
     page.getByRole("heading", { name: "Morning Soy Kitchen", exact: true }),

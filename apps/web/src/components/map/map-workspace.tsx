@@ -6,10 +6,17 @@ import {
   useRef,
   useState,
   type CSSProperties,
+  type ReactNode,
 } from "react";
-import Link from "next/link";
+import { LayerLink as Link } from "../layers/workspace-navigation";
 import { createPortal } from "react-dom";
-import { useSearchParams } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
+import { LayerWorkspaceContext } from "../layers/workspace-navigation";
+import {
+  layerPanelKeys,
+  readLayerPanel,
+  withoutLayerPanel,
+} from "@/lib/layer-workspace";
 import {
   CalendarDays,
   ChevronDown,
@@ -30,6 +37,7 @@ import {
   serializeMapQuery,
   type Bounds,
   type MapState,
+  maxAppliedLayers,
 } from "@taiwanhub/shared";
 import type {
   LayerAvailability,
@@ -49,22 +57,28 @@ import {
   type ExtraPoint,
   type MapCanvasHandle,
 } from "./map-canvas";
-import { getPlacesProvider, type ProviderPlace } from "@/lib/places/provider";
-import { BusinessDiscovery } from "@/components/places/business-discovery";
+import { getPlacesProvider } from "@/lib/places/provider";
 import { BusinessPanel } from "@/components/places/business-panel";
 import { ExternalReferences } from "@/components/places/external-references";
-import { ProviderDetails } from "@/components/places/provider-slot";
-import { MapToolbar } from "./map-toolbar";
 import {
   markerCssVars,
   markerKind,
   markerLabel,
 } from "@/lib/marker-presentation";
 import { useMapTheme } from "@/lib/map-theme";
+import { layerColor } from "@/components/map/layer-section";
+import { layerTitle } from "@/lib/layer-labels";
 import { ActiveLayersPanel } from "./active-layers-panel";
 import { MapResults, TabelogLink } from "./map-results";
 import { tabelogLink } from "@/lib/tabelog";
 import { ItemPreview } from "./item-preview";
+import { PlaceAttachments } from "./place-attachments";
+import {
+  TipReviews,
+  tipReviewsHeight,
+  tipReviewsWidth,
+  useMapReviewPreviews,
+} from "./tip-reviews";
 import { RoutePlanner, type PlannedStop } from "./route-planner";
 import {
   maxRouteStops,
@@ -89,17 +103,15 @@ type Sheet = "half" | "expanded";
 const cityZoom = 10.5;
 /** Wait for the panel and padding to settle before moving the camera. */
 const afterLayout = (run: () => void) => window.setTimeout(run, 80);
-/** The Google place hover card's size (height approximate), for keeping it inside the map. */
+/** The Google place hover card's size (height approximate: photo, card, Tabelog link), for keeping it inside the map. */
 const placeTipWidth = 280;
-const placeTipHeight = 360;
-/** Server-read flags and the browser-visible provider key (only when discovery or the MVP is on). */
+const placeTipHeight = 400;
+/** Server-read flags and the browser-visible provider key. */
 export type PlacesConfig = {
   providerKey: string | null;
   reviewWrites: boolean;
   collections: boolean;
   mapEffects: boolean;
-  /** Map MVP: layers only — no search, discovery or system layers. */
-  mvp: boolean;
 };
 /** An in-memory business selection; it never enters the URL until a subject exists. */
 type BusinessSelection = {
@@ -108,6 +120,7 @@ type BusinessSelection = {
   subjectId: string | null;
   location: { lat: number; lng: number } | null;
   temporary: boolean;
+  name?: string | null;
 };
 function keyOf(state: MapState, includeCity: boolean) {
   return serializeMapQuery(
@@ -151,10 +164,10 @@ export function MapWorkspace({
   authenticated,
   token,
   hasDemo,
-  contentEnabled,
   layerWrites,
   places,
   library = null,
+  layerScreen,
 }: {
   initial: MapQueryResult;
   initialDetail: ItemDetail | null;
@@ -164,14 +177,18 @@ export function MapWorkspace({
   authenticated: boolean;
   token: string | undefined;
   hasDemo: boolean;
-  contentEnabled: boolean;
   layerWrites: boolean;
   places: PlacesConfig;
   /** Map MVP: the signed-in member's loadable layers. */
   library?: LayerAvailability[] | null;
+  layerScreen?: ReactNode;
 }) {
-  const mvp = places.mvp;
   const searchParams = useSearchParams();
+  const router = useRouter();
+  const layerPanel = readLayerPanel(new URLSearchParams(searchParams));
+  const layerScreenKey = layerPanelKeys
+    .map((key) => searchParams.get(key) ?? "")
+    .join("|");
   const canvas = useRef<MapCanvasHandle>(null);
   const { theme } = useMapTheme();
   // Tokens live on body (the header sits outside the workspace), so publish the theme there.
@@ -195,7 +212,7 @@ export function MapWorkspace({
   // Declared early: effects below open the panel when a selection arrives.
   const [panelOpen, setPanelOpen] = useState(() =>
     initialPanelOpen({
-      hasItem: !!state.item,
+      hasItem: !!state.item || !!layerPanel,
       listView,
       fallback: !token,
     }),
@@ -206,6 +223,21 @@ export function MapWorkspace({
   const [refreshing, setRefreshing] = useState(false);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [force, setForce] = useState(0);
+  useEffect(() => {
+    let timer: ReturnType<typeof setTimeout>;
+    const changed = () => {
+      clearTimeout(timer);
+      timer = setTimeout(() => {
+        setForce((value) => value + 1);
+        router.refresh();
+      }, 150);
+    };
+    window.addEventListener("layer:changed", changed);
+    return () => {
+      clearTimeout(timer);
+      window.removeEventListener("layer:changed", changed);
+    };
+  }, [router]);
   const seq = useRef(0);
   useEffect(() => {
     setResult(initial);
@@ -248,13 +280,18 @@ export function MapWorkspace({
         },
         { includeCity: hasExplicitCity },
       );
+      const params = new URLSearchParams(qs);
+      for (const key of layerPanelKeys) {
+        const value = searchParams.get(key);
+        if (value !== null) params.set(key, value);
+      }
       window.history[mode === "push" ? "pushState" : "replaceState"](
         null,
         "",
-        "/" + qs,
+        "/?" + params.toString(),
       );
     },
-    [state, hasExplicitCity],
+    [state, hasExplicitCity, searchParams],
   );
   useEffect(() => {
     try {
@@ -291,6 +328,11 @@ export function MapWorkspace({
     [authenticated],
   );
   const toggleLayer = (slug: string, applied: boolean) => {
+    if (applied && shownSlugs.includes(slug)) return;
+    if (applied && shownSlugs.length >= maxAppliedLayers) {
+      setLoadError(format(t.layerLimit, { max: maxAppliedLayers }));
+      return;
+    }
     const next = applied
       ? [...shownSlugs, slug]
       : shownSlugs.filter((s) => s !== slug);
@@ -397,9 +439,22 @@ export function MapWorkspace({
     setPanelOpen(true);
   };
   const select = (key: string) => {
+    if (
+      layerPanel &&
+      !window.dispatchEvent(
+        new Event("layer:before-leave", { cancelable: true }),
+      )
+    )
+      return;
     reveal();
     setBusiness(null);
-    commit({ item: key }, "push");
+    if (layerPanel) {
+      const params = new URLSearchParams(
+        withoutLayerPanel(searchParams.toString()).split("?")[1],
+      );
+      params.set("item", key);
+      router.push("/?" + params, { scroll: false });
+    } else commit({ item: key }, "push");
     pushedSelection.current = true;
     setSheet("half");
     track("map_item_selected", { type: key.split(":")[0] });
@@ -414,24 +469,32 @@ export function MapWorkspace({
   const [listHoverKey, setListHoverKey] = useState<string | null>(null);
   const [tip, setTip] = useState<{
     key: string;
-    x: number;
+    /** Pointer x and the stage width, so the left edge can follow a late review column. */
+    pointerX: number;
+    stageWidth: number;
+    /** Card width without the review column. */
+    width: number;
     y: number;
     above?: boolean;
   } | null>(null);
   const tipTimer = useRef<number | undefined>(undefined);
+  const { previews: reviewPreviews, request: requestReviewPreviews } =
+    useMapReviewPreviews(queryKey);
   useEffect(() => () => window.clearTimeout(tipTimer.current), []);
   const stageBody = useRef<HTMLDivElement>(null);
-  /* Business discovery: a separate mode and in-memory selection, lazily loading the provider. */
+  /* Google place selection is in memory, lazily loading the provider. */
   const provider = useMemo(
     () => getPlacesProvider(places.providerKey ?? undefined, locale),
     [places.providerKey, locale],
   );
-  const [mode, setMode] = useState<"layers" | "business">("layers");
   const [business, setBusiness] = useState<BusinessSelection | null>(null);
-  const [searchPoints, setSearchPoints] = useState<ExtraPoint[]>([]);
+  const [locatedPlaces, setLocatedPlaces] = useState<
+    Record<string, { lat: number; lng: number }>
+  >({});
+  const [pendingExternal, setPendingExternal] = useState(0);
   const [externalPoints, setExternalPoints] = useState<ExtraPoint[]>([]);
   const extraPoints = useMemo(() => {
-    const points = [...externalPoints, ...searchPoints];
+    const points = [...externalPoints];
     if (business?.location && !points.some((p) => p.key === business.key))
       points.push({
         key: business.key,
@@ -441,10 +504,11 @@ export function MapWorkspace({
         placeId: business.placeId ?? undefined,
       });
     return points;
-  }, [externalPoints, searchPoints, business]);
+  }, [externalPoints, business]);
   const onItemHover = (hover: { key: string; x: number; y: number } | null) => {
     window.clearTimeout(tipTimer.current);
     if (hover) {
+      requestReviewPreviews();
       // Keep the tooltip inside the map: clamp against the stage size at event
       // time. A Google place card is wider and taller, and flips above the
       // pointer near the bottom edge.
@@ -452,11 +516,20 @@ export function MapWorkspace({
       const width = stage?.clientWidth ?? 1024;
       const height = stage?.clientHeight ?? 768;
       const card = extraPoints.some((p) => p.key === hover.key && p.placeId);
-      const [w, h] = card ? [placeTipWidth, placeTipHeight] : [234, 0];
+      // A review list beside the card can be taller than the card itself.
+      const [w, h] = [
+        card ? placeTipWidth : 234,
+        Math.max(
+          card ? placeTipHeight : 0,
+          tipReviewsHeight(reviewPreviews[hover.key]),
+        ),
+      ];
       const above = hover.y + 14 + h > height && hover.y - 14 - h > 0;
       setTip({
         key: hover.key,
-        x: Math.max(8, Math.min(hover.x + 14, width - w - 14)),
+        pointerX: hover.x,
+        stageWidth: width,
+        width: w,
         // Above the pointer, `y` is the card's bottom edge.
         y: above ? hover.y - 14 : Math.max(8, hover.y + 14),
         above,
@@ -467,20 +540,23 @@ export function MapWorkspace({
   };
   /** A marker clicked on the map is already in view, so the camera stays put. */
   const selectBusiness = (next: BusinessSelection, moveCamera = true) => {
+    if (layerPanel) {
+      if (
+        !window.dispatchEvent(
+          new Event("layer:before-leave", { cancelable: true }),
+        )
+      )
+        return;
+      router.push(withoutLayerPanel(searchParams.toString()), {
+        scroll: false,
+      });
+    }
     reveal();
     setBusiness(next);
     setSheet("half");
     const spot = next.location;
     if (spot && moveCamera) afterLayout(() => canvas.current?.focusPoint(spot));
   };
-  const selectSearchPlace = (place: ProviderPlace) =>
-    selectBusiness({
-      key: `search:${place.id}`,
-      placeId: place.id,
-      subjectId: null,
-      location: place.location,
-      temporary: true,
-    });
   const closeBusiness = () => {
     setBusiness(null);
     panelRef.current?.focus();
@@ -541,6 +617,7 @@ export function MapWorkspace({
       {
         key,
         placeId: point.placeId ?? null,
+        name: point.label,
         subjectId: key.startsWith("subject:") ? key.slice(8) : null,
         location: { lat: point.lat, lng: point.lng },
         temporary: point.kind === "search",
@@ -577,20 +654,22 @@ export function MapWorkspace({
     track("map_area_searched", {});
   };
   /*
-   * MVP framing: every loaded place (catalog/custom pins and Google places as
+   * Framing: every loaded place (catalog/custom pins and Google places as
    * they resolve) stays in view until the user moves the map themselves; a
    * new set of layers starts framing again.
    */
   const autoFit = useRef<string | null>(null);
-  const onUserMove = (bounds: Bounds) => {
-    if (mvp) autoFit.current = null;
-    else setPendingArea(bounds);
+  const onUserMove = () => {
+    autoFit.current = null;
   };
   /* Layout: everything floats over one full-viewport map; the list is a collapsible panel. */
   const mobile = useMedia("(max-width: 800px)");
   // Without a token or after a provider failure the list is the product and cannot be hidden.
   const fallback = !token || canvasStatus === "failed";
-  const visible = panelVisible({ open: panelOpen, listView, fallback });
+  const visible =
+    !!layerPanel || panelVisible({ open: panelOpen, listView, fallback });
+  // The sidebar is the Layers panel; results only list when there is no map to show them.
+  const showResults = listView || fallback || pendingExternal > 0;
   const savedScroll = useRef(0);
   const wasDetail = useRef(false);
   useEffect(() => {
@@ -626,7 +705,23 @@ export function MapWorkspace({
   }, [mobile]);
   const launcher = useRef<HTMLButtonElement>(null);
   const panelRef = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    if (!layerPanel) return;
+    panelRef.current?.focus();
+    panelRef.current?.scrollTo(0, 0);
+  }, [layerScreenKey, layerPanel]);
   const togglePanel = (open: boolean) => {
+    if (!open && layerPanel) {
+      if (
+        !window.dispatchEvent(
+          new Event("layer:before-leave", { cancelable: true }),
+        )
+      )
+        return;
+      router.push(withoutLayerPanel(searchParams.toString()), {
+        scroll: false,
+      });
+    }
     setPanelOpen(open);
     if (!mobile)
       try {
@@ -640,23 +735,27 @@ export function MapWorkspace({
     );
   };
   const [sheet, setSheet] = useState<Sheet>("half");
-  // An empty MVP map opens on the member's layers: loading one is the first step.
+  // An empty map opens on the member's layers: loading one is the first step.
   const [tab, setTab] = useState<"layers" | "results">(() =>
-    mvp && authenticated && appliedSlugs.length === 0 ? "layers" : "results",
+    authenticated &&
+    appliedSlugs.length === 0 &&
+    // A member with no layers of their own opens on the first-run starter.
+    (library ?? []).some((l) => l.ownerKind !== "system")
+      ? "layers"
+      : "results",
   );
   /**
-   * Google place cards locate their pins only while on screen, so when an
-   * MVP map has places still waiting, the Results tab opens once per query;
-   * located pins stay after the panel closes.
+   * Expose list-only places once per query instead of silently hiding them
+   * when their cached coordinates are missing or expired.
    */
-  const [pendingExternal, setPendingExternal] = useState(0);
   const revealedFor = useRef<string | null>(null);
   useEffect(() => {
-    if (!mvp || !pendingExternal || revealedFor.current === queryKey) return;
+    if (layerPanel || !pendingExternal || revealedFor.current === queryKey)
+      return;
     revealedFor.current = queryKey;
     setTab("results");
     setPanelOpen(true);
-  }, [mvp, pendingExternal, queryKey]);
+  }, [layerPanel, pendingExternal, queryKey]);
   const [limit, setLimit] = useState(20);
   const [panelHeight, setPanelHeight] = useState(0);
   const [panelRight, setPanelRight] = useState(0);
@@ -738,8 +837,18 @@ export function MapWorkspace({
     setActionsTarget(document.getElementById("map-header-actions"));
   }, []);
   const showLayers = () => {
+    if (layerPanel) {
+      if (
+        !window.dispatchEvent(
+          new Event("layer:before-leave", { cancelable: true }),
+        )
+      )
+        return;
+      router.push(withoutLayerPanel(searchParams.toString()), {
+        scroll: false,
+      });
+    }
     setTab("layers");
-    setMode("layers");
     setDetailHidden(true);
     setPanelOpen(true);
     window.requestAnimationFrame(() => panelRef.current?.focus());
@@ -772,10 +881,8 @@ export function MapWorkspace({
   useEffect(() => {
     setLimit(20);
   }, [result.total, result.generatedAt]);
-  // MVP counts include Google places as they get a location (as placeCount).
-  const announcedCount = mvp
-    ? result.total + externalPoints.length
-    : result.total;
+  // Counts include Google places as they get a location (as placeCount).
+  const announcedCount = result.total + externalPoints.length;
   useEffect(() => {
     setAnnounce(format(t.resultsInArea, { count: announcedCount }));
   }, [announcedCount, result.generatedAt, t.resultsInArea]);
@@ -803,8 +910,7 @@ export function MapWorkspace({
     canvas.current?.flyTo([city.longitude, city.latitude], cityZoom);
   }, [city.slug, city.longitude, city.latitude, canvasStatus]);
   useEffect(() => {
-    if (!mvp || canvasStatus !== "ready" || autoFit.current !== appliedKey)
-      return;
+    if (canvasStatus !== "ready" || autoFit.current !== appliedKey) return;
     const points: ExtraPoint[] = [
       ...mapped.map((i) => ({
         key: i.key,
@@ -823,12 +929,13 @@ export function MapWorkspace({
     return () => window.clearTimeout(timer);
     // `mapped` is derived from `result`; its identity changes with it.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [mvp, canvasStatus, appliedKey, result, externalPoints]);
+  }, [canvasStatus, appliedKey, result, externalPoints]);
   const businessPanel = business && (
     <BusinessPanel
       key={business.key}
       provider={provider}
       placeId={business.placeId}
+      name={business.name}
       subjectId={business.subjectId}
       temporary={business.temporary}
       authenticated={authenticated}
@@ -841,7 +948,10 @@ export function MapWorkspace({
       locale={locale}
       onClose={closeBusiness}
       onLocation={(place) => {
-        if (!place.location || business.location) return;
+        if (!place.location) return;
+        const location = place.location;
+        setLocatedPlaces((current) => ({ ...current, [place.id]: location }));
+        if (business.location) return;
         setBusiness((b) =>
           b && b.key === business.key ? { ...b, location: place.location } : b,
         );
@@ -850,8 +960,9 @@ export function MapWorkspace({
     />
   );
   // Details share the one floating panel with results and layers (business wins when both exist).
-  const detailInPanel = (!!selected || !!business) && !detailHidden;
-  const routeInPanel = mvp && routeOpen;
+  const detailInPanel =
+    !layerPanel && (!!selected || !!business) && !detailHidden;
+  const routeInPanel = !layerPanel && routeOpen;
   // The open place as a route stop: the keyboard and list path into a route.
   const openStop: PlannedStop | null = business
     ? business.location && !business.temporary
@@ -869,7 +980,7 @@ export function MapWorkspace({
       ? itemStop(selected.key)
       : null;
   const inRoute = !!openStop && routeStops.some((s) => s.key === openStop.key);
-  const routeAction = mvp && openStop && (
+  const routeAction = openStop && (
     <div className="route-action">
       <button
         type="button"
@@ -905,7 +1016,7 @@ export function MapWorkspace({
     );
     editRoute();
   };
-  const routeThroughButton = mvp && routablePlaces.length > 1 && (
+  const routeThroughButton = routablePlaces.length > 1 && (
     <button
       type="button"
       className="button secondary small route-through"
@@ -917,7 +1028,7 @@ export function MapWorkspace({
   );
   // The route bar: present while there are stops, so no mode is needed.
   const barLinks = routeLinks(routeStops, travelMode);
-  const routeBar = mvp && routeStops.length > 0 && (
+  const routeBar = routeStops.length > 0 && (
     <div className="route-bar" role="group" aria-label={t.routeTitle}>
       <button
         type="button"
@@ -969,7 +1080,7 @@ export function MapWorkspace({
   );
   /** Add or remove a hovered pin from the route, right on its hover card. */
   const tipRouteButton = (key: string) => {
-    const stop = mvp ? stopFor(key) : null;
+    const stop = stopFor(key);
     if (!stop) return null;
     const added = routeStops.some((s) => s.key === key);
     return (
@@ -1001,7 +1112,6 @@ export function MapWorkspace({
   const layerCount = result.layers.filter((l) => l.status === "ok").length;
   // MVP layers are mostly Google places, counted once they have a location.
   const placeCount = announcedCount;
-  const otherCity = result.layers.filter((l) => l.status === "other-city");
   const preview = selected && (
     <ItemPreview
       item={selected}
@@ -1022,6 +1132,7 @@ export function MapWorkspace({
       }}
       layerWrites={layerWrites}
       backLabel={t.backToResults}
+      provider={provider}
     />
   );
   const knownLayers = new Map(
@@ -1029,11 +1140,11 @@ export function MapWorkspace({
   );
   const panelLayers = shownSlugs
     .map((slug) => knownLayers.get(slug))
-    .filter((l): l is LayerAvailability => !!l && l.status !== "other-city");
+    .filter((l): l is LayerAvailability => !!l);
   const layersPanel = (
     <ActiveLayersPanel
       layers={panelLayers}
-      library={mvp ? (library ?? []) : null}
+      library={library ?? []}
       hidden={hiddenLayers.filter((h) => !shownSlugs.includes(h.slug))}
       t={t}
       locale={locale}
@@ -1085,21 +1196,50 @@ export function MapWorkspace({
       )}
     </div>
   );
+  // First run: a signed-in member with no layers of their own gets a starter.
+  const dailyPickSlug =
+    (library ?? []).find((l) => l.ownerKind === "system")?.slug ?? null;
+  const firstRun =
+    authenticated &&
+    library != null &&
+    !library.some((l) => l.ownerKind !== "system");
   const emptyState =
-    mvp && appliedSlugs.length === 0 ? (
+    firstRun && appliedSlugs.length === 0 ? (
+      <div className="empty first-run-starter">
+        <h3>{t.starterTitle}</h3>
+        <p>{t.starterBody}</p>
+        <div className="actions">
+          {dailyPickSlug && (
+            <button
+              type="button"
+              className="button secondary small"
+              onClick={() => toggleLayer(dailyPickSlug, true)}
+            >
+              {t.starterSeePick}
+            </button>
+          )}
+          <Link className="button small" href="/layers/new">
+            {t.starterStartLayer}
+          </Link>
+        </div>
+        <p className="fine-print">{t.starterJoinGroup}</p>
+      </div>
+    ) : appliedSlugs.length === 0 ? (
       <div className="empty">
         <h3>{t.mvpEmptyTitle}</h3>
         <p>{authenticated ? t.mvpEmptyBody : t.signInForLayers}</p>
         <div className="actions">
           {authenticated ? (
             <>
-              <button
-                type="button"
-                className="button secondary small"
-                onClick={() => setTab("layers")}
-              >
-                {t.yourLayers}
-              </button>
+              {showResults && (
+                <button
+                  type="button"
+                  className="button secondary small"
+                  onClick={() => setTab("layers")}
+                >
+                  {t.yourLayers}
+                </button>
+              )}
               <Link className="button small" href="/layers/new">
                 {t.createFromGoogle}
               </Link>
@@ -1108,54 +1248,6 @@ export function MapWorkspace({
             <Link className="button small" href="/sign-in?next=%2F">
               {t.signIn}
             </Link>
-          )}
-        </div>
-      </div>
-    ) : appliedSlugs.length === 0 && result.searchScope !== "city" ? (
-      <div className="empty">
-        <h3>{t.chooseLayer}</h3>
-        <p>{t.chooseLayerBody}</p>
-        <Link className="button" href="/layers">
-          {t.findLayers}
-        </Link>
-      </div>
-    ) : result.total === 0 && !mvp ? (
-      // MVP layers are mostly Google places, listed below by ExternalReferences.
-      <div className="empty">
-        <h3>
-          {state.area
-            ? t.noResultsArea
-            : state.date !== "upcoming"
-              ? t.noResultsDate
-              : t.empty}
-        </h3>
-        <div className="actions">
-          {state.area && (
-            <button
-              type="button"
-              className="button secondary small"
-              onClick={() => commit({ area: undefined })}
-            >
-              {t.clearArea}
-            </button>
-          )}
-          {state.date !== "upcoming" && (
-            <button
-              type="button"
-              className="button secondary small"
-              onClick={() => commit({ date: "upcoming" })}
-            >
-              {t.showUpcoming}
-            </button>
-          )}
-          {(state.types?.length ?? 3) < itemTypes.length && (
-            <button
-              type="button"
-              className="button secondary small"
-              onClick={() => commit({ types: [...itemTypes] })}
-            >
-              {t.typeAll}
-            </button>
           )}
         </div>
       </div>
@@ -1170,6 +1262,7 @@ export function MapWorkspace({
       t={t}
       locale={locale}
       authenticated={authenticated}
+      addToLayer={layerWrites}
       onShow={select}
       onChanged={() => {
         // Authoritative refresh: the card's saved state and any open detail for the same place.
@@ -1195,7 +1288,8 @@ export function MapWorkspace({
   );
   const externalReferences = (
     <ExternalReferences
-      provider={provider}
+      reload={force}
+      locatedPlaces={locatedPlaces}
       queryKey={queryKey}
       area={state.area}
       selectedSubjectId={business?.subjectId ?? null}
@@ -1203,13 +1297,15 @@ export function MapWorkspace({
       locale={locale}
       timeZone={city.timezone}
       events={result.events}
-      autoLoad={mvp}
+      autoLoad
+      layers={panelLayers}
       onPending={setPendingExternal}
       onPoints={setExternalPoints}
       onSelect={(ref, location) =>
         selectBusiness({
           key: ref.canonicalKey,
           placeId: ref.providerPlaceId,
+          name: ref.name,
           subjectId: ref.subjectId,
           location,
           temporary: false,
@@ -1237,8 +1333,69 @@ export function MapWorkspace({
       </ul>
     </section>
   ) : null;
+  // Add events and tips to the selected place right here, per layer holding it.
+  const attachKey = business?.key ?? selected?.key ?? null;
+  const attachments =
+    authenticated && attachKey && !business?.temporary ? (
+      <PlaceAttachments
+        key={`attach:${attachKey}`}
+        placeKey={attachKey}
+        placeName={
+          business
+            ? (business.name ?? t.routeGooglePlace)
+            : selected
+              ? localizedName(selected, locale)
+              : ""
+        }
+        layers={panelLayers}
+        events={selectedEvents ?? []}
+        city={city}
+        layerWrites={layerWrites}
+        tips={!business}
+        t={t}
+        locale={locale}
+        onEventsChanged={() => setForce((n) => n + 1)}
+      />
+    ) : null;
+  const layerChips = (
+    <div className="layer-chips" role="group" aria-label={t.onYourMap}>
+      {[
+        ...panelLayers,
+        ...hiddenLayers.filter((h) => !shownSlugs.includes(h.slug)),
+      ]
+        .filter((l) => l.status === "ok")
+        .map((layer) => {
+          const on = shownSlugs.includes(layer.slug);
+          return (
+            <button
+              key={layer.slug}
+              type="button"
+              className="layer-chip"
+              aria-pressed={on}
+              disabled={!on && shownSlugs.length >= maxAppliedLayers}
+              onClick={() => toggleLayer(layer.slug, !on)}
+            >
+              <span
+                className="layer-swatch"
+                style={{ background: layerColor(layer.slug) }}
+                aria-hidden="true"
+              />
+              {layerTitle(layer, locale)}
+            </button>
+          );
+        })}
+      <button
+        type="button"
+        className="layer-chip manage"
+        onClick={() => setTab("layers")}
+      >
+        {t.manageLayers}
+      </button>
+    </div>
+  );
   const resultsPanel = (
     <>
+      {layerChips}
       {dailyPick}
       {summary}
       {routeThroughButton}
@@ -1255,32 +1412,10 @@ export function MapWorkspace({
           onHover={setListHoverKey}
           events={result.events}
           timeZone={city.timezone}
+          layers={panelLayers}
         />
       )}
-      {!mvp && externalReferences}
     </>
-  );
-  const discoveryPanel = provider && (
-    <BusinessDiscovery
-      provider={provider}
-      cityCenter={{ lat: city.latitude, lng: city.longitude }}
-      currentCenter={() => canvas.current?.getCenter() ?? null}
-      t={t}
-      onSelect={selectSearchPlace}
-      onResults={(found) => {
-        const points = found
-          .filter((p) => p.location)
-          .map((p) => ({
-            key: `search:${p.id}`,
-            kind: "search" as const,
-            lat: p.location!.lat,
-            lng: p.location!.lng,
-            placeId: p.id,
-          }));
-        setSearchPoints(points);
-        canvas.current?.fitPoints(points);
-      }}
-    />
   );
   const footer = (
     <div className="map-footer">
@@ -1313,451 +1448,486 @@ export function MapWorkspace({
     </div>
   );
   return (
-    <div
-      ref={root}
-      className={`map-workspace ${listView ? "view-list" : "view-map"} sheet-${sheet} ${visible ? "has-panel" : "panel-closed"} ${fallback ? "map-fallback" : ""} ${detailInPanel ? "has-detail" : ""}`}
-      data-canvas={canvasStatus}
-      data-map-theme={theme}
-      data-panel={visible ? "open" : "closed"}
-      style={
-        {
-          // The panel starts under the measured search cluster and clears the dock.
-          "--th-map-top": `${topInset + 12}px`,
-          // Provider attribution clears a phone sheet at its real height.
-          "--th-sheet-height": `${Math.round(visible ? panelHeight : 0)}px`,
-          ...markerCssVars(theme),
-        } as CSSProperties
-      }
+    <LayerWorkspaceContext.Provider
+      value={{
+        applied: shownSlugs,
+        apply: (slug, only) => {
+          if (!only) {
+            toggleLayer(slug, true);
+            return;
+          }
+          // Framing a layer does not replace the user's visible layer set.
+          const query = new URLSearchParams({ city: city.slug, layers: slug });
+          Promise.all([
+            fetch("/api/v1/map?" + query).then((response) => response.json()),
+            fetch("/api/v1/map/external-references?" + query).then((response) =>
+              response.json(),
+            ),
+          ])
+            .then(([catalog, external]) => {
+              if (catalog.error || external.error)
+                throw new Error(
+                  catalog.error?.message ?? external.error.message,
+                );
+              const points = (catalog.data.items as MapQueryResult["items"])
+                .filter(
+                  (item) => item.latitude != null && item.longitude != null,
+                )
+                .map((item) => ({ lat: item.latitude!, lng: item.longitude! }));
+              for (const ref of external.data.references as {
+                location: { lat: number; lng: number } | null;
+              }[])
+                if (ref.location) points.push(ref.location);
+              canvas.current?.fitPoints(points);
+            })
+            .catch((error: Error) => setLoadError(error.message));
+        },
+        selectItem: (key, slug) => {
+          const layers = shownSlugs.includes(slug)
+            ? shownSlugs
+            : [...shownSlugs, slug];
+          if (layers.length > maxAppliedLayers) {
+            setLoadError(format(t.layerLimit, { max: maxAppliedLayers }));
+            return;
+          }
+          const params = new URLSearchParams(
+            withoutLayerPanel(searchParams.toString()).split("?")[1],
+          );
+          params.set("layers", layers.join(","));
+          params.set("item", key);
+          router.push("/?" + params, { scroll: false });
+          reveal();
+        },
+        mapReady: canvasStatus === "ready",
+        deleted: (slug) => {
+          setHiddenLayers((layers) =>
+            layers.filter((layer) => layer.slug !== slug),
+          );
+          const params = new URLSearchParams(searchParams);
+          const remaining = shownSlugs.filter((value) => value !== slug);
+          params.set("layers", remaining.length ? remaining.join(",") : "none");
+          for (const key of layerPanelKeys) params.delete(key);
+          params.set("layerPanel", "library");
+          params.set("layerTab", "mine");
+          router.push("/?" + params, { scroll: false });
+        },
+        pinCenter: () => {
+          const point = canvas.current?.getCenter();
+          return point ? { latitude: point.lat, longitude: point.lng } : null;
+        },
+      }}
     >
-      <h1 className="sr-only">
-        {city.name} · {t.mapNav}
-      </h1>
-      <div className="map-stage">
-        {/* The MVP map has no search or filters: it shows the loaded layers. */}
-        {!mvp && (
-          <MapToolbar
-            state={state}
-            cityName={city.name}
-            t={t}
-            contentEnabled={contentEnabled}
-            onCommit={(patch) => {
-              commit(patch);
-              // A submitted search shows its results in the panel.
-              if (patch.q) {
-                setTab("results");
-                setDetailHidden(true);
-                setPanelOpen(true);
-              }
-            }}
-          />
-        )}
-        {actionsTarget &&
-          createPortal(
-            <button
-              type="button"
-              className="map-float-button"
-              aria-expanded={visible && !detailInPanel && tab === "layers"}
-              aria-controls="map-panel"
-              onClick={showLayers}
-            >
-              <LayersIcon size={20} aria-hidden="true" />
-              <span>{t.layersTab}</span>
-              <span className="count-pill">{layerCount}</span>
-            </button>,
-            actionsTarget,
-          )}
-        <div className="map-stage-body" hidden={listView} ref={stageBody}>
-          {token && canvasStatus !== "failed" ? (
-            <MapCanvas
-              ref={canvas}
-              token={token}
-              items={result.items}
-              selectedKey={business ? null : selectedKey}
-              extraPoints={extraPoints}
-              route={routeLine}
-              extraSelectedKey={business?.key ?? null}
-              effects={places.mapEffects}
-              onSelectExtra={onSelectExtra}
-              center={[city.longitude, city.latitude]}
-              zoom={cityZoom}
-              locale={locale}
-              theme={theme}
-              t={t}
-              padding={padding}
-              highlightKey={listHoverKey}
-              onItemHover={onItemHover}
-              onSelect={(key) => {
-                if (!key) return;
-                pickedOnMap.current = key;
-                select(key);
-              }}
-              onUserMove={onUserMove}
-              onStatus={onStatus}
-              onLocationDenied={() => setLocationNote(t.locationDenied)}
-            />
-          ) : (
-            <div className="map-unavailable" role="note">
-              <p>{token ? t.mapUnavailableBody : t.mapNeedsToken}</p>
-              <p className="fine-print">{t.mapUnavailable}</p>
-              {token && (
-                <button
-                  type="button"
-                  className="button secondary small"
-                  onClick={() => {
-                    setCanvasStatus("loading");
-                    window.setTimeout(() => canvas.current?.retry(), 0);
-                  }}
-                >
-                  {t.retry}
-                </button>
-              )}
+      <div
+        ref={root}
+        className={`map-workspace ${listView ? "view-list" : "view-map"} sheet-${sheet} ${visible ? "has-panel" : "panel-closed"} ${fallback ? "map-fallback" : ""} ${detailInPanel ? "has-detail" : ""}`}
+        data-canvas={canvasStatus}
+        data-map-theme={theme}
+        data-panel={visible ? "open" : "closed"}
+        style={
+          {
+            // The panel starts under the measured search cluster and clears the dock.
+            "--th-map-top": `${topInset + 12}px`,
+            // Provider attribution clears a phone sheet at its real height.
+            "--th-sheet-height": `${Math.round(visible ? panelHeight : 0)}px`,
+            ...markerCssVars(theme),
+          } as CSSProperties
+        }
+      >
+        <h1 className="sr-only">
+          {city.name} · {t.mapNav}
+        </h1>
+        <div className="map-stage">
+          {actionsTarget &&
+            createPortal(
               <button
                 type="button"
-                className="button small"
-                onClick={() => setView("list")}
+                className="map-float-button"
+                aria-expanded={visible && !detailInPanel && tab === "layers"}
+                aria-controls="map-panel"
+                onClick={showLayers}
               >
-                <List size={16} aria-hidden="true" /> {t.listView}
-              </button>
-            </div>
-          )}
-          {canvasStatus === "loading" && token && (
-            <div className="map-skeleton" aria-hidden="true">
-              <span>{t.mapLoading}</span>
-            </div>
-          )}
-          {tip &&
-            (() => {
-              // A card with a button is no longer a plain tooltip.
-              const routeButton = tipRouteButton(tip.key);
-              const role = routeButton ? undefined : "tooltip";
-              // A Google place shows its own card: name, photo, rating, type.
-              const point = extraPoints.find((p) => p.key === tip.key);
-              if (point?.placeId && provider)
+                <LayersIcon size={20} aria-hidden="true" />
+                <span>{t.layersTab}</span>
+                <span className="count-pill">{layerCount}</span>
+              </button>,
+              actionsTarget,
+            )}
+          <div className="map-stage-body" hidden={listView} ref={stageBody}>
+            {token && canvasStatus !== "failed" ? (
+              <MapCanvas
+                ref={canvas}
+                token={token}
+                items={result.items}
+                selectedKey={business ? null : selectedKey}
+                extraPoints={extraPoints}
+                route={routeLine}
+                extraSelectedKey={business?.key ?? null}
+                effects={places.mapEffects}
+                onSelectExtra={onSelectExtra}
+                center={[city.longitude, city.latitude]}
+                zoom={cityZoom}
+                locale={locale}
+                theme={theme}
+                t={t}
+                padding={padding}
+                highlightKey={listHoverKey}
+                onItemHover={onItemHover}
+                onSelect={(key) => {
+                  if (!key) return;
+                  pickedOnMap.current = key;
+                  select(key);
+                }}
+                onUserMove={onUserMove}
+                onStatus={onStatus}
+                onLocationDenied={() => setLocationNote(t.locationDenied)}
+              />
+            ) : (
+              <div className="map-unavailable" role="note">
+                <p>{token ? t.mapUnavailableBody : t.mapNeedsToken}</p>
+                <p className="fine-print">{t.mapUnavailable}</p>
+                {token && (
+                  <button
+                    type="button"
+                    className="button secondary small"
+                    onClick={() => {
+                      setCanvasStatus("loading");
+                      window.setTimeout(() => canvas.current?.retry(), 0);
+                    }}
+                  >
+                    {t.retry}
+                  </button>
+                )}
+                <button
+                  type="button"
+                  className="button small"
+                  onClick={() => setView("list")}
+                >
+                  <List size={16} aria-hidden="true" /> {t.listView}
+                </button>
+              </div>
+            )}
+            {canvasStatus === "loading" && token && (
+              <div className="map-skeleton" aria-hidden="true">
+                <span>{t.mapLoading}</span>
+              </div>
+            )}
+            {tip &&
+              (() => {
+                // A card with a button is no longer a plain tooltip.
+                const routeButton = tipRouteButton(tip.key);
+                const role = routeButton ? undefined : "tooltip";
+                // A Google place shows its own card: name, photo, rating, type.
+                const point = extraPoints.find((p) => p.key === tip.key);
+                const reviews = reviewPreviews[tip.key];
+                // Clamped at render: the review column may arrive after the card opens.
+                const left = Math.max(
+                  8,
+                  Math.min(
+                    tip.pointerX + 14,
+                    tip.stageWidth -
+                      tip.width -
+                      (reviews ? tipReviewsWidth : 0) -
+                      14,
+                  ),
+                );
+                if (point)
+                  return (
+                    <div
+                      className={`map-tooltip map-place-tip${tip.above ? " tip-above" : ""}`}
+                      role={point.tabelog ? undefined : role}
+                      style={{
+                        left,
+                        top: tip.y,
+                        width: placeTipWidth,
+                        transform: tip.above ? "translateY(-100%)" : undefined,
+                      }}
+                      onMouseEnter={() => window.clearTimeout(tipTimer.current)}
+                      onMouseLeave={() => setTip(null)}
+                    >
+                      <strong>{point.label || t.routeGooglePlace}</strong>
+                      {point.tabelog && (
+                        <TabelogLink
+                          name={point.tabelog.name}
+                          href={point.tabelog.url}
+                          t={t}
+                          className="tip-tabelog"
+                        />
+                      )}
+                      {routeButton}
+                      <TipReviews preview={reviews} t={t} />
+                    </div>
+                  );
+                const item = result.items.find((i) => i.key === tip.key);
+                if (!item) return null;
+                const kind = markerKind(item);
                 return (
                   <div
-                    className="map-tooltip map-place-tip"
-                    role={point.tabelog ? undefined : role}
+                    className={`map-tooltip${tip.above ? " tip-above" : ""}`}
+                    role={tabelogLink(item) ? undefined : role}
                     style={{
-                      left: tip.x,
+                      left,
                       top: tip.y,
-                      width: placeTipWidth,
                       transform: tip.above ? "translateY(-100%)" : undefined,
                     }}
                     onMouseEnter={() => window.clearTimeout(tipTimer.current)}
                     onMouseLeave={() => setTip(null)}
                   >
-                    <ProviderDetails
-                      key={point.placeId}
-                      provider={provider}
-                      placeId={point.placeId}
-                      compact
-                      preview
-                      onLoad={() => {}}
-                      onError={() => setTip(null)}
-                    />
-                    {point.tabelog && (
-                      <TabelogLink
-                        name={point.tabelog.name}
-                        href={point.tabelog.url}
-                        t={t}
-                        className="tip-tabelog"
+                    <strong>{localizedName(item, locale)}</strong>
+                    <span>
+                      <i
+                        className="kind-dot"
+                        style={{ background: `var(--marker-${kind})` }}
+                        aria-hidden="true"
                       />
-                    )}
+                      {markerLabel(kind, t)}
+                      {item.category ? ` · ${item.category}` : ""}
+                    </span>
+                    <TabelogLink
+                      name={item.name}
+                      href={tabelogLink(item)}
+                      t={t}
+                      className="tip-tabelog"
+                    />
                     {routeButton}
+                    <TipReviews preview={reviews} t={t} />
                   </div>
                 );
-              const item = result.items.find((i) => i.key === tip.key);
-              if (!item) return null;
-              const kind = markerKind(item);
-              return (
-                <div
-                  className="map-tooltip"
-                  role={tabelogLink(item) ? undefined : role}
-                  style={{
-                    left: tip.x,
-                    top: tip.y,
-                  }}
-                  onMouseEnter={() => window.clearTimeout(tipTimer.current)}
-                  onMouseLeave={() => setTip(null)}
+              })()}
+            <div className="map-overlays">
+              {pendingArea && (
+                <button
+                  type="button"
+                  className="button search-area"
+                  onClick={searchArea}
                 >
-                  <strong>{localizedName(item, locale)}</strong>
-                  <span>
-                    <i
-                      className="kind-dot"
-                      style={{ background: `var(--marker-${kind})` }}
-                      aria-hidden="true"
-                    />
-                    {markerLabel(kind, t)}
-                    {item.category ? ` · ${item.category}` : ""}
-                  </span>
-                  <TabelogLink
-                    name={item.name}
-                    href={tabelogLink(item)}
-                    t={t}
-                    className="tip-tabelog"
-                  />
-                  {routeButton}
+                  {t.searchThisArea}
+                </button>
+              )}
+              {newDay && (
+                <div className="map-chip" role="status">
+                  {t.newDayAvailable}{" "}
+                  <button
+                    type="button"
+                    className="text-button"
+                    onClick={() => setForce((n) => n + 1)}
+                  >
+                    {t.refresh}
+                  </button>
                 </div>
-              );
-            })()}
-          <div className="map-overlays">
-            {pendingArea && (
-              <button
-                type="button"
-                className="button search-area"
-                onClick={searchArea}
-              >
-                {t.searchThisArea}
-              </button>
-            )}
-            {newDay && (
-              <div className="map-chip" role="status">
-                {t.newDayAvailable}{" "}
-                <button
-                  type="button"
-                  className="text-button"
-                  onClick={() => setForce((n) => n + 1)}
-                >
-                  {t.refresh}
-                </button>
-              </div>
-            )}
-            {locationNote && (
-              <div className="map-chip" role="status">
-                {locationNote}{" "}
-                <button
-                  type="button"
-                  className="text-button"
-                  onClick={() => setLocationNote(null)}
-                >
-                  {t.close}
-                </button>
-              </div>
-            )}
+              )}
+              {locationNote && (
+                <div className="map-chip" role="status">
+                  {locationNote}{" "}
+                  <button
+                    type="button"
+                    className="text-button"
+                    onClick={() => setLocationNote(null)}
+                  >
+                    {t.close}
+                  </button>
+                </div>
+              )}
+            </div>
           </div>
-        </div>
-        <div className="map-dock">
-          {!listView && !fallback && (
-            <button
-              ref={launcher}
-              type="button"
-              className="map-float-button map-list-toggle"
-              aria-expanded={panelOpen}
-              aria-controls="map-panel"
-              onClick={() => togglePanel(!panelOpen)}
-            >
-              <List size={18} aria-hidden="true" />
-              <span>
-                {panelOpen
-                  ? t.hideList
-                  : format(t.showList, { count: placeCount })}
-              </span>
-            </button>
-          )}
-          {!listView && canvasStatus === "ready" && (
-            <button
-              type="button"
-              className="map-float-button map-fit"
-              onClick={() => canvas.current?.fitTo(result.items)}
-              disabled={mapped.length === 0}
-            >
-              <Crosshair size={16} aria-hidden="true" />
-              <span>{t.fitResults}</span>
-            </button>
-          )}
-          {!listView && canvasStatus === "ready" && routeBar}
-          {mvp && !routeInPanel && (
-            <span className="sr-only" role="status">
-              {routeNotice}
-            </span>
-          )}
-          {state.area && !listView && (
-            <button
-              type="button"
-              className="map-float-button"
-              onClick={() => commit({ area: undefined })}
-            >
-              <X size={16} aria-hidden="true" />
-              <span>{t.clearArea}</span>
-            </button>
-          )}
-          {!listView ? (
-            <button
-              type="button"
-              className="map-float-button"
-              onClick={() => setView("list")}
-            >
-              <List size={16} aria-hidden="true" />
-              <span>{t.listView}</span>
-            </button>
-          ) : (
-            <button
-              type="button"
-              className="map-float-button"
-              onClick={() => setView("map")}
-            >
-              <MapIcon size={16} aria-hidden="true" />
-              <span>{t.mapView}</span>
-            </button>
-          )}
-          {hasDemo && !visible && (
-            <span className="map-demo-chip">{t.demoNotice}</span>
-          )}
-        </div>
-      </div>
-      <div
-        id="map-panel"
-        className="map-panel"
-        ref={panelRef}
-        role="region"
-        aria-label={t.mapNav}
-        tabIndex={-1}
-        hidden={!visible}
-        onScroll={(event) => {
-          if (!detailInPanel)
-            savedScroll.current = event.currentTarget.scrollTop;
-        }}
-        onKeyDown={(event) => {
-          // Escape closes the panel unless a field or open menu owns the key.
-          if (event.key !== "Escape" || event.defaultPrevented) return;
-          const target = event.target as HTMLElement;
-          if (target.closest("input, textarea, select, details[open]")) return;
-          if (listView || fallback) return;
-          event.preventDefault();
-          togglePanel(false);
-        }}
-      >
-        <div id="map-sidebar-content" className="map-sidebar-content">
-          <div className="sheet-handle">
-            <span className="sheet-buttons">
-              <button
-                type="button"
-                className="icon-button"
-                aria-label={t.shrinkPanel}
-                disabled={sheet === "half"}
-                onClick={() => setSheet("half")}
-              >
-                <ChevronDown size={18} aria-hidden="true" />
-              </button>
-              <button
-                type="button"
-                className="icon-button"
-                aria-label={t.expand}
-                disabled={sheet === "expanded"}
-                onClick={() => setSheet("expanded")}
-              >
-                <ChevronUp size={18} aria-hidden="true" />
-              </button>
-            </span>
+          <div className="map-dock">
             {!listView && !fallback && (
               <button
+                ref={launcher}
                 type="button"
-                className="icon-button"
-                aria-label={t.hideList}
-                title={t.hideList}
-                onClick={() => togglePanel(false)}
+                className="map-float-button map-list-toggle"
+                aria-expanded={panelOpen}
+                aria-controls="map-panel"
+                onClick={() => togglePanel(!panelOpen)}
               >
-                <X size={18} aria-hidden="true" />
+                <List size={18} aria-hidden="true" />
+                <span>
+                  {panelOpen
+                    ? t.hideList
+                    : format(t.showList, { count: placeCount })}
+                </span>
               </button>
             )}
+            {!listView && canvasStatus === "ready" && (
+              <button
+                type="button"
+                className="map-float-button map-fit"
+                onClick={() => canvas.current?.fitTo(result.items)}
+                disabled={mapped.length === 0}
+              >
+                <Crosshair size={16} aria-hidden="true" />
+                <span>{t.fitResults}</span>
+              </button>
+            )}
+            {!listView && canvasStatus === "ready" && routeBar}
+            {!routeInPanel && (
+              <span className="sr-only" role="status">
+                {routeNotice}
+              </span>
+            )}
+            {state.area && !listView && (
+              <button
+                type="button"
+                className="map-float-button"
+                onClick={() => commit({ area: undefined })}
+              >
+                <X size={16} aria-hidden="true" />
+                <span>{t.clearArea}</span>
+              </button>
+            )}
+            {!listView ? (
+              <button
+                type="button"
+                className="map-float-button"
+                onClick={() => setView("list")}
+              >
+                <List size={16} aria-hidden="true" />
+                <span>{t.listView}</span>
+              </button>
+            ) : (
+              <button
+                type="button"
+                className="map-float-button"
+                onClick={() => setView("map")}
+              >
+                <MapIcon size={16} aria-hidden="true" />
+                <span>{t.mapView}</span>
+              </button>
+            )}
+            {hasDemo && !visible && (
+              <span className="map-demo-chip">{t.demoNotice}</span>
+            )}
           </div>
-          {provider && !mvp && (
-            <div
-              className="segmented discovery-modes"
-              role="group"
-              aria-label={t.discoveryModes}
-            >
-              {(
-                [
-                  ["layers", t.layersMode],
-                  ["business", t.businessMode],
-                ] as const
-              ).map(([value, label]) => (
-                <button
-                  key={value}
-                  type="button"
-                  aria-pressed={mode === value}
-                  className={mode === value ? "on" : ""}
-                  onClick={() => {
-                    setMode(value);
-                    setTab("results");
-                    setDetailHidden(true);
-                    // Leaving discovery clears temporary pins but keeps layer pins and selection.
-                    if (value === "layers") {
-                      setSearchPoints([]);
-                      if (business?.temporary) setBusiness(null);
-                    }
-                  }}
-                >
-                  {label}
-                </button>
-              ))}
-            </div>
-          )}
-          {otherCity.map((l) => (
-            <p key={l.slug} className="fine-print">
-              {format(t.layerOtherCity, { city: l.cityName ?? "" })}
-            </p>
-          ))}
-          {routeInPanel ? (
-            <div className="panel-body">
-              <RoutePlanner
-                stops={routeStops}
-                mode={travelMode}
-                notice={routeNotice}
-                t={t}
-                onMode={setTravelMode}
-                onChange={setRouteStops}
-                onDone={() => setRouteOpen(false)}
-              />
-            </div>
-          ) : detailInPanel ? (
-            <>
-              {routeAction}
-              {attachedEvents}
-              {businessPanel ?? preview}
-            </>
-          ) : mode === "business" && discoveryPanel && !mvp ? (
-            <div className="panel-body">{discoveryPanel}</div>
-          ) : (
-            <>
-              <div className="panel-tabs" role="tablist" aria-label={t.mapNav}>
+        </div>
+        <div
+          id="map-panel"
+          className="map-panel"
+          ref={panelRef}
+          role="region"
+          aria-label={t.mapNav}
+          tabIndex={-1}
+          hidden={!visible}
+          onScroll={(event) => {
+            if (!detailInPanel)
+              savedScroll.current = event.currentTarget.scrollTop;
+          }}
+          onKeyDown={(event) => {
+            // Escape closes the panel unless a field or open menu owns the key.
+            if (event.key !== "Escape" || event.defaultPrevented) return;
+            const target = event.target as HTMLElement;
+            if (target.closest("input, textarea, select, details[open]"))
+              return;
+            if (listView || fallback) return;
+            event.preventDefault();
+            togglePanel(false);
+          }}
+        >
+          <div id="map-sidebar-content" className="map-sidebar-content">
+            <div className="sheet-handle">
+              <span className="sheet-buttons">
                 <button
                   type="button"
-                  role="tab"
-                  aria-selected={tab === "layers"}
-                  onClick={() => setTab("layers")}
+                  className="icon-button"
+                  aria-label={t.shrinkPanel}
+                  disabled={sheet === "half"}
+                  onClick={() => setSheet("half")}
                 >
-                  {t.layersTab} <span className="count-pill">{layerCount}</span>
+                  <ChevronDown size={18} aria-hidden="true" />
                 </button>
                 <button
                   type="button"
-                  role="tab"
-                  aria-selected={tab === "results"}
+                  className="icon-button"
+                  aria-label={t.expand}
+                  disabled={sheet === "expanded"}
+                  onClick={() => setSheet("expanded")}
+                >
+                  <ChevronUp size={18} aria-hidden="true" />
+                </button>
+              </span>
+              {!listView && !fallback && (
+                <button
+                  type="button"
+                  className="icon-button"
+                  aria-label={t.hideList}
+                  title={t.hideList}
+                  onClick={() => togglePanel(false)}
+                >
+                  <X size={18} aria-hidden="true" />
+                </button>
+              )}
+            </div>
+            {layerPanel ? (
+              <div
+                className="panel-body layer-workspace-screen"
+                key={layerScreenKey}
+              >
+                <Link className="text-button" href="/">
+                  {t.mapEntry}
+                </Link>
+                {layerScreen}
+                {loadError && (
+                  <p className="message error-message" role="alert">
+                    {loadError}
+                  </p>
+                )}
+              </div>
+            ) : routeInPanel ? (
+              <div className="panel-body">
+                <RoutePlanner
+                  stops={routeStops}
+                  mode={travelMode}
+                  notice={routeNotice}
+                  t={t}
+                  onMode={setTravelMode}
+                  onChange={setRouteStops}
+                  onDone={() => setRouteOpen(false)}
+                />
+              </div>
+            ) : detailInPanel ? (
+              <>
+                {routeAction}
+                {attachedEvents}
+                {attachments}
+                {businessPanel ?? preview}
+              </>
+            ) : !showResults ? (
+              <div className="panel-body">
+                {appliedSlugs.length === 0 && emptyState}
+                {layersPanel}
+              </div>
+            ) : tab === "layers" ? (
+              <div className="panel-body">
+                <button
+                  type="button"
+                  className="text-button"
                   onClick={() => setTab("results")}
                 >
-                  {t.resultsTab}{" "}
-                  <span className="count-pill">{placeCount}</span>
+                  {t.backToResults}
                 </button>
+                {layersPanel}
               </div>
-              <div className="panel-body" role="tabpanel">
-                {tab === "layers" ? layersPanel : resultsPanel}
+            ) : (
+              <div className="panel-body">{resultsPanel}</div>
+            )}
+            {
+              // Google place pins come from these rows, so they stay mounted
+              // (hidden) whichever view the panel shows.
+              <div
+                className="panel-body mvp-places"
+                hidden={
+                  !!layerPanel ||
+                  routeInPanel ||
+                  detailInPanel ||
+                  !showResults ||
+                  tab !== "results"
+                }
+              >
+                {externalReferences}
               </div>
-            </>
-          )}
-          {mvp && (
-            // Google place pins come from these rows, so they stay mounted
-            // (hidden) whichever view the panel shows.
-            <div
-              className="panel-body mvp-places"
-              hidden={routeInPanel || detailInPanel || tab !== "results"}
-            >
-              {externalReferences}
-            </div>
-          )}
-          {footer}
+            }
+            {footer}
+          </div>
         </div>
       </div>
-    </div>
+    </LayerWorkspaceContext.Provider>
   );
 }

@@ -1,0 +1,3 @@
+name = "reviewer"
+description = "Read-only reviewer for a branch or set of commits before merging. Use to catch correctness bugs fast; it does not edit code."
+developer_instructions = "Read and follow .claude/agents/reviewer.md from the repository root before doing the task. Read .codex/compatibility.md alongside it. These files contain the current shared instructions; do not rely on a copied version. Follow applicable AGENTS.md instructions."

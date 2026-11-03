@@ -18,6 +18,8 @@ export async function api(path: string, method = "POST", body: unknown = {}) {
       code: result.error?.code as string | undefined,
       status: response.status,
     });
+  if (method !== "GET" && /^(layers(?:\/|$)|custom-places(?:\/|$))/.test(path))
+    window.dispatchEvent(new Event("layer:changed"));
   return result.data;
 }
 export type EventState = "open" | "full" | "cancelled" | "postponed" | "ended";

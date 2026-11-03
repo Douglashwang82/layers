@@ -1,12 +1,12 @@
 "use client";
 import { brand, localizedCityName } from "@taiwanhub/shared";
 import Link from "next/link";
+import { layerWorkspaceHref } from "@/lib/layer-workspace";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
 import {
   Map as MapIcon,
   Layers,
-  Bookmark,
   UserRound,
   MapPin,
   Globe,
@@ -51,6 +51,8 @@ export function Navigation({
   const router = useRouter();
   const searchParams = useSearchParams();
   const mapPage = mapHome && pathname === "/";
+  const navHref = (href: string) =>
+    mapPage ? layerWorkspaceHref(href, searchParams.toString()) : href;
   const [switching, setSwitching] = useState(false);
   /*
    * This layout-level component is not re-rendered by a query-only
@@ -76,10 +78,10 @@ export function Navigation({
     document.addEventListener("pointerdown", close);
     return () => document.removeEventListener("pointerdown", close);
   }, [mapPage]);
+  // Primary destinations. The legacy saved-places page stays reachable by URL, just unlinked.
   const nav = [
     ["/", t.mapNav, MapIcon],
     ["/layers", t.layers, Layers],
-    ["/saved", t.saved, Bookmark],
     ["/profile", t.profile, UserRound],
   ] as const;
   const current = (href: string) =>
@@ -184,11 +186,18 @@ export function Navigation({
               Local<span>Link</span>
             </Link>
             <nav className="desktop-nav" aria-label={t.mainNav}>
-              {nav.slice(0, 3).map(([href, label]) => (
-                <Link key={href} href={href} aria-current={current(href)}>
-                  {label}
-                </Link>
-              ))}
+              {nav
+                .filter(([href]) => href !== "/profile")
+                .map(([href, label]) => (
+                  <Link
+                    key={href}
+                    href={navHref(href)}
+                    aria-current={current(href)}
+                    scroll={!mapPage}
+                  >
+                    {label}
+                  </Link>
+                ))}
             </nav>
           </>
         )}
@@ -212,7 +221,12 @@ export function Navigation({
                 </summary>
                 <div className="map-profile-options">
                   {nav.map(([href, label, Icon]) => (
-                    <Link key={href} href={href} aria-current={current(href)}>
+                    <Link
+                      key={href}
+                      href={navHref(href)}
+                      aria-current={current(href)}
+                      scroll={!mapPage}
+                    >
                       <Icon size={18} aria-hidden="true" />
                       {label}
                     </Link>
@@ -262,7 +276,12 @@ export function Navigation({
       </header>
       <nav className="bottom-nav" aria-label={t.mobileNav}>
         {nav.map(([href, label, Icon]) => (
-          <Link key={href} href={href} aria-current={current(href)}>
+          <Link
+            key={href}
+            href={navHref(href)}
+            aria-current={current(href)}
+            scroll={!mapPage}
+          >
             <Icon size={22} aria-hidden="true" />
             <span>{label}</span>
           </Link>

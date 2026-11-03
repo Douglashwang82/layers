@@ -234,7 +234,7 @@ describe("Daily restaurant recommendation (version 2) worker", () => {
     );
   });
 
-  it("prepares a report, requires copy approval, then publishes atomically and surfaces in Discover", async () => {
+  it("prepares a report, requires copy approval, then publishes atomically and surfaces in the Daily Pick layer", async () => {
     const winner = await insertCandidate({
       foodType: "tacos",
       facts: ["Handmade tortillas made daily.", "Weekend barbacoa special."],
@@ -349,28 +349,9 @@ describe("Daily restaurant recommendation (version 2) worker", () => {
       pickId: published.pickId,
     });
 
-    const state = {
-      ...parseMapQuery({ city: city.slug }),
-      layers: [discoverSlug()],
-    };
-    const references = await listExternalReferences(
-      state,
-      city,
-      null,
-      0,
-      new Date(),
-    );
-    expect(references.references.map((r) => r.subjectId)).toContain(
-      winner.subjectId,
-    );
-    expect(references.references.map((r) => r.subjectId)).not.toContain(
-      loser.subjectId,
-    );
-
-    // The city's own separate Daily Pick layer must also surface the
-    // winner, not just Discover — the worker publishes a layer_item into
-    // both, since that layer's external-reference branch queries its own
-    // layer_item rows.
+    // The map no longer loads Discover (a system layer), so the city's own
+    // Daily Pick layer is where the winner surfaces; that layer's
+    // external-reference branch queries its own layer_item rows.
     const dailyPickState = {
       ...parseMapQuery({ city: city.slug }),
       layers: [`daily-pick-${city.slug}`],
@@ -385,6 +366,9 @@ describe("Daily restaurant recommendation (version 2) worker", () => {
     expect(dailyPickReferences.references.map((r) => r.subjectId)).toContain(
       winner.subjectId,
     );
+    expect(
+      dailyPickReferences.references.map((r) => r.subjectId),
+    ).not.toContain(loser.subjectId);
 
     await withdrawRestaurantPick(
       published.pickId,
@@ -396,16 +380,6 @@ describe("Daily restaurant recommendation (version 2) worker", () => {
       [published.pickId],
     );
     expect(afterWithdraw.rows[0].status).toBe("withdrawn");
-    const referencesAfter = await listExternalReferences(
-      state,
-      city,
-      null,
-      0,
-      new Date(),
-    );
-    expect(referencesAfter.references.map((r) => r.subjectId)).not.toContain(
-      winner.subjectId,
-    );
     const dailyPickReferencesAfter = await listExternalReferences(
       dailyPickState,
       city,

@@ -17,6 +17,8 @@ import type { ItemDetail } from "@/features/map/detail";
 import { api, StatusMessage } from "@/components/actions";
 import { AddToLayer } from "@/components/layers/add-to-layer";
 import { Photo as Image } from "@/components/photo";
+import { RequestedProviderDetails } from "@/components/places/requested-provider-details";
+import type { PlacesProvider } from "@/lib/places/provider";
 import {
   type Copy,
   type Locale,
@@ -50,6 +52,7 @@ export function ItemPreview({
   onRefresh,
   layerWrites,
   backLabel,
+  provider = null,
 }: {
   item: MapItem;
   detail: ItemDetail | null;
@@ -64,6 +67,8 @@ export function ItemPreview({
   onRefresh: () => void;
   layerWrites: boolean;
   backLabel: string;
+  /** Renders a custom place's matched Google card, only when asked for. */
+  provider?: PlacesProvider | null;
 }) {
   const router = useRouter();
   const [pending, setPending] = useState<Pending | null>(null);
@@ -72,8 +77,14 @@ export function ItemPreview({
     text: string;
   } | null>(null);
   const name = itemTitle(item, locale);
-  const directions =
-    item.latitude != null && item.longitude != null
+  // A custom place matched to Google opens that place, not just its coordinates.
+  const directions = item.googlePlaceId
+    ? `https://www.google.com/maps/search/?${new URLSearchParams({
+        api: "1",
+        query: name,
+        query_place_id: item.googlePlaceId,
+      })}`
+    : item.latitude != null && item.longitude != null
       ? `https://www.google.com/maps/search/?api=1&query=${item.latitude},${item.longitude}`
       : null;
   const state = detail?.state ?? {
@@ -152,6 +163,19 @@ export function ItemPreview({
         </p>
       )}
       {custom && item.excerpt && <p>{item.excerpt}</p>}
+      {custom && item.googlePlaceId && provider && (
+        <div className="preview-google">
+          <RequestedProviderDetails
+            provider={provider}
+            placeId={item.googlePlaceId}
+            compact
+            photo
+            t={t}
+            onLoad={() => {}}
+            onError={() => {}}
+          />
+        </div>
+      )}
       {custom && customWebsite && (
         <p className="preview-line">
           <ExternalLink size={14} aria-hidden="true" />{" "}

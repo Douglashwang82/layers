@@ -116,6 +116,50 @@ export const placeReviewDeleteInput = z.strictObject({
   scope: reviewScope,
   expectedRevision: z.number().int().min(1),
 });
+/** Rate and comment on one layer item; the layer and item come from the URL. */
+export const layerItemReviewInput = z
+  .strictObject({
+    stars: reviewStars.nullable(),
+    body: reviewBody.default(""),
+    expectedRevision: z.number().int().min(1).nullable(),
+  })
+  .refine(
+    (v) => v.stars !== null || v.body.length > 0,
+    "Add stars, a comment, or both.",
+  );
+export type LayerItemReviewInput = z.infer<typeof layerItemReviewInput>;
+export const layerItemReviewDeleteInput = z.strictObject({
+  expectedRevision: z.number().int().min(1),
+});
+/**
+ * Opaque keyset cursor over (created_at, id) for item review pages. The
+ * timestamp is Postgres' full-precision text (microseconds): a JS Date would
+ * truncate to milliseconds and skip rows. Portable (no Node Buffer).
+ */
+const cursorTimestamp =
+  /^\d{4}-\d{2}-\d{2}[ T]\d{2}:\d{2}:\d{2}(\.\d{1,6})?(Z|[+-]\d{2}(:?\d{2})?)$/;
+export function encodeReviewCursor(createdAtText: string, id: string) {
+  return btoa(`${createdAtText}|${id}`)
+    .replace(/\+/g, "-")
+    .replace(/\//g, "_")
+    .replace(/=+$/, "");
+}
+export function decodeReviewCursor(
+  cursor: string | undefined | null,
+): { createdAt: string; id: string } | null {
+  if (!cursor || !/^[A-Za-z0-9_-]+$/.test(cursor)) return null;
+  let text: string;
+  try {
+    text = atob(cursor.replace(/-/g, "+").replace(/_/g, "/"));
+  } catch {
+    return null;
+  }
+  const [createdAt, id, extra] = text.split("|");
+  if (extra !== undefined || !createdAt || !id) return null;
+  if (!cursorTimestamp.test(createdAt)) return null;
+  if (!/^[0-9a-f-]{36}$/.test(id)) return null;
+  return { createdAt, id };
+}
 export const reviewDecisionInput = z.strictObject({
   action: z.enum(["approved", "rejected", "hidden", "deleted"]),
   expectedRevision: z.number().int().min(1),

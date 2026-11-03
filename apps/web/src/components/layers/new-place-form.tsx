@@ -8,6 +8,7 @@ import type { MapItem } from "@/features/map/query";
 import { customMapItem } from "@/lib/custom-places";
 import { SuggestPlace } from "./suggest-place";
 import { PinPicker } from "./pin-picker";
+import { useLayerDraft } from "./workspace-navigation";
 import { type Copy, format } from "@/lib/dictionary";
 type Feedback = { tone: "success" | "error"; text: string } | null;
 type Outcome =
@@ -65,6 +66,18 @@ export function NewPlaceForm({
   const [saving, setSaving] = useState(false);
   const [confirmingDelete, setConfirmingDelete] = useState(false);
   const [deleting, setDeleting] = useState(false);
+  useLayerDraft(
+    !saving &&
+      !deleting &&
+      (name !== (editing?.name ?? initialName ?? "") ||
+        nameChinese !== (editing?.nameChinese ?? "") ||
+        address !== (editing?.address ?? "") ||
+        website !== (editing?.website ?? "") ||
+        note !== (editing?.note ?? "") ||
+        !!pin ||
+        clearLocation),
+    t.discardLayerChanges,
+  );
   const [locationFeedback, setLocationFeedback] = useState<Feedback>(null);
   const [feedback, setFeedback] = useState<Feedback>(null);
   const [touched, setTouched] = useState(false);

@@ -1,4 +1,5 @@
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import { createInstagramWorker } from "../../packages/database/src/instagram-worker";
 import { pool } from "../../packages/database/src";
 import {
   createLayerFromGoogle,
@@ -23,10 +24,6 @@ import {
 import { createGroup } from "../../apps/web/src/features/groups/service";
 import { listExternalReferences } from "../../apps/web/src/features/map/external";
 import { placeLocations } from "../../apps/web/src/features/google-links/locations";
-import {
-  fakeResolverFetch,
-  fetchPlaceLocation,
-} from "../../apps/web/src/features/google-links/resolver";
 import { runMapQuery } from "../../apps/web/src/features/map/query";
 import { mvpMapState } from "../../apps/web/src/features/map/request";
 import { flags } from "../../apps/web/src/lib/config";
@@ -75,13 +72,36 @@ async function subjectOf(providerPlaceId: string) {
   return rows[0].subject_id;
 }
 const flagsBefore = { ...flags };
+const instagramEnv = {
+  url: process.env.INSTAGRAM_WORKER_URL,
+  token: process.env.INSTAGRAM_WORKER_TOKEN,
+};
+const instagramWorker = createInstagramWorker(
+  "integration-test-instagram-token-0123456789",
+  async (sourceUrl) => ({
+    sourceUrl,
+    potentiallyTruncated: true,
+    restaurants: [
+      { name: `mvp-${run}-cafe`, address: "100 Test Road, Houston" },
+    ],
+  }),
+);
 beforeAll(async () => {
+  await new Promise<void>((resolve) =>
+    instagramWorker.listen(0, "127.0.0.1", resolve),
+  );
+  const address = instagramWorker.address();
+  if (!address || typeof address === "string")
+    throw new Error("Worker port unavailable");
+  process.env.INSTAGRAM_WORKER_URL = `http://127.0.0.1:${address.port}`;
+  process.env.INSTAGRAM_WORKER_TOKEN =
+    "integration-test-instagram-token-0123456789";
   for (const actor of users)
     await pool.query(
       'INSERT INTO "user"(id,name,email,email_verified,role) VALUES($1,$2,$3,true,$4)',
       [actor.id, "Map MVP", `${actor.id}@map-mvp.example`, actor.role],
     );
-  Object.assign(flags, { mapMvp: true, layerWrites: true });
+  Object.assign(flags, { layerWrites: true });
   process.env.GOOGLE_MAPS_LINK_API_KEY = "fake";
   const group = await createGroup(alice, {
     name: "MVP Circle",
@@ -94,6 +114,13 @@ beforeAll(async () => {
   );
 });
 afterAll(async () => {
+  instagramWorker.closeAllConnections();
+  await new Promise<void>((resolve) => instagramWorker.close(() => resolve()));
+  if (instagramEnv.url === undefined) delete process.env.INSTAGRAM_WORKER_URL;
+  else process.env.INSTAGRAM_WORKER_URL = instagramEnv.url;
+  if (instagramEnv.token === undefined)
+    delete process.env.INSTAGRAM_WORKER_TOKEN;
+  else process.env.INSTAGRAM_WORKER_TOKEN = instagramEnv.token;
   Object.assign(flags, flagsBefore);
   delete process.env.GOOGLE_MAPS_LINK_API_KEY;
   const ids = users.map((u) => u.id);
@@ -122,12 +149,71 @@ afterAll(async () => {
     [ids],
   );
   await pool.query("DELETE FROM rate_limit WHERE key LIKE ANY($1::text[])", [
-    ids.flatMap((id) => [`google-links:${id}`, `contribution:${id}`]),
+    ids.flatMap((id) => [
+      `google-links:${id}`,
+      `instagram-links:${id}`,
+      `contribution:${id}`,
+    ]),
   ]);
   await pool.query('DELETE FROM "user" WHERE id=ANY($1::uuid[])', [ids]);
   await pool.end();
 });
 describe("layers from Google places", () => {
+  it("resolves Instagram for editors and preserves source notes on idempotent import", async () => {
+    const layer = (
+      await createLayer(alice, {
+        title: "Instagram collection",
+        city: "houston",
+      })
+    ).layer;
+    const source = "https://www.instagram.com/p/test123/";
+    await expect(
+      resolveGoogleLinks(bob, { layerId: layer.id, links: [source] }),
+    ).rejects.toBeDefined();
+    await expect(
+      resolveGoogleLinks(null, { layerId: layer.id, links: [source] }),
+    ).rejects.toBeDefined();
+    const { results } = await resolveGoogleLinks(alice, {
+      layerId: layer.id,
+      links: [source],
+    });
+    expect(results[0]).toMatchObject({ status: "resolved", sourceUrl: source });
+    const id = (results[0] as { providerPlaceId: string }).providerPlaceId;
+    const body = {
+      providerPlaceIds: [id],
+      sourceLinks: { [id]: source },
+      linkNames: { [id]: "Test cafe" },
+    };
+    expect((await importGooglePlaces(alice, layer.id, body)).added).toBe(1);
+    expect((await importGooglePlaces(alice, layer.id, body)).added).toBe(0);
+    expect(
+      (
+        await pool.query("SELECT note FROM layer_item WHERE layer_id=$1", [
+          layer.id,
+        ])
+      ).rows,
+    ).toEqual([{ note: source }]);
+    await expect(importGooglePlaces(bob, layer.id, body)).rejects.toBeDefined();
+    await expect(
+      importGooglePlaces(alice, layer.id, {
+        ...body,
+        sourceLinks: { [id]: "https://evil.example/" },
+      }),
+    ).rejects.toBeDefined();
+    for (let i = 0; i < 4; i++)
+      await resolveGoogleLinks(alice, { layerId: layer.id, links: [source] });
+    expect(
+      (await resolveGoogleLinks(alice, { layerId: layer.id, links: [source] }))
+        .results[0],
+    ).toMatchObject({ reason: "instagram_busy" });
+    await pool.query("DELETE FROM layer WHERE id=$1", [layer.id]);
+    const subject = await subjectOf(id);
+    await pool.query(
+      "DELETE FROM place_provider_reference WHERE subject_id=$1",
+      [subject],
+    );
+    await pool.query("DELETE FROM place_subject WHERE id=$1", [subject]);
+  });
   it("creates an active private layer with its places in one step", async () => {
     const created = await createLayerFromGoogle(alice, {
       title: "Weekend eats",
@@ -276,8 +362,8 @@ describe("layers from Google places", () => {
       status: 429,
     });
   });
-  it("is unavailable while the MVP flag is off", async () => {
-    flags.mapMvp = false;
+  it("is unavailable while layer writes are off", async () => {
+    flags.layerWrites = false;
     try {
       await expect(
         createLayerFromGoogle(alice, {
@@ -287,7 +373,7 @@ describe("layers from Google places", () => {
         }),
       ).rejects.toMatchObject({ code: "DISABLED" });
     } finally {
-      flags.mapMvp = true;
+      flags.layerWrites = true;
     }
   });
 });
@@ -313,7 +399,7 @@ describe("the MVP map", () => {
     expect(library.some((l) => l.layer.ownerKind === "system")).toBe(false);
     const picker = await listMapLibrary(alice, city);
     expect(picker.map((l) => l.layer.slug)).toContain(mine);
-    expect(picker[0].layer.slug).toBe("my-saves");
+    expect(picker.some((l) => l.layer.slug === "my-saves")).toBe(false);
   });
   it("shows a layer in every city and counts its Google places", async () => {
     // Made while Houston was selected, holding places that are elsewhere (M6).
@@ -343,23 +429,8 @@ describe("the MVP map", () => {
       0,
     );
     expect(refs.references).toHaveLength(2);
-    // With the flag off, layers stay scoped to their own city.
-    flags.mapMvp = false;
-    try {
-      const scoped = await runMapQuery(
-        state([trip], { city: "tokyo" }),
-        tokyo,
-        alice,
-      );
-      expect(scoped.layers).toMatchObject([
-        { slug: trip, status: "other-city" },
-      ]);
-    } finally {
-      flags.mapMvp = true;
-    }
   });
-  it("caches Google coordinates for pins for at most 30 days", async () => {
-    // The fake server key locates `fake-link-` IDs and finds no other place.
+  it("reads valid cached pins without resolving missing or expired locations", async () => {
     const located = `fake-link-${run}a`;
     const layer = (
       await createLayerFromGoogle(alice, {
@@ -368,73 +439,38 @@ describe("the MVP map", () => {
         providerPlaceIds: [located, placeId(40)],
       })
     ).layer.slug;
-    const expected = (await fetchPlaceLocation(located, {
-      fetch: fakeResolverFetch,
-      apiKey: "fake",
-    }))!;
-    expect(expected).toEqual({
-      lat: expect.any(Number),
-      lng: expect.any(Number),
-      types: expect.arrayContaining(["restaurant"]),
-    });
-    const { types, ...pin } = expected;
-    const list = () =>
-      listExternalReferences(state([layer]), city, alice, 0).then((r) =>
-        Object.fromEntries(
-          r.references.map((ref) => [ref.providerPlaceId, ref.location]),
-        ),
-      );
-    expect(await list()).toEqual({
-      [located]: pin,
-      [placeId(40)]: null,
-    });
-    const stored = await pool.query(
-      "SELECT latitude,longitude,types,location_fetched_at FROM place_provider_reference WHERE provider_place_id=$1",
-      [located],
-    );
-    expect(stored.rows[0]).toMatchObject({
-      latitude: expected.lat,
-      longitude: expected.lng,
-      types,
-    });
-    expect(stored.rows[0].location_fetched_at).toBeInstanceOf(Date);
-    // Past 30 days the value is cleared, even with lookups unavailable...
-    await pool.query(
-      "UPDATE place_provider_reference SET location_fetched_at=now()-interval '31 days' WHERE provider_place_id=$1",
-      [located],
-    );
+    const list = () => listExternalReferences(state([layer]), city, alice, 0);
+    // Even with the fake server key configured, browsing never fills a missing cache.
+    expect(
+      (await list()).references.every((ref) => ref.location === null),
+    ).toBe(true);
     const subject = await subjectOf(located);
-    expect((await placeLocations([subject], null)).size).toBe(0);
+    await pool.query(
+      "UPDATE place_provider_reference SET latitude=29.7,longitude=-95.5,types=NULL,location_fetched_at=now() WHERE subject_id=$1",
+      [subject],
+    );
+    const cached = (await list()).references.find(
+      (r) => r.subjectId === subject,
+    )!;
+    expect(cached.location).toEqual({ lat: 29.7, lng: -95.5 });
+    expect(cached.types).toEqual([]); // Missing types never cause a provider lookup.
+    await pool.query(
+      "UPDATE place_provider_reference SET location_fetched_at=now()-interval '31 days' WHERE subject_id=$1",
+      [subject],
+    );
+    expect((await placeLocations([subject])).size).toBe(0);
+    expect(
+      (await list()).references.every((ref) => ref.location === null),
+    ).toBe(true);
     const cleared = await pool.query(
-      "SELECT latitude,types,location_fetched_at FROM place_provider_reference WHERE provider_place_id=$1",
-      [located],
+      "SELECT latitude,types,location_fetched_at FROM place_provider_reference WHERE subject_id=$1",
+      [subject],
     );
     expect(cleared.rows[0]).toEqual({
       latitude: null,
       types: null,
       location_fetched_at: null,
     });
-    // ...and looked up again the next time the place is listed.
-    expect((await list())[located]).toEqual(pin);
-    // A pin cached before types were fetched is looked up once more for them.
-    await pool.query(
-      "UPDATE place_provider_reference SET types=NULL WHERE provider_place_id=$1",
-      [located],
-    );
-    await list();
-    const refetched = await pool.query(
-      "SELECT types FROM place_provider_reference WHERE provider_place_id=$1",
-      [located],
-    );
-    expect(refetched.rows[0].types).toEqual(types);
-    // With the flag off, references carry no cached location.
-    flags.mapMvp = false;
-    try {
-      const refs = await listExternalReferences(state([layer]), city, alice, 0);
-      expect(refs.references.every((r) => r.location === undefined)).toBe(true);
-    } finally {
-      flags.mapMvp = true;
-    }
   });
   it("ignores search, area, dates and non-place types from the URL", async () => {
     const parsed = parseMapQuery({

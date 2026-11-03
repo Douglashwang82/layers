@@ -10,7 +10,10 @@ import {
   MapPin,
   Sparkles,
 } from "lucide-react";
-import type { DailyPickView } from "@/features/daily-pick/repository";
+import type {
+  DailyPickView,
+  DailyPickCard as DailyPickViewCard,
+} from "@/features/daily-pick/repository";
 import { api, StatusMessage } from "@/components/actions";
 import { Photo as Image } from "@/components/photo";
 import { type Copy, type Locale, format, localized } from "@/lib/dictionary";
@@ -18,7 +21,65 @@ import { pickDateLabel, pickText } from "@/lib/daily-pick";
 import { track } from "@/lib/track";
 import { getPlacesProvider, type LatLng } from "@/lib/places/provider";
 import { subjectApi } from "@/lib/places/api";
-import { ProviderDetails } from "@/components/places/provider-slot";
+import { AddToLayer } from "@/components/layers/add-to-layer";
+import type { EditableLayer, ItemDetail } from "@/features/map/detail";
+import { RequestedProviderDetails } from "@/components/places/requested-provider-details";
+/**
+ * "Add to my layer" for the pick. Both pick kinds are kinds the add-items
+ * endpoint already supports (a catalog `place:` key or an external `subject:`
+ * key); the editable layers are loaded once for the signed-in member.
+ */
+function PickAddToLayer({
+  pick,
+  citySlug,
+  authenticated,
+  t,
+  locale,
+  onChanged,
+}: {
+  pick: DailyPickViewCard;
+  citySlug: string;
+  authenticated: boolean;
+  t: Copy;
+  locale: Locale;
+  onChanged?: () => void;
+}) {
+  const [layers, setLayers] = useState<EditableLayer[]>([]);
+  useEffect(() => {
+    if (!authenticated) return;
+    let live = true;
+    const load =
+      pick.kind === "catalog"
+        ? subjectApi<ItemDetail>(
+            "map/item?key=" + encodeURIComponent(pick.key),
+          ).then((d) => d.editableLayers)
+        : subjectApi<EditableLayer[]>(
+            `place-subjects/editable-layers?subjectId=${encodeURIComponent(pick.subjectId)}`,
+          );
+    load.then(
+      (list) => live && setLayers(list),
+      () => live && setLayers([]),
+    );
+    return () => {
+      live = false;
+    };
+  }, [authenticated, pick]);
+  return (
+    <AddToLayer
+      itemKey={pick.key}
+      itemCity={citySlug}
+      layers={layers}
+      authenticated={authenticated}
+      t={t}
+      locale={locale}
+      onChanged={() => {
+        track("daily_pick_added_to_layer", { city: citySlug });
+        onChanged?.();
+      }}
+      compact
+    />
+  );
+}
 /**
  * Today's Daily Pick: identity, the approved description, the recorded reasons
  * and only the practical facts the listing supports. Works without the map.
@@ -39,6 +100,7 @@ export function DailyPickCard({
   onShowToday,
   mapHref,
   onChanged,
+  addToLayer = false,
 }: {
   view: DailyPickView;
   cityName: string;
@@ -59,6 +121,8 @@ export function DailyPickCard({
    * same place agrees. Defaults to refreshing the server-rendered page.
    */
   onChanged?: () => void;
+  /** Map MVP with layer writes on: offer "Add to my layer" for the pick. */
+  addToLayer?: boolean;
 }) {
   const router = useRouter();
   const pick = view.pick;
@@ -168,6 +232,16 @@ export function DailyPickCard({
       {pending ? t.saving : saved ? t.unsave : t.save}
     </button>
   );
+  const addButton = addToLayer ? (
+    <PickAddToLayer
+      pick={pick}
+      citySlug={citySlug}
+      authenticated={authenticated}
+      t={t}
+      locale={locale}
+      onChanged={onChanged}
+    />
+  ) : null;
   const showOnMapControls = (
     <>
       {!view.inResults && onShowToday && (
@@ -208,15 +282,22 @@ export function DailyPickCard({
         <h4>{t.dailyPickWhy}</h4>
         <p>{reason}</p>
         <h4>{t.dailyPickDetails}</h4>
-        {provider && pick.providerPlaceId && !providerUnavailable ? (
-          <ProviderDetails
+        {provider && pick.providerPlaceId ? (
+          <RequestedProviderDetails
+            t={t}
             provider={provider}
             placeId={pick.providerPlaceId}
             compact={false}
-            onLoad={(place) => setProviderLocation(place.location)}
+            onLoad={(place) => {
+              setProviderUnavailable(false);
+              setProviderLocation(place.location);
+            }}
             onError={() => setProviderUnavailable(true)}
           />
         ) : (
+          <p className="fine-print">{t.externalUnavailable}</p>
+        )}
+        {providerUnavailable && (
           <p className="fine-print">{t.externalUnavailable}</p>
         )}
         <p className="fine-print">{t.dailyPickOpenNote}</p>
@@ -230,6 +311,7 @@ export function DailyPickCard({
             {t.dailyPickViewPlace}
           </Link>
           {saveButton}
+          {addButton}
           {directions && (
             <a
               className="button secondary"
@@ -342,6 +424,7 @@ export function DailyPickCard({
           {t.dailyPickViewPlace}
         </Link>
         {saveButton}
+        {addButton}
         {directions && (
           <a
             className="button secondary"

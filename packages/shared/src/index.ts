@@ -462,18 +462,21 @@ export function overlapsWindow(
   );
 }
 /** Merge memberships by identity: an item in three layers is one entity "in 3 layers". */
-export function unionItems<T extends { key: string; layers: string[] }>(
-  groups: T[][],
-): T[] {
+export function unionItems<
+  T extends { key: string; layers: string[]; markerImageUrl?: string | null },
+>(groups: T[][]): T[] {
   const byKey = new Map<string, T>();
   for (const group of groups)
     for (const item of group) {
       const existing = byKey.get(item.key);
-      if (existing)
+      if (existing) {
         existing.layers = Array.from(
           new Set([...existing.layers, ...item.layers]),
         );
-      else byKey.set(item.key, { ...item, layers: [...item.layers] });
+        // The first layer that gives the item a custom pin decides it.
+        if (!existing.markerImageUrl && item.markerImageUrl)
+          existing.markerImageUrl = item.markerImageUrl;
+      } else byKey.set(item.key, { ...item, layers: [...item.layers] });
     }
   return Array.from(byKey.values());
 }
@@ -553,6 +556,10 @@ export const layerItemInput = z.object({
   note: z.string().trim().max(300).default(""),
   /** Lets a member add a business they just resolved but cannot otherwise see yet. */
   selectionGrant: selectionGrantToken.optional(),
+});
+/** Sets (an uploaded image the actor owns) or clears (null) a layer item's custom map marker. */
+export const layerItemMarkerInput = z.object({
+  imageId: z.uuid().nullable(),
 });
 /**
  * A member-created place in a private or group layer. Coordinates are only a
@@ -660,6 +667,7 @@ export const groupInviteInput = z.object({
 export const groupRoleInput = z.object({
   role: z.enum(["owner", "editor", "viewer"]),
 });
+export * from "./instagram";
 export const mapPreferenceInput = z.object({
   layers: z.array(z.string().regex(slugPattern)).max(maxAppliedLayers),
   view: z.enum(["map", "list"]).default("map"),

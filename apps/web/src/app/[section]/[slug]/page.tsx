@@ -56,7 +56,8 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
       description: item.description,
       images: [item.image],
     },
-    ...(item.isDemo ? { robots: { index: false, follow: true } } : {}),
+    // The legacy catalog stays reachable but out of search engines.
+    robots: { index: false, follow: true },
   };
 }
 const timeOf = (value: string, locale: string) =>
@@ -126,13 +127,6 @@ export default async function DetailPage({ params }: Props) {
         <MapPin size={16} aria-hidden="true" />
         {t.directions} ↗
       </a>
-    ) : kind === "products" && flags.submissions ? (
-      <Link
-        className="button"
-        href={"/submit/product-sighting?product=" + item.id}
-      >
-        {t.found}
-      </Link>
     ) : undefined;
   return (
     <div className="container">

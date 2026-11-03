@@ -7,6 +7,9 @@ import {
   layerFromGoogleInput,
   requireActor,
   type Actor,
+  isInstagramPost,
+  extractUrl,
+  type GoogleLinkResult,
 } from "@taiwanhub/shared";
 import { flags } from "@/lib/config";
 import { getLayer, requireEditableLayer } from "@/features/layers/repository";
@@ -24,6 +27,7 @@ import {
 } from "@/features/place-subjects/repository";
 import { resolveLinks } from "./resolver";
 import { resolverDeps } from "./deps";
+import { resolveInstagramLink } from "./instagram";
 export { resolverDeps };
 /*
  * Layers from Google Maps links (docs/plans/layer-mvp-google-links-plan.md
@@ -34,7 +38,7 @@ export { resolverDeps };
 /** Pasted links a member may resolve per window; bounds the paid lookups behind them. */
 export const linkBudget = { links: 150, minutes: 10 };
 function enabled() {
-  if (!flags.mapMvp || !flags.layerWrites)
+  if (!flags.layerWrites)
     throw new AppError(
       404,
       "DISABLED",
@@ -62,8 +66,43 @@ export async function resolveGoogleLinks(actor: Actor | null, body: unknown) {
   enabled();
   const a = requireActor(actor);
   const input = googleLinksResolveInput.parse(body);
+  if (input.layerId) {
+    const layer = await requireEditableLayer(input.layerId, a);
+    notProjected(layer);
+  }
   const deps = resolverDeps();
   await spendLinkBudget(a, input.links.length);
+  const instagram = input.links.filter((link) =>
+    isInstagramPost(extractUrl(link) ?? link),
+  );
+  if (instagram.length) {
+    if (input.links.length !== 1) {
+      const results: GoogleLinkResult[] = [];
+      for (const link of input.links) {
+        if (instagram.includes(link))
+          results.push({
+            input: link,
+            status: "unsupported",
+            reason: "instagram_limit",
+          });
+        else results.push(...(await resolveLinks([link], deps)));
+      }
+      return { results };
+    }
+    const limit = await pool.query<{ count: number }>(
+      `INSERT INTO rate_limit(key,count,expires_at) VALUES($1,1,now()+interval '10 minutes')
+       ON CONFLICT(key) DO UPDATE SET count=CASE WHEN rate_limit.expires_at<now() THEN 1 ELSE rate_limit.count+1 END,
+       expires_at=CASE WHEN rate_limit.expires_at<now() THEN now()+interval '10 minutes' ELSE rate_limit.expires_at END RETURNING count`,
+      [`instagram-links:${a.id}`],
+    );
+    if (limit.rows[0].count > 5)
+      return {
+        results: [
+          { input: instagram[0], status: "failed", reason: "instagram_busy" },
+        ],
+      };
+    return { results: await resolveInstagramLink(instagram[0], deps) };
+  }
   return { results: await resolveLinks(input.links, deps) };
 }
 type Resolved = { providerPlaceId: string; row: SubjectRow | null };
@@ -89,6 +128,7 @@ async function attachAll(
   layer: PlacementLayer,
   subjects: Resolved[],
   linkNames: Record<string, string> = {},
+  sourceLinks: Record<string, string> = {},
 ): Promise<ImportOutcome> {
   const outcome: ImportOutcome = { added: 0, skipped: [] };
   for (const { providerPlaceId, row } of subjects) {
@@ -113,7 +153,15 @@ async function attachAll(
       outcome.skipped.push({ providerPlaceId, reason: error.code });
       continue;
     }
-    if (await attachLayerItem(tx, actor.id, layer, target, ""))
+    if (
+      await attachLayerItem(
+        tx,
+        actor.id,
+        layer,
+        target,
+        sourceLinks[providerPlaceId] ?? "",
+      )
+    )
       outcome.added += 1;
     else outcome.skipped.push({ providerPlaceId, reason: "DUPLICATE" });
     // Pasting a place's link again refreshes its name in this layer.
@@ -161,7 +209,7 @@ export async function importGooglePlaces(
   notProjected(found);
   const subjects = await resolveSubjects(input.providerPlaceIds);
   return transaction((tx) =>
-    attachAll(tx, a, found, subjects, input.linkNames),
+    attachAll(tx, a, found, subjects, input.linkNames, input.sourceLinks),
   );
 }
 /**
@@ -199,6 +247,7 @@ export async function createLayerFromGoogle(
       },
       subjects,
       input.linkNames,
+      input.sourceLinks,
     );
     return { id: layer.id, outcome };
   });

@@ -3,6 +3,7 @@ import { createHash } from "node:crypto";
 import { z } from "zod";
 import { pool } from "./index";
 import { lockDailyPickSlot } from "./daily-pick";
+import { retireLayerItemReviews } from "./layer-item-reviews";
 import {
   addDays,
   buildRestaurantReport,
@@ -1412,12 +1413,16 @@ export async function withdrawRestaurantPick(
       `UPDATE daily_pick SET status='withdrawn', withdrawn_at=now(), withdrawn_by=$2, withdrawal_reason=$3, updated_at=now() WHERE id=$1 AND status='published'`,
       [pickId, actorId, reason],
     );
-    for (const { layer_item_id: layerItemId } of membership.rows)
-      await client.query(
-        `DELETE FROM layer_item WHERE id=$1 AND added_by IS NULL AND restaurant_managed
-           AND NOT EXISTS (SELECT 1 FROM daily_pick_layer_membership WHERE layer_item_id=$1)`,
+    for (const { layer_item_id: layerItemId } of membership.rows) {
+      const removable = await client.query<{ id: string }>(
+        `SELECT id FROM layer_item WHERE id=$1 AND added_by IS NULL AND restaurant_managed
+           AND NOT EXISTS (SELECT 1 FROM daily_pick_layer_membership WHERE layer_item_id=$1) FOR UPDATE`,
         [layerItemId],
       );
+      if (!removable.rowCount) continue;
+      await retireLayerItemReviews(client, [layerItemId], actorId ?? null);
+      await client.query(`DELETE FROM layer_item WHERE id=$1`, [layerItemId]);
+    }
     await client.query("COMMIT");
   } catch (error) {
     await client.query("ROLLBACK").catch(() => {});

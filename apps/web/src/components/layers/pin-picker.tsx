@@ -1,5 +1,6 @@
 "use client";
-import { useEffect, useRef, useState } from "react";
+import { useContext, useEffect, useRef, useState } from "react";
+import { LayerWorkspaceContext } from "./workspace-navigation";
 import type { Map as MapboxMap, Marker } from "mapbox-gl";
 import "mapbox-gl/dist/mapbox-gl.css";
 import { mapboxTransformRequest } from "@/lib/browser-api-log";
@@ -24,6 +25,7 @@ export function PinPicker({
   onChange: (pin: Pin) => void;
   t: Copy;
 }) {
+  const workspace = useContext(LayerWorkspaceContext);
   const [open, setOpen] = useState(false);
   /** The map module has loaded and the map exists; until then center-pinning is unavailable. */
   const [ready, setReady] = useState(false);
@@ -98,6 +100,29 @@ export function PinPicker({
     };
   }, [open, token, centerLat, centerLng]);
   if (!token) return null;
+  if (workspace)
+    return (
+      <div className="pin-picker">
+        <p className="fine-print">{t.workspacePinHelp}</p>
+        <button
+          type="button"
+          className="button secondary small"
+          disabled={!workspace.mapReady}
+          onClick={() => {
+            const pin = workspace.pinCenter();
+            if (pin) onChange(pin);
+          }}
+        >
+          <Crosshair size={14} aria-hidden="true" />
+          {t.useMapCenter}
+        </button>
+        {value && (
+          <p className="fine-print">
+            {value.latitude.toFixed(5)}, {value.longitude.toFixed(5)}
+          </p>
+        )}
+      </div>
+    );
   function pinCenter() {
     const map = mapRef.current;
     if (!map) return;

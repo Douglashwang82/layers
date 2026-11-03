@@ -1,9 +1,15 @@
 "use client";
 import { useMemo, useState, type FormEvent } from "react";
-import { useRouter } from "next/navigation";
+import Link from "next/link";
+import {
+  useLayerRouter as useRouter,
+  useLayerDraft,
+} from "./workspace-navigation";
 import { Link2, Plus, X } from "lucide-react";
 import {
   maxGoogleLinks,
+  isInstagramPost,
+  extractUrl,
   type GoogleLinkReason,
   type GoogleLinkResult,
 } from "@taiwanhub/shared";
@@ -26,10 +32,26 @@ function reasonText(reason: GoogleLinkReason | undefined, t: Copy) {
       return t.linkNotGoogleMaps;
     case "list":
       return t.linkList;
+    case "my_maps":
+      return t.linkMyMaps;
     case "no_place_name":
       return t.linkNoPlace;
     case "no_match":
       return t.linkNotFound;
+    case "instagram_unavailable":
+      return t.instagramUnavailable;
+    case "instagram_busy":
+      return t.instagramBusy;
+    case "instagram_failed":
+      return t.instagramFailed;
+    case "instagram_missing_fields":
+      return t.instagramMissingFields;
+    case "instagram_no_places":
+      return t.instagramNoPlaces;
+    case "instagram_too_many_places":
+      return t.instagramTooManyPlaces;
+    case "instagram_limit":
+      return t.instagramLimit;
     default:
       return t.linkFailed;
   }
@@ -67,11 +89,16 @@ export function GoogleLinksForm({
   const [text, setText] = useState("");
   const [results, setResults] = useState<GoogleLinkResult[] | null>(null);
   const [removed, setRemoved] = useState<Set<number>>(new Set());
+  const [confirmed, setConfirmed] = useState<Set<number>>(new Set());
   const [checking, setChecking] = useState(false);
   const [saving, setSaving] = useState(false);
   const [feedback, setFeedback] = useState<Feedback>(null);
   const [title, setTitle] = useState("");
   const [titleChinese, setTitleChinese] = useState("");
+  useLayerDraft(
+    !saving && !!(text || title || titleChinese),
+    t.discardLayerChanges,
+  );
   const [audience, setAudience] = useState<"private" | "group">("private");
   const [groupId, setGroupId] = useState(groups[0]?.id ?? "");
   const lines = text
@@ -89,15 +116,27 @@ export function GoogleLinksForm({
     .filter(
       ({ r, i }) =>
         r.status === "resolved" &&
+        (r.source !== "instagram" || confirmed.has(i)) &&
         firstIndex.get(r.providerPlaceId!) === i &&
         !removed.has(i),
     )
     .map(({ r }) => r.providerPlaceId!);
-  // Names read from the links label the places in this layer.
+  // Names read from Maps links label the places in this layer. Instagram
+  // names are unverified caption text, so those places show Google's details.
   const linkNames = Object.fromEntries(
     (results ?? [])
-      .filter((r) => r.name && chosen.includes(r.providerPlaceId!))
+      .filter(
+        (r) =>
+          r.name &&
+          r.source !== "instagram" &&
+          chosen.includes(r.providerPlaceId!),
+      )
       .map((r) => [r.providerPlaceId!, r.name!]),
+  );
+  const sourceLinks = Object.fromEntries(
+    (results ?? [])
+      .filter((r) => r.sourceUrl && chosen.includes(r.providerPlaceId!))
+      .map((r) => [r.providerPlaceId!, r.sourceUrl!]),
   );
   async function check(e: FormEvent) {
     e.preventDefault();
@@ -111,12 +150,16 @@ export function GoogleLinksForm({
       return;
     }
     setChecking(true);
+    setResults(null);
+    setConfirmed(new Set());
     try {
       const data = (await api("google-links/resolve", "POST", {
         links: lines,
+        ...(mode === "add" ? { layerId } : {}),
       })) as { results: GoogleLinkResult[] };
       setResults(data.results);
       setRemoved(new Set());
+      setConfirmed(new Set());
     } catch (err) {
       setFeedback({ tone: "error", text: (err as Error).message });
     } finally {
@@ -141,13 +184,15 @@ export function GoogleLinksForm({
           groupId: audience === "group" ? groupId : undefined,
           providerPlaceIds: chosen,
           linkNames,
+          sourceLinks,
         })) as { layer: { slug: string } };
-        router.push(`/?layers=${encodeURIComponent(created.layer.slug)}`);
+        router.push(`/layers/${encodeURIComponent(created.layer.slug)}`);
         return;
       }
       const outcome = (await api(`layers/${layerId}/google-places`, "POST", {
         providerPlaceIds: chosen,
         linkNames,
+        sourceLinks,
       })) as ImportOutcome;
       setText("");
       setResults(null);
@@ -248,11 +293,15 @@ export function GoogleLinksForm({
           <textarea
             {...fieldProps(`google-links-${mode}`, { help: true })}
             value={text}
+            disabled={checking || saving}
             rows={5}
-            placeholder="https://maps.app.goo.gl/…"
+            placeholder={
+              "https://maps.app.goo.gl/…\nhttps://www.instagram.com/p/…/"
+            }
             onChange={(e) => {
               setText(e.target.value);
               setResults(null);
+              setConfirmed(new Set());
             }}
           />
         </Field>
@@ -260,7 +309,7 @@ export function GoogleLinksForm({
           <button
             type="submit"
             className="button secondary"
-            disabled={checking || !lines.length}
+            disabled={checking || saving || !lines.length}
             aria-busy={checking || undefined}
           >
             <Link2 size={16} aria-hidden="true" />
@@ -268,10 +317,23 @@ export function GoogleLinksForm({
           </button>
         </div>
       </form>
+      {checking &&
+        lines.some((line) => isInstagramPost(extractUrl(line) ?? line)) && (
+          <p role="status" className="muted">
+            {t.instagramWorking}
+          </p>
+        )}
       {results && (
         <section aria-label={t.googleLinksLabel}>
           <p className="muted" role="status">
-            {format(t.linksFound, { count: chosen.length })}
+            {format(t.linksFound, {
+              count: results.filter(
+                (r, i) =>
+                  r.status === "resolved" &&
+                  firstIndex.get(r.providerPlaceId!) === i &&
+                  !removed.has(i),
+              ).length,
+            })}
           </p>
           <ul className="google-link-results">
             {results.map((r, i) => {
@@ -287,6 +349,15 @@ export function GoogleLinksForm({
                   <span className="fine-print google-link-input">
                     {r.input}
                   </span>
+                  {r.source === "instagram" && (
+                    <div>
+                      {r.name && <p>{r.name}</p>}
+                      {r.address && <p>{r.address}</p>}
+                      {r.potentiallyTruncated && (
+                        <p className="fine-print">{t.instagramTruncated}</p>
+                      )}
+                    </div>
+                  )}
                   {r.status === "resolved" && !duplicate ? (
                     <>
                       {provider && (
@@ -294,18 +365,49 @@ export function GoogleLinksForm({
                           provider={provider}
                           placeId={r.providerPlaceId!}
                           compact
+                          preview
                           onLoad={() => {}}
                           onError={() => {}}
                         />
                       )}
-                      {r.name && (
+                      {r.name && r.source !== "instagram" && (
                         <p className="fine-print">
                           {format(t.linkFromName, { name: r.name })}
                         </p>
                       )}
+                      {r.source === "instagram" && (
+                        <>
+                          <a
+                            href={`https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(`${r.name ?? ""} ${r.address ?? ""}`)}&query_place_id=${encodeURIComponent(r.providerPlaceId!)}`}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                          >
+                            {t.instagramVerifyMap}
+                          </a>
+                          <label className="field-label">
+                            <span>
+                              <input
+                                type="checkbox"
+                                checked={confirmed.has(i)}
+                                disabled={saving}
+                                onChange={(e) =>
+                                  setConfirmed((previous) => {
+                                    const next = new Set(previous);
+                                    if (e.target.checked) next.add(i);
+                                    else next.delete(i);
+                                    return next;
+                                  })
+                                }
+                              />{" "}
+                              {t.instagramConfirm}
+                            </span>
+                          </label>
+                        </>
+                      )}
                       <button
                         type="button"
                         className="text-button"
+                        disabled={saving}
                         onClick={() => setRemoved((s) => new Set(s).add(i))}
                       >
                         <X size={14} aria-hidden="true" /> {t.removeLink}
@@ -314,6 +416,19 @@ export function GoogleLinksForm({
                   ) : (
                     <p className="message error-message">
                       {duplicate ? t.linkDuplicate : reasonText(r.reason, t)}
+                      {!duplicate && r.reason === "my_maps" && (
+                        <>
+                          {" "}
+                          <Link
+                            href={`/map-import?${new URLSearchParams({
+                              url: extractUrl(r.input) ?? r.input,
+                              ...(layerId ? { layer: layerId } : {}),
+                            })}`}
+                          >
+                            {t.linkMyMapsAction}
+                          </Link>
+                        </>
+                      )}
                     </p>
                   )}
                 </li>

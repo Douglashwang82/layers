@@ -21,12 +21,8 @@ export const flags = {
   layerCustomPlaces: process.env.FEATURE_LAYER_CUSTOM_PLACES === "true",
   /** Presentation-only map selection effects. */
   mapEffects: process.env.FEATURE_MAP_EFFECTS === "true",
-  /**
-   * Map MVP (docs/plans/layer-mvp-google-links-plan.md): the map shows only
-   * the member's own, group and followed layers; search, system layers and
-   * non-place types are off; layers are built from Google Maps links.
-   */
-  mapMvp: process.env.FEATURE_MAP_MVP === "true",
+  /** Send places from chat: LINE/Instagram DMs add Google Maps links to a layer (docs/plans/dm-link-to-layer-design.md). */
+  chatCapture: process.env.FEATURE_CHAT_CAPTURE === "true",
   /* Daily restaurant recommendation, version 2
      (docs/plans/daily-restaurant-recommendation-implementation-plan.md).
      All off unless explicitly enabled; each requires the Phase 0 provider/
@@ -51,19 +47,14 @@ export const membershipIssuancePaused =
   process.env.MEMBERSHIP_ISSUANCE_PAUSED === "true";
 /**
  * What the browser needs for places work. The UI Kit key is intentionally
- * browser-visible (restricted by referrer/API in Google Cloud) and is only
- * handed out while discovery or the map MVP (whose layers are Google places)
- * is enabled, so disabled flags load no provider.
+ * browser-visible (restricted by referrer/API in Google Cloud); layers are
+ * Google places, so it is handed out whenever it is configured.
  */
 export function placesClientConfig() {
   return {
-    providerKey:
-      flags.googlePlacesDiscovery || flags.mapMvp
-        ? process.env.NEXT_PUBLIC_GOOGLE_PLACES_UI_KIT_KEY || null
-        : null,
+    providerKey: process.env.NEXT_PUBLIC_GOOGLE_PLACES_UI_KIT_KEY || null,
     reviewWrites: flags.placeReviewWrites,
     collections: flags.externalPlaceCollections,
     mapEffects: flags.mapEffects,
-    mvp: flags.mapMvp,
   };
 }

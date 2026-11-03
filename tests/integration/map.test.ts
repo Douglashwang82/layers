@@ -6,6 +6,10 @@ import {
   listLibrary,
   getLayer,
 } from "../../apps/web/src/features/layers/repository";
+import {
+  addLayerItem,
+  createLayer,
+} from "../../apps/web/src/features/layers/service";
 import { parseMapQuery, type Actor } from "../../packages/shared/src";
 const member: Actor = { id: crypto.randomUUID(), role: "USER" };
 const city = {
@@ -28,108 +32,86 @@ beforeAll(async () => {
   );
 });
 afterAll(async () => {
+  await pool.query("DELETE FROM layer WHERE owner_user_id=$1", [member.id]);
   await pool.query('DELETE FROM "user" WHERE id=$1', [member.id]);
   await pool.end();
 });
 const state = (params: Record<string, string>) => {
   const parsed = parseMapQuery({ city: "houston", ...params });
-  return { ...parsed, layers: parsed.layers ?? ["discover-houston"] };
+  return { ...parsed, layers: parsed.layers ?? "none" };
 };
+async function memberLayer(title: string, placeIds: string[]) {
+  const { layer } = await createLayer(member, { title, city: "houston" });
+  for (const id of placeIds)
+    await addLayerItem(member, layer.id, { key: `place:${id}` });
+  return layer.slug;
+}
 describe("map query", () => {
-  it("system layers exist per city and resolve for guests", async () => {
-    const { resolved, unavailable } = await resolveLayers(
+  it("drops system layers except the Daily Pick and reports unknown ones", async () => {
+    const { resolved, unavailable, disabled } = await resolveLayers(
       ["discover-houston", "today-houston", "nope-layer", "my-saves"],
       null,
       city,
     );
-    expect(resolved.map((r) => r.layer.slug)).toEqual([
-      "discover-houston",
-      "today-houston",
-    ]);
+    expect(resolved).toEqual([]);
+    expect(disabled).toEqual(["discover-houston", "today-houston"]);
     expect(unavailable).toEqual(["nope-layer", "my-saves"]);
   });
   it("unions layers, deduplicates by identity and keeps pins/rows/counts consistent", async () => {
-    const discover = await runMapQuery(state({}), city, null);
-    expect(discover.total).toBeGreaterThan(0);
-    expect(discover.items.some((i) => i.type === "place")).toBe(true);
-    expect(discover.items.some((i) => i.type === "event")).toBe(true);
-    expect(discover.mapped + discover.unmapped).toBe(discover.total);
-    const both = await runMapQuery(
-      state({ layers: "discover-houston,food-houston" }),
-      city,
-      null,
+    const { rows } = await pool.query<{ id: string }>(
+      "SELECT id FROM place WHERE status='approved' AND id<>$1 ORDER BY id LIMIT 1",
+      [placeId],
     );
+    const other = rows[0].id;
+    const first = await memberLayer("Union A", [placeId, other]);
+    const second = await memberLayer("Union B", [placeId]);
+    const both = await runMapQuery(
+      state({ layers: `${first},${second}` }),
+      city,
+      member,
+    );
+    expect(both.total).toBe(2);
+    expect(both.mapped + both.unmapped).toBe(both.total);
     const keys = both.items.map((i) => i.key);
     expect(new Set(keys).size).toBe(keys.length);
     const shared = both.items.find((i) => i.layers.length === 2);
-    expect(shared?.layers.sort()).toEqual(["discover-houston", "food-houston"]);
-    const food = both.layers.find((l) => l.slug === "food-houston")!;
-    expect(food.count).toBe(
-      both.items.filter((i) => i.layers.includes("food-houston")).length,
-    );
+    expect(shared?.key).toBe(`place:${placeId}`);
+    expect(shared?.layers.sort()).toEqual([first, second].sort());
+    for (const slug of [first, second])
+      expect(both.layers.find((l) => l.slug === slug)?.count).toBe(
+        both.items.filter((i) => i.layers.includes(slug)).length,
+      );
     expect(both.layers.every((l) => l.status === "ok")).toBe(true);
   });
-  it("intersects date, type and area filters and reports unavailable layers", async () => {
-    const placesOnly = await runMapQuery(state({ types: "place" }), city, null);
-    expect(placesOnly.items.every((i) => i.type === "place")).toBe(true);
-    const eventsToday = await runMapQuery(
-      state({ types: "event", date: "today" }),
-      city,
-      null,
-    );
-    expect(eventsToday.window.end).not.toBeNull();
-    for (const e of eventsToday.items) {
-      expect(new Date(e.startTime!).getTime()).toBeLessThan(
-        new Date(eventsToday.window.end!).getTime(),
-      );
-    }
-    const area = await runMapQuery(
-      state({ area: "-95.40,29.70,-95.30,29.80", types: "place" }),
-      city,
-      null,
-    );
-    for (const p of area.items)
-      if (p.latitude != null) {
-        expect(p.longitude).toBeGreaterThanOrEqual(-95.4);
-        expect(p.longitude).toBeLessThanOrEqual(-95.3);
-      }
+  it("reports unavailable layers without details and keeps an empty map empty", async () => {
+    const mine = await memberLayer("Private", [placeId]);
     const missing = await runMapQuery(
-      state({ layers: "discover-houston,secret-layer" }),
+      state({ layers: `${mine},secret-layer` }),
       city,
       null,
     );
-    const secret = missing.layers.find((l) => l.slug === "secret-layer")!;
-    expect(secret.status).toBe("unavailable");
-    expect(secret.title).toBe("");
+    for (const slug of [mine, "secret-layer"]) {
+      const layer = missing.layers.find((l) => l.slug === slug)!;
+      expect(layer.status).toBe("unavailable");
+      expect(layer.title).toBe("");
+    }
+    expect(missing.total).toBe(0);
     const none = await runMapQuery(state({ layers: "none" }), city, null);
     expect(none.total).toBe(0);
     expect(none.state.layers).toBe("none");
   });
-  it("searches within layers by default and across the city on request", async () => {
-    const inLayers = await runMapQuery(
-      state({ layers: "weekend-houston", q: "noodle", types: "place" }),
-      city,
-      null,
-    );
-    expect(inLayers.total).toBe(0);
-    const cityWide = await runMapQuery(
-      state({ layers: "weekend-houston", q: "noodle", scope: "city" }),
-      city,
-      null,
-    );
-    expect(cityWide.searchScope).toBe("city");
-    expect(cityWide.items.some((i) => /noodle/i.test(i.name))).toBe(true);
-    expect(cityWide.items.every((i) => i.layers.length === 0)).toBe(true);
-  });
-  it("projects My saves for the signed-in user only", async () => {
-    const mine = await runMapQuery(state({ layers: "my-saves" }), city, member);
-    expect(mine.layers[0].status).toBe("ok");
-    expect(mine.items.map((i) => i.id)).toContain(placeId);
-    const guest = await runMapQuery(state({ layers: "my-saves" }), city, null);
-    expect(guest.layers[0].status).toBe("unavailable");
-    expect(guest.total).toBe(0);
+  it("no longer offers a My saves layer", async () => {
+    for (const actor of [member, null]) {
+      const result = await runMapQuery(
+        state({ layers: "my-saves" }),
+        city,
+        actor,
+      );
+      expect(result.layers[0].status).toBe("unavailable");
+      expect(result.total).toBe(0);
+    }
     const library = await listLibrary("mine", member, city);
-    expect(library[0].layer.slug).toBe("my-saves");
-    expect(await getLayer("my-saves", null, city)).toBeNull();
+    expect(library.some((l) => l.layer.slug === "my-saves")).toBe(false);
+    expect(await getLayer("my-saves", member)).toBeNull();
   });
 });

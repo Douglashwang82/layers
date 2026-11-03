@@ -249,8 +249,8 @@ describe("external reference projection", () => {
   it("lists authorized references with notes and never for outsiders", async () => {
     const result = await listExternalReferences(state({}), city, alice, 0);
     expect(result).toMatchObject({
-      pageSize: 12,
-      spatialFilter: "pending-provider-resolution",
+      pageSize: 60,
+      spatialFilter: "cached-locations",
       totalAuthorizedReferences: 1,
       nextCursor: null,
     });
@@ -299,44 +299,20 @@ describe("external reference projection", () => {
       ).references,
     ).toEqual([]);
   });
-  it("pages at 12 with a cursor and projects own saves for My saves", async () => {
+  it("keeps saved external places on /saved without a My saves map layer", async () => {
     for (let i = 0; i < 13; i++) {
       const fresh = await external(undefined, bob);
       await savePlaceSubject(bob, fresh.subjectId, {
         selectionGrant: fresh.selectionGrant,
       });
     }
-    const first = await listExternalReferences(
-      state({ layers: ["my-saves"] }),
-      city,
-      bob,
-      0,
-    );
-    expect(first.references).toHaveLength(12);
-    expect(first).toMatchObject({
-      totalAuthorizedReferences: 13,
-      nextCursor: "12",
-    });
-    const second = await listExternalReferences(
-      state({ layers: ["my-saves"] }),
-      city,
-      bob,
-      12,
-    );
-    expect(second.references).toHaveLength(1);
-    expect(second.nextCursor).toBeNull();
-    expect(
-      new Set(
-        [...first.references, ...second.references].map((r) => r.subjectId),
-      ).size,
-    ).toBe(13);
     expect((await listSavedExternalPlaces(bob.id)).length).toBe(13);
     expect(
       (
         await listExternalReferences(
           state({ layers: ["my-saves"] }),
           city,
-          alice,
+          bob,
           0,
         )
       ).references,

@@ -2,15 +2,21 @@ import Link from "next/link";
 import { redirect } from "next/navigation";
 import { pool } from "@taiwanhub/database";
 import { currentActor } from "@/lib/session";
-import { getCopy } from "@/lib/i18n";
+import { getCopy, getLocale } from "@/lib/i18n";
+import { mapImportEn, mapImportZh } from "@/lib/map-import-copy";
 import { getCities } from "@/features/catalog/repository";
 import { ProfileForm } from "@/components/profile-form";
 import { SignOut } from "@/components/auth-form";
 import { isModerator } from "@taiwanhub/shared";
 import { flags } from "@/lib/config";
+import { messagingEn, messagingZh } from "@/lib/messaging-copy";
+import { chatCaptureEnabled } from "@/features/messaging/service";
 export default async function Profile() {
   const actor = await currentActor();
   if (!actor) redirect("/sign-in?next=/profile");
+  const locale = await getLocale();
+  const importCopy = locale === "zh-TW" ? mapImportZh : mapImportEn;
+  const chatCopy = locale === "zh-TW" ? messagingZh : messagingEn;
   const [t, cities, result] = await Promise.all([
     getCopy(),
     getCities(),
@@ -36,6 +42,21 @@ export default async function Profile() {
           <ProfileForm {...{ t, cities }} user={result.rows[0]} />
         </section>
         <nav className="settings-rows" aria-label={t.profile}>
+          {flags.layerWrites && flags.layerCustomPlaces && (
+            <Link className="settings-row" href="/map-import">
+              {importCopy.title} <span aria-hidden="true">→</span>
+            </Link>
+          )}
+          {chatCaptureEnabled() && (
+            <Link className="settings-row" href="/profile/connections">
+              {chatCopy.title} <span aria-hidden="true">→</span>
+            </Link>
+          )}
+          {flags.layerCustomPlaces && (
+            <Link className="settings-row" href="/layer-collections">
+              {importCopy.collections} <span aria-hidden="true">→</span>
+            </Link>
+          )}
           <Link className="settings-row" href="/saved">
             {t.saved} <span aria-hidden="true">→</span>
           </Link>
@@ -51,21 +72,6 @@ export default async function Profile() {
           <Link className="settings-row" href="/membership">
             {t.membershipTitle} <span aria-hidden="true">→</span>
           </Link>
-          {flags.submissions && (
-            <>
-              <Link className="settings-row" href="/submit/place">
-                {t.submitPlace} <span aria-hidden="true">→</span>
-              </Link>
-              <Link className="settings-row" href="/submit/event">
-                {t.submitEvent} <span aria-hidden="true">→</span>
-              </Link>
-              {flags.content && (
-                <Link className="settings-row" href="/submit/content">
-                  {t.shareTip} <span aria-hidden="true">→</span>
-                </Link>
-              )}
-            </>
-          )}
           {isModerator(actor.role) && (
             <Link className="settings-row" href="/admin">
               {t.admin} <span aria-hidden="true">→</span>

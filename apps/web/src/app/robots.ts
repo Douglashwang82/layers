@@ -5,7 +5,15 @@ export default function robots(): MetadataRoute.Robots {
     rules: {
       userAgent: "*",
       allow: "/",
-      disallow: ["/admin", "/profile", "/saved", "/api/", "/submit/"],
+      disallow: [
+        "/admin",
+        "/profile",
+        "/saved",
+        "/api/",
+        // Shared layer links carry a secret token in the path.
+        "/shared/",
+        "/search",
+      ],
     },
     sitemap: appUrl + "/sitemap.xml",
   };

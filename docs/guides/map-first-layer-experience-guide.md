@@ -2,7 +2,7 @@
 
 Design and implementation specification · September 21, 2026
 
-> While `FEATURE_MAP_MVP` is on, the map is layers-only (no search, no system layers, layers built from Google Maps links): see [the map MVP plan](../plans/layer-mvp-google-links-plan.md). This guide still describes the flag-off experience.
+> The map is now layers-only (no search, no system layers except the Daily Pick, layers built from Google Maps links): see [the map MVP plan](../plans/layer-mvp-google-links-plan.md). The former `FEATURE_MAP_MVP` flag was removed on 2026-11-01. This guide describes the earlier search-first experience and is kept for history.
 
 **Make the map the home experience. Let people apply layers of restaurants, events, and local content to decide where to go, what to do, and what to share with their community.**
 
@@ -11,6 +11,10 @@ Keep TaiwanHub's existing bright visual language: pale mint canvas, white surfac
 This is a proposed migration, based on the current repository's source. It does not implement the new application or claim a browser usability audit. New routes, components, data entities, limits, and performance budgets below are proposed requirements. Examples of layers and their contents are illustrative, not claims about real businesses or groups.
 
 ## Implemented map navigation (October 2026)
+
+Layer management now shares the map panel: see the
+[map layer workspace guide](map-layer-workspace.md) for navigation, editing, and
+legacy URL behavior.
 
 The map home now fills the viewport behind floating search, city, layer and menu
 controls. Its warm, low-saturation basemap uses dots and a selected ring/label.
@@ -135,20 +139,20 @@ Desktop uses the existing 72 px header with these destinations. Mobile uses four
 
 ### Route migration
 
-| Route                                                                   | New responsibility / migration                                                              |
-| ----------------------------------------------------------------------- | ------------------------------------------------------------------------------------------- |
-| `/`                                                                     | Canonical map workspace                                                                     |
-| `/layers`                                                               | Layer library; selected library tab may be a query parameter                                |
-| `/layers/[slug]`                                                        | Layer preview/detail with owner, audience, description, schedule and contents               |
-| `/layers/new`                                                           | Authenticated layer creation                                                                |
-| `/layers/[slug]/edit`                                                   | Authorized layer editing                                                                    |
-| `/groups/[slug]`                                                        | Group identity, member access and group layers, in the group phase                          |
-| `/content/[slug]`                                                       | Standalone approved content detail, in the content phase                                    |
-| `/places/[slug]`, `/events/[slug]`                                      | Preserve canonical details, metadata and direct links                                       |
-| `/products/*`, `/organizations/*`                                       | Preserve enabled catalog/detail destinations; expose via relevant layers/results            |
-| `/explore`, `/places`, `/events`, `/search`                             | Retain working list pages during migration, add Map entry with equivalent supported filters |
-| `/saved`, `/profile`, `/profile/contributions`, `/submit/*`, `/admin/*` | Retain capabilities and restyle only as needed                                              |
-| `/city/[slug]`                                                          | Validate city and open the map with that city selected                                      |
+| Route                                                      | New responsibility / migration                                                              |
+| ---------------------------------------------------------- | ------------------------------------------------------------------------------------------- |
+| `/`                                                        | Canonical map workspace                                                                     |
+| `/layers`                                                  | Layer library; selected library tab may be a query parameter                                |
+| `/layers/[slug]`                                           | Layer preview/detail with owner, audience, description, schedule and contents               |
+| `/layers/new`                                              | Authenticated layer creation                                                                |
+| `/layers/[slug]/edit`                                      | Authorized layer editing                                                                    |
+| `/groups/[slug]`                                           | Group identity, member access and group layers, in the group phase                          |
+| `/content/[slug]`                                          | Standalone approved content detail, in the content phase                                    |
+| `/places/[slug]`, `/events/[slug]`                         | Preserve canonical details, metadata and direct links                                       |
+| `/products/*`, `/organizations/*`                          | Preserve enabled catalog/detail destinations; expose via relevant layers/results            |
+| `/explore`, `/places`, `/events`, `/search`                | Retain working list pages during migration, add Map entry with equivalent supported filters |
+| `/saved`, `/profile`, `/profile/contributions`, `/admin/*` | Retain capabilities and restyle only as needed                                              |
+| `/city/[slug]`                                             | Validate city and open the map with that city selected                                      |
 
 After parity is verified, `/explore` can redirect to the map. Do not blanket-redirect useful indexable catalog pages or silently drop incoming filters. A fresh detail URL renders a full page. In-map selection opens a contextual detail panel and offers “Open full details.”
 

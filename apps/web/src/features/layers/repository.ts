@@ -12,7 +12,6 @@ import {
   normalizeSystemLayerTitles,
   systemRule,
 } from "@taiwanhub/shared";
-import { flags } from "@/lib/config";
 export type GroupRole = "owner" | "editor" | "viewer";
 export type LayerRecord = {
   id: string;
@@ -223,22 +222,7 @@ export type LayerWithAccess = { layer: LayerRecord; access: LayerAccess };
 export async function getLayer(
   idOrSlug: string,
   actor: Actor | null,
-  city?: { id: string; slug: string; name: string; timezone: string },
 ): Promise<LayerWithAccess | null> {
-  if (idOrSlug === mySavesSlug) {
-    if (!actor || !city) return null;
-    return {
-      layer: mySavesLayer(actor, city),
-      access: {
-        view: true,
-        apply: true,
-        edit: false,
-        manage: false,
-        following: false,
-        role: "owner",
-      },
-    };
-  }
   const result = await pool.query<Record<string, unknown>>(
     `SELECT ${columns} ${from} WHERE l.slug=$1 OR l.id::text=$1`,
     [idOrSlug],
@@ -262,12 +246,24 @@ export async function requireEditableLayer(id: string, actor: Actor) {
 }
 /**
  * Resolve applied layer slugs for a map query. Unavailable slugs are reported
- * without titles or counts; other-city layers are reported so the UI can
- * explain why they were hidden (not under the map MVP, where a layer shows
- * in every city). While the map MVP is on, system layers are
- * disabled: they are dropped silently (`disabled`) so an old link or a
+ * without titles or counts. System layers are disabled except the Daily
+ * Pick: they are dropped silently (`disabled`) so an old link or a
  * remembered preference never loads them.
  */
+/** Every system layer is off except the Daily Pick. */
+export function isDisabledSystemLayer(
+  layer: Pick<LayerRecord, "ownerKind" | "rule"> & { cityId?: string },
+  activeCityId?: string,
+) {
+  if (layer.ownerKind !== "system") return false;
+  if (layer.rule?.kind !== "daily_pick") return true;
+  // The Daily Pick is per-city: another city's pick is not this city's.
+  return (
+    activeCityId !== undefined &&
+    layer.cityId !== undefined &&
+    layer.cityId !== activeCityId
+  );
+}
 export async function resolveLayers(
   slugs: string[],
   actor: Actor | null,
@@ -275,41 +271,24 @@ export async function resolveLayers(
 ) {
   const resolved: LayerWithAccess[] = [];
   const unavailable: string[] = [];
-  const otherCity: LayerWithAccess[] = [];
   const disabled: string[] = [];
-  if (!slugs.length) return { resolved, unavailable, otherCity, disabled };
+  if (!slugs.length) return { resolved, unavailable, disabled };
   const [memberships, following, result] = await Promise.all([
     getMemberships(actor?.id),
     followingSet(actor?.id),
     pool.query<Record<string, unknown>>(
       `SELECT ${columns} ${from} WHERE l.slug=ANY($1::text[])`,
-      [slugs.filter((s) => s !== mySavesSlug)],
+      [slugs],
     ),
   ]);
   const bySlug = new Map(result.rows.map((r) => [String(r.slug), record(r)]));
   for (const slug of slugs) {
-    if (slug === mySavesSlug) {
-      if (actor)
-        resolved.push({
-          layer: mySavesLayer(actor, city),
-          access: {
-            view: true,
-            apply: true,
-            edit: false,
-            manage: false,
-            following: false,
-            role: "owner",
-          },
-        });
-      else unavailable.push(slug);
-      continue;
-    }
     const layer = bySlug.get(slug);
     if (!layer) {
       unavailable.push(slug);
       continue;
     }
-    if (flags.mapMvp && layer.ownerKind === "system") {
+    if (isDisabledSystemLayer(layer, city.id)) {
       disabled.push(slug);
       continue;
     }
@@ -323,13 +302,11 @@ export async function resolveLayers(
       unavailable.push(slug);
       continue;
     }
-    // The MVP has no geographic limit (a layer's places can be anywhere), so
-    // the selected city only moves the camera; elsewhere layers stay city-scoped.
-    if (layer.cityId !== city.id && !flags.mapMvp)
-      otherCity.push({ layer, access });
-    else resolved.push({ layer, access });
+    // Layers have no geographic limit (a layer's places can be anywhere), so
+    // the selected city only moves the camera.
+    resolved.push({ layer, access });
   }
-  return { resolved, unavailable, otherCity, disabled };
+  return { resolved, unavailable, disabled };
 }
 export type LibraryScope = "discover" | "following" | "mine" | "groups";
 /** Library tabs: a finite curated set, not an infinite feed. Search matches title, owner and purpose. */
@@ -361,7 +338,7 @@ export async function listLibrary(
       `l.owner_kind='group' AND l.owner_group_id IN (SELECT group_id FROM group_member WHERE user_id=$1) AND l.lifecycle<>'archived'`,
     );
   }
-  if (flags.mapMvp) where.push(`l.owner_kind<>'system'`);
+  where.push(`l.owner_kind<>'system'`);
   if (q) {
     values.push("%" + q.replace(/[\\%_]/g, "\\$&") + "%");
     where.push(
@@ -383,22 +360,10 @@ export async function listLibrary(
       access: accessFor(layer, actor, memberships, following.has(layer.id)),
     }))
     .filter((entry) => entry.access.view);
-  if (scope === "mine" && actor)
-    layers.unshift({
-      layer: mySavesLayer(actor, city),
-      access: {
-        view: true,
-        apply: true,
-        edit: false,
-        manage: false,
-        following: false,
-        role: "owner",
-      },
-    });
   return layers;
 }
 /**
- * The map MVP's layer picker: the actor's own layers (with My saves), their
+ * The map MVP's layer picker: the actor's own layers, their
  * groups' layers and the layers they follow, in this city, without archived
  * ones and without duplicates.
  */
@@ -406,21 +371,47 @@ export async function listMapLibrary(
   actor: Actor,
   city: { id: string; slug: string; name: string; timezone: string },
 ) {
-  const scopes = await Promise.all(
-    (["mine", "groups", "following"] as const).map((scope) =>
-      listLibrary(scope, actor, city),
+  const [scopes, dailyPick] = await Promise.all([
+    Promise.all(
+      (["mine", "groups", "following"] as const).map((scope) =>
+        listLibrary(scope, actor, city),
+      ),
     ),
-  );
+    cityDailyPickLayer(actor, city),
+  ]);
   const seen = new Set<string>();
-  return scopes
-    .flat()
-    .filter(
-      ({ layer }) =>
-        layer.lifecycle !== "archived" &&
-        layer.cityId === city.id &&
-        !seen.has(layer.slug) &&
-        !!seen.add(layer.slug),
-    );
+  return [...scopes.flat(), ...dailyPick].filter(
+    ({ layer }) =>
+      layer.lifecycle !== "archived" &&
+      layer.cityId === city.id &&
+      !seen.has(layer.slug) &&
+      !!seen.add(layer.slug),
+  );
+}
+/**
+ * The city's active Daily Pick system layer, for the map picker. Library
+ * queries drop system layers under the MVP, so it is fetched on its own; a
+ * city without one yields nothing (never invented).
+ */
+async function cityDailyPickLayer(
+  actor: Actor,
+  city: { id: string },
+): Promise<LayerWithAccess[]> {
+  const result = await pool.query<Record<string, unknown>>(
+    `SELECT ${columns} ${from} WHERE l.owner_kind='system' AND l.rule->>'kind'='daily_pick' AND l.city_id=$1 AND l.lifecycle='active' AND l.review_status='approved' ORDER BY l.updated_at DESC LIMIT 1`,
+    [city.id],
+  );
+  const [memberships, following] = await Promise.all([
+    getMemberships(actor.id),
+    followingSet(actor.id),
+  ]);
+  return result.rows
+    .map(record)
+    .map((layer) => ({
+      layer,
+      access: accessFor(layer, actor, memberships, following.has(layer.id)),
+    }))
+    .filter((entry) => entry.access.view);
 }
 /** Layers the actor can add items to, for the Add-to-layer picker. */
 export async function listEditableLayers(actor: Actor) {
@@ -447,9 +438,11 @@ export async function listLayerItemRefs(layerId: string) {
     custom_place_id: string | null;
     /** A custom place whose suggestion was approved is shown as that catalog place. */
     approved_catalog_id: string | null;
+    marker_image_url: string | null;
   }>(
-    `SELECT i.id,i.place_id,i.event_id,i.content_id,i.subject_id,i.custom_place_id,p.id AS approved_catalog_id
+    `SELECT i.id,i.place_id,i.event_id,i.content_id,i.subject_id,i.custom_place_id,p.id AS approved_catalog_id,mi.url AS marker_image_url
      FROM layer_item i
+     LEFT JOIN image mi ON mi.id=i.marker_image_id
      LEFT JOIN custom_place cp ON cp.id=i.custom_place_id
      LEFT JOIN place p ON p.id=cp.catalog_place_id AND p.status='approved'
      WHERE i.layer_id=$1 ORDER BY i.position, i.created_at`,
@@ -457,6 +450,7 @@ export async function listLayerItemRefs(layerId: string) {
   );
   return result.rows.map((r) => ({
     id: r.id,
+    markerImageUrl: r.marker_image_url,
     key: r.place_id
       ? `place:${r.place_id}`
       : r.event_id

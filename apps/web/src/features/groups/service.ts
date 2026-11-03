@@ -6,11 +6,17 @@ import {
   groupInviteInput,
   groupRoleInput,
   requireActor,
+  normalizeEmail,
   type Actor,
 } from "@taiwanhub/shared";
 import { slugify } from "../layers/service";
 import { getGroup, getInviteByToken } from "./repository";
-import { flags } from "@/lib/config";
+import { flags, membershipMode } from "@/lib/config";
+import {
+  issueGroupOwnerInvitation,
+  revokeOwnerIssuedInvitation,
+  type GroupOwnerInvitationResult,
+} from "../membership/service";
 async function transaction<T>(fn: (tx: PoolClient) => Promise<T>) {
   const tx = await pool.connect();
   try {
@@ -87,16 +93,48 @@ export async function inviteMember(
   const token =
     crypto.randomUUID().replace(/-/g, "") +
     crypto.randomUUID().replace(/-/g, "");
-  const result = await pool.query<{ id: string; expires_at: Date }>(
-    `INSERT INTO group_invite(group_id,email,role,token,expires_at,created_by) VALUES($1,$2,$3,$4,now()+interval '14 days',$5) RETURNING id,expires_at`,
-    [group.id, input.email.toLowerCase(), input.role, token, a.id],
-  );
+  const email = normalizeEmail(input.email);
+  const { invite, admission } = await transaction(async (tx) => {
+    const created = await tx.query<{ id: string; expires_at: Date }>(
+      `INSERT INTO group_invite(group_id,email,role,token,expires_at,created_by) VALUES($1,$2,$3,$4,now()+interval '14 days',$5) RETURNING id,expires_at`,
+      [group.id, email, input.role, token, a.id],
+    );
+    const account = await tx.query<{ admitted: boolean }>(
+      `SELECT (ma.user_id IS NOT NULL) AS admitted FROM "user" u LEFT JOIN membership_admission ma ON ma.user_id=u.id WHERE lower(trim(u.email))=$1 LIMIT 1`,
+      [email],
+    );
+    const exists = Boolean(account.rows[0]);
+    const admitted = account.rows[0]?.admitted ?? false;
+    // Outside invite-only mode any existing account is already a member.
+    const result: GroupOwnerInvitationResult =
+      membershipMode === "invite_only"
+        ? admitted
+          ? { membership: "member" }
+          : await issueGroupOwnerInvitation(tx, {
+              email,
+              ownerId: a.id,
+              groupInviteId: created.rows[0].id,
+            })
+        : { membership: exists ? "member" : "not_required" };
+    await tx.query(
+      "INSERT INTO analytics_event(user_id,name,properties) VALUES($1,'group_invite_sent',$2)",
+      [
+        a.id,
+        JSON.stringify({ membership: result.membership, role: input.role }),
+      ],
+    );
+    return { invite: created.rows[0], admission: result };
+  });
   return {
-    id: result.rows[0].id,
+    id: invite.id,
     token,
-    email: input.email.toLowerCase(),
+    email,
     role: input.role,
-    expiresAt: result.rows[0].expires_at.toISOString(),
+    expiresAt: invite.expires_at.toISOString(),
+    membership: admission.membership,
+    ...("delivery" in admission
+      ? { delivery: admission.delivery, joinLink: admission.joinLink }
+      : {}),
   };
 }
 export async function revokeInvite(
@@ -107,11 +145,24 @@ export async function revokeInvite(
   writable();
   const a = requireActor(actor);
   const group = await requireOwner(groupId, a);
-  const result = await pool.query(
-    "UPDATE group_invite SET revoked_at=now() WHERE id=$1 AND group_id=$2 AND revoked_at IS NULL AND accepted_at IS NULL",
+  // Lock order matches the join flow: invitation, nomination, then group_invite.
+  const linked = await pool.query<{ membership_invitation_id: string | null }>(
+    "SELECT membership_invitation_id FROM group_invite WHERE id=$1 AND group_id=$2",
     [inviteId, group.id],
   );
-  return { revoked: (result.rowCount ?? 0) > 0 };
+  const invitationId = linked.rows[0]?.membership_invitation_id ?? null;
+  return transaction(async (tx) => {
+    if (invitationId)
+      return revokeOwnerIssuedInvitation(tx, invitationId, a.id, {
+        id: inviteId,
+        groupId: group.id,
+      });
+    const result = await tx.query(
+      "UPDATE group_invite SET revoked_at=now() WHERE id=$1 AND group_id=$2 AND revoked_at IS NULL AND accepted_at IS NULL",
+      [inviteId, group.id],
+    );
+    return { revoked: (result.rowCount ?? 0) > 0 };
+  });
 }
 /** Acceptance requires the signed-in account whose email the invitation names. */
 export async function acceptInvite(actor: Actor | null, token: string) {

@@ -46,14 +46,17 @@ export function ProviderDetails({
   placeId,
   compact,
   preview = false,
+  photo = false,
   onLoad,
   onError,
 }: {
   provider: PlacesProvider;
   placeId: string;
   compact: boolean;
-  /** The map hover card: name, rating and type only (no photos; the widget loads the whole set). */
+  /** A compact card with name, rating and type only (map hover and multi-place lists). */
   preview?: boolean;
+  /** Lead the card with one place photo (map hover and the place detail panel). */
+  photo?: boolean;
   onLoad: (place: ProviderPlace) => void;
   onError: () => void;
 }) {
@@ -65,13 +68,13 @@ export function ProviderDetails({
     (node) =>
       provider.mountDetails(
         node,
-        { placeId, compact, preview },
+        { placeId, compact, preview, photo },
         {
           onLoad: (p) => handlers.current.onLoad(p),
           onError: () => handlers.current.onError(),
         },
       ),
-    [provider, placeId, compact, preview],
+    [provider, placeId, compact, preview, photo],
     () => handlers.current.onError(),
   );
   return <div ref={container} className="provider-slot" />;

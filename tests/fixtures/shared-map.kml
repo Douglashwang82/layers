@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<kml xmlns="http://www.opengis.net/kml/2.2"><Document><name>Tokyo weekend</name>
+<Folder><name>Food</name>
+<Placemark><name>Noodle shop</name><description><![CDATA[<b>Lunch</b> near the station]]></description><Point><coordinates>139.7,35.7,0</coordinates></Point></Placemark>
+<Placemark><name>Invalid pin</name><Point><coordinates>500,35</coordinates></Point></Placemark>
+</Folder>
+<Folder><name>Parks</name>
+<Placemark><name>Garden</name><Point><coordinates>139.71,35.71</coordinates></Point></Placemark>
+<Placemark><name>Walking route</name><LineString><coordinates>139.7,35.7 139.71,35.71</coordinates></LineString></Placemark>
+</Folder></Document></kml>

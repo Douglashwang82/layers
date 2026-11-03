@@ -6,6 +6,7 @@ import { api, StatusMessage } from "@/components/actions";
 import { Field } from "@/components/ui/field";
 import { type Copy, type Locale, format } from "@/lib/dictionary";
 import { eventRange, eventTitle } from "@/lib/event-time";
+import { useLayerDraft } from "./workspace-navigation";
 type Feedback = { tone: "success" | "error"; text: string } | null;
 type Draft = {
   id: string | null;
@@ -47,6 +48,7 @@ export function LayerItemEvents({
 }) {
   const [draft, setDraft] = useState<Draft | null>(null);
   const [pending, setPending] = useState(false);
+  useLayerDraft(!pending && !!draft && !!(draft.title || draft.startsAt || draft.endsAt || draft.note), t.discardLayerChanges);
   const [feedback, setFeedback] = useState<Feedback>(null);
   const id = `events-${itemKey.replace(":", "-")}`;
   const edit = (event: LayerEvent) =>

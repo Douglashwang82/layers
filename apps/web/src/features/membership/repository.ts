@@ -175,6 +175,14 @@ export async function isAdmitted(userId: string) {
   );
   return (result.rowCount ?? 0) > 0;
 }
+/** The role of an admitted member, or null when the user has no admission. */
+export async function admittedRole(userId: string) {
+  const result = await pool.query<{ role: string }>(
+    `SELECT u.role FROM "user" u JOIN membership_admission m ON m.user_id = u.id WHERE u.id = $1`,
+    [userId],
+  );
+  return result.rows[0]?.role ?? null;
+}
 /**
  * Returning-member eligibility. Deliberately not "user exists" or "has a live
  * invitation": seed-only, invitation-only and partial-join accounts have no

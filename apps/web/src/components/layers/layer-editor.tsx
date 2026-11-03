@@ -1,8 +1,11 @@
 "use client";
-import { useEffect, useRef, useState, type FormEvent } from "react";
-import Link from "next/link";
-import { useRouter } from "next/navigation";
-import { ArrowDown, ArrowUp, Pencil, Plus, Search, Trash2 } from "lucide-react";
+import { useEffect, useState, type FormEvent } from "react";
+import { LayerLink as Link } from "./workspace-navigation";
+import {
+  useLayerRouter as useRouter,
+  useLayerDraft,
+} from "./workspace-navigation";
+import { ArrowDown, ArrowUp, Pencil, Plus, Trash2 } from "lucide-react";
 import { api, StatusMessage } from "@/components/actions";
 import { Field, fieldProps } from "@/components/ui/field";
 import type { LayerRecord } from "@/features/layers/repository";
@@ -10,12 +13,13 @@ import type { MapItem } from "@/features/map/query";
 import { type Copy, type Locale, format } from "@/lib/dictionary";
 import { itemTitle, ItemMeta } from "@/components/map/map-results";
 import type { CustomPlace } from "@/features/custom-places/repository";
-import { customMapItem } from "@/lib/custom-places";
 import { NewPlaceForm } from "./new-place-form";
 import type { LayerEvent } from "@taiwanhub/shared";
 import { GoogleLinksForm } from "./google-links-form";
 import { LayerGooglePlaces } from "./layer-google-places";
 import { LayerItemEvents } from "./layer-item-events";
+import { LayerItemReviewsByKey } from "./layer-item-reviews";
+import { MapImportLinks } from "./map-import-links";
 type Feedback = { tone: "success" | "error"; text: string } | null;
 type Draft = {
   title: string;
@@ -45,10 +49,11 @@ function draftOf(layer?: LayerRecord, groupId?: string): Draft {
 /**
  * Create: title only is required; the empty layer is saved immediately as a
  * draft. Edit: version-checked metadata, contents with reversible removal and
- * single-action reordering, and an item search that adds references.
+ * single-action reordering, and places added from Google Maps links.
  */
 export function LayerEditor({
   mode,
+  section,
   layer,
   items: initialItems,
   city,
@@ -56,16 +61,16 @@ export function LayerEditor({
   t,
   locale,
   addKey,
+  canSuggestPlace = false,
   next,
   groupId,
-  canSuggestPlace = false,
   canCreatePlaces = false,
   mapToken,
   cityCenter = { latitude: 29.7604, longitude: -95.3698 },
-  mvp = false,
   providerKey = null,
 }: {
   mode: "create" | "edit";
+  section?: "settings" | "contents";
   layer?: LayerRecord;
   items?: MapItem[];
   city: { slug: string; name: string; timezone: string };
@@ -73,21 +78,16 @@ export function LayerEditor({
   t: Copy;
   locale: Locale;
   addKey?: string;
+  /** Place submissions are enabled: the place form can offer a suggestion instead. */
+  canSuggestPlace?: boolean;
   next?: string;
   groupId?: string;
-  /** Place submissions are enabled: offer "suggest a place" when search finds nothing. */
-  canSuggestPlace?: boolean;
   /** Custom places are enabled: editors create places here without review. */
   canCreatePlaces?: boolean;
   /** Public Mapbox token for the drop-a-pin map in the place form. */
   mapToken?: string;
   /** The layer city's centre, where the pin map starts. */
   cityCenter?: { latitude: number; longitude: number };
-  /**
-   * Map MVP: places come from Google Maps links (or custom places) instead of
-   * catalog search, and each place can carry events.
-   */
-  mvp?: boolean;
   /** Places UI Kit key for Google place previews. */
   providerKey?: string | null;
 }) {
@@ -96,6 +96,7 @@ export function LayerEditor({
     draftOf(layer, groups.some((g) => g.id === groupId) ? groupId : undefined),
   );
   const [dirty, setDirty] = useState(false);
+  useLayerDraft(dirty, t.discardLayerChanges);
   const [saving, setSaving] = useState(false);
   const [feedback, setFeedback] = useState<Feedback>(null);
   const [revision, setRevision] = useState(layer?.revision ?? 1);
@@ -103,10 +104,6 @@ export function LayerEditor({
   const [undo, setUndo] = useState<MapItem | null>(null);
   const [itemFeedback, setItemFeedback] = useState<Feedback>(null);
   const [pendingKey, setPendingKey] = useState<string | null>(null);
-  const [query, setQuery] = useState("");
-  const [results, setResults] = useState<MapItem[]>([]);
-  /** The layer owner's custom places matching the search. */
-  const [yourResults, setYourResults] = useState<MapItem[]>([]);
   /** Prefilled name while the new-place form is open; null when closed. */
   const [newPlaceName, setNewPlaceName] = useState<string | null>(null);
   /** The custom place open in the edit form, loaded fresh from the server. */
@@ -126,20 +123,16 @@ export function LayerEditor({
       setPendingKey(null);
     }
   }
-  /** The query the current results belong to; null before the first search. */
-  const [searched, setSearched] = useState<string | null>(null);
-  const [searching, setSearching] = useState(false);
-  const searchSeq = useRef(0);
-  /** Attached events for every place in the layer (MVP). */
+  /** Attached events for every place in the layer. */
   const [events, setEvents] = useState<LayerEvent[]>([]);
   /** Bumped after Google places are added, so their list reloads. */
   const [googleReload, setGoogleReload] = useState(0);
   /** Google places listed below; the contents count includes them. */
   const [googleCount, setGoogleCount] = useState(0);
-  const itemCount = items.length + (mvp ? googleCount : 0);
+  const itemCount = items.length + googleCount;
   const layerId = layer?.id;
   useEffect(() => {
-    if (!mvp || !layerId) return;
+    if (!layerId) return;
     let cancelled = false;
     (
       api(`layers/${layerId}/events`, "GET") as Promise<{
@@ -153,7 +146,7 @@ export function LayerEditor({
     return () => {
       cancelled = true;
     };
-  }, [mvp, layerId]);
+  }, [layerId]);
   const setKeyEvents = (key: string, next: LayerEvent[]) =>
     setEvents((all) => [...all.filter((e) => e.key !== key), ...next]);
   const update = (patch: Partial<Draft>) => {
@@ -214,7 +207,9 @@ export function LayerEditor({
           }
         }
         router.push(
-          addKey && next ? next : `/layers/${created.layer.slug}/edit`,
+          addKey && next
+            ? next
+            : `/layers/${created.layer.slug}/edit#add-items`,
         );
         return;
       }
@@ -318,42 +313,17 @@ export function LayerEditor({
       setItemFeedback({ tone: "error", text: (err as Error).message });
     }
   }
-  async function search(e: FormEvent) {
-    e.preventDefault();
-    const q = query.trim();
-    if (!q) return;
-    const id = ++searchSeq.current;
-    setSearching(true);
-    try {
-      const [response, own] = await Promise.all([
-        fetch(
-          `/api/v1/map?city=${city.slug}&layers=none&scope=city&q=${encodeURIComponent(q)}&date=upcoming`,
-        ),
-        canCreatePlaces && layer
-          ? (api(
-              `layers/${layer.id}/places?q=${encodeURIComponent(q)}`,
-              "GET",
-            ) as Promise<{ places: CustomPlace[] }>)
-          : Promise.resolve({ places: [] as CustomPlace[] }),
-      ]);
-      const json = await response.json();
-      if (id !== searchSeq.current) return;
-      if (json.error) throw new Error(json.error.message);
-      setResults((json.data as { items: MapItem[] }).items.slice(0, 30));
-      setYourResults(
-        layer ? own.places.map((p) => customMapItem(p, layer.slug)) : [],
-      );
-      setSearched(q);
-    } catch (err) {
-      setItemFeedback({ tone: "error", text: (err as Error).message });
-    } finally {
-      if (id === searchSeq.current) setSearching(false);
-    }
-  }
-  const contained = new Set(items.map((i) => i.key));
   return (
     <div className={mode === "edit" ? "layer-editor-layout" : ""}>
-      <form className="form-panel form-stack" onSubmit={submit} noValidate>
+      {canCreatePlaces && layer?.audience !== "public" && (
+        <MapImportLinks locale={locale} layerId={layer?.id} />
+      )}
+      <form
+        hidden={section === "contents"}
+        className="form-panel form-stack"
+        onSubmit={submit}
+        noValidate
+      >
         <h1>{mode === "create" ? t.createLayer : t.editLayer}</h1>
         {mode === "create" && <p>{t.layerHelp}</p>}
         <Field
@@ -535,9 +505,19 @@ export function LayerEditor({
         {dirty && <p className="fine-print">{t.unsavedChanges}</p>}
         <StatusMessage feedback={feedback} />
       </form>
-      {mode === "edit" && layer && (
+      {mode === "edit" && layer && section !== "settings" && (
         <section className="form-panel" aria-labelledby="contents-editor">
           <h2 id="contents-editor">{t.contents}</h2>
+          {section === "contents" && (
+            <button
+              type="button"
+              className="button secondary small"
+              disabled={saving}
+              onClick={done}
+            >
+              {t.done}
+            </button>
+          )}
           <p className="muted">{format(t.itemsCount, { count: itemCount })}</p>
           {layer.lifecycle === "draft" && itemCount === 0 && (
             <p className="notice">{t.draftSaved}</p>
@@ -608,7 +588,7 @@ export function LayerEditor({
                     </button>
                   </span>
                 </a>
-                {mvp && item.type === "place" && (
+                {item.type === "place" && (
                   <LayerItemEvents
                     layerId={layer.id}
                     itemKey={item.key}
@@ -620,22 +600,27 @@ export function LayerEditor({
                     onChange={(next) => setKeyEvents(item.key, next)}
                   />
                 )}
+                <LayerItemReviewsByKey
+                  layerId={layer.id}
+                  itemKey={item.key}
+                  itemName={itemTitle(item, locale)}
+                  t={t}
+                  locale={locale}
+                />
               </li>
             ))}
           </ul>
-          {mvp && (
-            <LayerGooglePlaces
-              layer={layer}
-              city={city}
-              providerKey={providerKey}
-              events={events}
-              onEvents={setKeyEvents}
-              reload={googleReload}
-              onCount={setGoogleCount}
-              t={t}
-              locale={locale}
-            />
-          )}
+          <LayerGooglePlaces
+            layer={layer}
+            city={city}
+            providerKey={providerKey}
+            events={events}
+            onEvents={setKeyEvents}
+            reload={googleReload}
+            onCount={setGoogleCount}
+            t={t}
+            locale={locale}
+          />
           {editingPlace && (
             <NewPlaceForm
               key={editingPlace.id}
@@ -680,42 +665,16 @@ export function LayerEditor({
             </p>
           )}
           <StatusMessage feedback={itemFeedback} />
-          <h3 id="add-items">{mvp ? t.addFromGoogle : t.addItems}</h3>
-          {mvp && (
-            <GoogleLinksForm
-              mode="add"
-              layerId={layer.id}
-              city={city}
-              providerKey={providerKey}
-              t={t}
-              locale={locale}
-              onAdded={() => setGoogleReload((n) => n + 1)}
-            />
-          )}
-          <form
-            className="editor-search"
-            onSubmit={search}
-            role="search"
-            aria-labelledby="add-items"
-            hidden={mvp}
-          >
-            <input
-              type="search"
-              value={query}
-              onChange={(e) => setQuery(e.target.value)}
-              placeholder={format(t.searchCity, { city: city.name })}
-              aria-label={t.search}
-            />
-            <button
-              type="submit"
-              className="button"
-              disabled={searching}
-              aria-busy={searching || undefined}
-            >
-              <Search size={16} aria-hidden="true" />
-              {t.search}
-            </button>
-          </form>
+          <h3 id="add-items">{t.addFromGoogle}</h3>
+          <GoogleLinksForm
+            mode="add"
+            layerId={layer.id}
+            city={city}
+            providerKey={providerKey}
+            t={t}
+            locale={locale}
+            onAdded={() => setGoogleReload((n) => n + 1)}
+          />
           {canCreatePlaces && newPlaceName === null && (
             <div className="actions">
               <button
@@ -723,7 +682,7 @@ export function LayerEditor({
                 className="button secondary small"
                 onClick={() => {
                   setEditingPlace(null);
-                  setNewPlaceName(query.trim());
+                  setNewPlaceName("");
                 }}
               >
                 <Plus size={14} aria-hidden="true" />
@@ -747,98 +706,14 @@ export function LayerEditor({
                   { ...item, layers: [layer.slug] },
                 ]);
                 setNewPlaceName(null);
-                // The search that found nothing is now out of date.
-                setSearched(null);
-                setResults([]);
-                setYourResults([]);
                 setItemFeedback({ tone: "success", text: message });
               }}
             />
-          )}
-          {searched !== null &&
-            results.length === 0 &&
-            yourResults.length === 0 &&
-            !searching && (
-              <div className="empty editor-no-results" role="status">
-                <p>{format(t.noResults, { q: searched })}</p>
-                {canCreatePlaces ? (
-                  newPlaceName === null && (
-                    <button
-                      type="button"
-                      className="button secondary small"
-                      onClick={() => {
-                        setEditingPlace(null);
-                        setNewPlaceName(searched);
-                      }}
-                    >
-                      <Plus size={14} aria-hidden="true" />
-                      {format(t.addAsNewPlace, { q: searched })}
-                    </button>
-                  )
-                ) : canSuggestPlace ? (
-                  <>
-                    <p className="fine-print">{t.suggestPlaceBody}</p>
-                    <Link
-                      className="button secondary small"
-                      href={`/submit/place?name=${encodeURIComponent(searched)}`}
-                    >
-                      <Plus size={14} aria-hidden="true" />
-                      {format(t.suggestPlaceNamed, { q: searched })}
-                    </Link>
-                  </>
-                ) : (
-                  <p className="fine-print">{t.noResultsBody}</p>
-                )}
-              </div>
-            )}
-          {canCreatePlaces && yourResults.length > 0 && (
-            <>
-              <h4>{t.yourPlaces}</h4>
-              {resultList(yourResults)}
-            </>
-          )}
-          {results.length > 0 && (
-            <>
-              {canCreatePlaces && yourResults.length > 0 && (
-                <h4>{t.inBrand}</h4>
-              )}
-              {resultList(results)}
-            </>
           )}
         </section>
       )}
     </div>
   );
-  function resultList(list: MapItem[]) {
-    return (
-      <ul className="layer-contents editor-results">
-        {list.map((item) => (
-          <li key={item.key} className="result-row">
-            <a href={item.href} onClick={(e) => e.preventDefault()}>
-              <span className="row-thumb" aria-hidden="true" />
-              <span className="row-body">
-                <span className="row-kicker">{item.category}</span>
-                <span className="row-title">{itemTitle(item, locale)}</span>
-                <ItemMeta item={item} t={t} locale={locale} />
-              </span>
-              <span className="editor-item-actions">
-                <button
-                  type="button"
-                  className="button secondary small"
-                  disabled={contained.has(item.key) || pendingKey === item.key}
-                  aria-busy={pendingKey === item.key || undefined}
-                  onClick={() => add(item)}
-                >
-                  <Plus size={14} aria-hidden="true" />
-                  {contained.has(item.key) ? t.addedToLayer : t.addToLayer}
-                </button>
-              </span>
-            </a>
-          </li>
-        ))}
-      </ul>
-    );
-  }
 }
 /** Layer item ids in the desired order, resolved from the authorized layer record. */
 async function itemIds(layerId: string, ordered: MapItem[]) {

@@ -128,6 +128,8 @@ Launch cities (2026-10-20): Taipei, Houston and Tokyo (migration 0024). Google-l
 
 ### Location cache (2026-10-21)
 
+> The automatic lookup behavior below is superseded by the [layer browsing budget plan](layer-browsing-places-budget.md): browsing reads valid cached locations only, and Google detail cards require explicit intent.
+
 Owner decision, to move fast: Google place cards (UI Kit) only fetch while on screen and were the only source of pin coordinates, so every page view loaded each place's card, and the map had to open its list for pins to appear. Migration `0025` adds `latitude`, `longitude` and `location_fetched_at` to `place_provider_reference`. With the flag on, `GET /api/v1/map/external-references` returns each place's cached `location`. A place without fresh coordinates is looked up with the server key (Place Details (New), `location` field mask only; at most 60 per request, failed IDs retried after an hour). Values older than 30 days (and, since 0026, the place types) are cleared on each lookup pass, and the place is looked up again when it is next listed. Names, photos and other details still come only from the UI Kit card. Without a server key, locations stay `null` and the old client-side path applies.
 
 ### Link names and place types (2026-10-22)

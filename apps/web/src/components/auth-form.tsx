@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { createAuthClient } from "better-auth/react";
 import { emailOTPClient } from "better-auth/client/plugins";
+import { oauthProviderClient } from "@better-auth/oauth-provider/client";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
@@ -12,7 +13,21 @@ import type { Copy } from "@/lib/i18n";
 import { format } from "@/lib/dictionary";
 import { StatusMessage } from "./actions";
 import { Field, fieldProps } from "./ui/field";
-const client = createAuthClient({ plugins: [emailOTPClient()] });
+// oauthProviderClient forwards the signed OAuth query when an MCP client
+// (ChatGPT/Claude) sent the member here to sign in; the server then answers
+// the sign-in with the authorization redirect, which the client follows.
+const client = createAuthClient({
+  plugins: [emailOTPClient(), oauthProviderClient()],
+});
+/** True when a sign-in response continues an OAuth authorization instead. */
+function continuesOAuth(data: unknown) {
+  return (
+    !!data &&
+    typeof data === "object" &&
+    (data as { redirect?: unknown }).redirect === true &&
+    typeof (data as { url?: unknown }).url === "string"
+  );
+}
 const input = z.object({
   email: z.email(),
   password: z.string().min(10).max(128),
@@ -178,6 +193,7 @@ function EmailCodeForm({ t, destination }: { t: Copy; destination: string }) {
         codeInput.current?.focus();
         return;
       }
+      if (continuesOAuth(result.data)) return;
       router.push(destination);
       router.refresh();
     } catch {
@@ -307,6 +323,7 @@ function PasswordForm({ t, destination }: { t: Copy; destination: string }) {
             setMessage(result.error.message ?? t.authError);
             return;
           }
+          if (continuesOAuth(result.data)) return;
           router.push(destination);
           router.refresh();
         } catch {

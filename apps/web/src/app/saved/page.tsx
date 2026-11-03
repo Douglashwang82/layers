@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { redirect } from "next/navigation";
-import { MapPinned, Plus } from "lucide-react";
+import { Plus } from "lucide-react";
 import { currentActor } from "@/lib/session";
 import { getSaved } from "@/features/catalog/repository";
 import { getCopy, getLocale } from "@/lib/i18n";
@@ -8,12 +8,14 @@ import { CardGrid, EmptyState, SectionHeading } from "@/components/cards";
 import { flags, placesClientConfig } from "@/lib/config";
 import { listSavedExternalPlaces } from "@/features/map/external";
 import { SavedExternalList } from "@/components/places/subject-page";
-import { mySavesSlug } from "@/features/layers/repository";
 import { listSavedContent } from "@/features/content/repository";
 import { FileText } from "lucide-react";
+import { catalogMetadata } from "@/lib/catalog-metadata";
+/** Legacy catalog: not indexed under the map MVP. */
+export const generateMetadata = catalogMetadata;
 /**
- * Saves stay authoritative in their own tables. "My saves" is a private,
- * read-only map projection over them; a public layer is a separate creation.
+ * Saves stay authoritative in their own tables; a layer made from them is a
+ * separate creation.
  */
 export default async function SavedPage() {
   const actor = await currentActor();
@@ -40,12 +42,6 @@ export default async function SavedPage() {
       </div>
       {total > 0 && (
         <div className="actions">
-          {flags.mapHome && (
-            <Link className="button" href={`/?layers=${mySavesSlug}`}>
-              <MapPinned size={16} aria-hidden="true" />
-              {t.showOnMap}
-            </Link>
-          )}
           {flags.layerWrites && (
             <Link className="button secondary" href="/layers/new">
               <Plus size={16} aria-hidden="true" />

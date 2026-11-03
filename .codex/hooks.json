@@ -1,0 +1,42 @@
+{
+  "hooks": {
+    "PreToolUse": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node -e \"const cp=require('node:child_process'); const path=require('node:path'); const root=cp.execFileSync('git',['rev-parse','--show-toplevel'],{encoding:'utf8'}).trim(); const result=cp.spawnSync(process.execPath,[path.join(root,'.codex/hooks/claude-adapter.mjs'),'guard'],{stdio:'inherit'}); process.exit(result.status ?? 2);\"",
+            "timeout": 130,
+            "commandWindows": "node -e \"const cp=require('node:child_process'); const path=require('node:path'); const root=cp.execFileSync('git',['rev-parse','--show-toplevel'],{encoding:'utf8'}).trim(); const result=cp.spawnSync(process.execPath,[path.join(root,'.codex/hooks/claude-adapter.mjs'),'guard'],{stdio:'inherit'}); process.exit(result.status ?? 2);\"; exit $LASTEXITCODE"
+          }
+        ],
+        "matcher": "Bash|PowerShell"
+      }
+    ],
+    "PostToolUse": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node -e \"const cp=require('node:child_process'); const path=require('node:path'); const root=cp.execFileSync('git',['rev-parse','--show-toplevel'],{encoding:'utf8'}).trim(); const result=cp.spawnSync(process.execPath,[path.join(root,'.codex/hooks/claude-adapter.mjs'),'format'],{stdio:'inherit'}); process.exit(result.status ?? 2);\"",
+            "timeout": 130,
+            "commandWindows": "node -e \"const cp=require('node:child_process'); const path=require('node:path'); const root=cp.execFileSync('git',['rev-parse','--show-toplevel'],{encoding:'utf8'}).trim(); const result=cp.spawnSync(process.execPath,[path.join(root,'.codex/hooks/claude-adapter.mjs'),'format'],{stdio:'inherit'}); process.exit(result.status ?? 2);\"; exit $LASTEXITCODE"
+          }
+        ],
+        "matcher": "apply_patch|Edit|Write"
+      }
+    ],
+    "Stop": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node -e \"const cp=require('node:child_process'); const path=require('node:path'); const root=cp.execFileSync('git',['rev-parse','--show-toplevel'],{encoding:'utf8'}).trim(); const result=cp.spawnSync(process.execPath,[path.join(root,'.codex/hooks/claude-adapter.mjs'),'stop'],{stdio:'inherit'}); process.exit(result.status ?? 2);\"",
+            "timeout": 130,
+            "commandWindows": "node -e \"const cp=require('node:child_process'); const path=require('node:path'); const root=cp.execFileSync('git',['rev-parse','--show-toplevel'],{encoding:'utf8'}).trim(); const result=cp.spawnSync(process.execPath,[path.join(root,'.codex/hooks/claude-adapter.mjs'),'stop'],{stdio:'inherit'}); process.exit(result.status ?? 2);\"; exit $LASTEXITCODE"
+          }
+        ]
+      }
+    ]
+  }
+}

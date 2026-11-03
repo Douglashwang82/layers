@@ -160,17 +160,6 @@ export async function LegacyHome() {
           />
         </section>
       )}
-      {flags.submissions && (
-        <section className="community-cta">
-          <div>
-            <h2>{t.join}</h2>
-            <p>{t.joinBody}</p>
-          </div>
-          <Link className="button secondary" href="/submit/place">
-            {t.submitPlace}
-          </Link>
-        </section>
-      )}
     </div>
   );
 }

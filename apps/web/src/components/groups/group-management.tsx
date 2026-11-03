@@ -37,8 +37,10 @@ export function GroupMembers({
   const [feedback, setFeedback] = useState<Feedback>(null);
   const [inviteFeedback, setInviteFeedback] = useState<Feedback>(null);
   const [inviteLink, setInviteLink] = useState<{
-    url: string;
+    url: string | null;
     email: string;
+    membership: string;
+    joinLink?: string;
   } | null>(null);
   const [email, setEmail] = useState("");
   const [inviteRole, setInviteRole] = useState<"viewer" | "editor">("viewer");
@@ -63,10 +65,23 @@ export function GroupMembers({
       const created = (await api(`groups/${group.id}/invites`, "POST", {
         email,
         role: inviteRole,
-      })) as { token: string; email: string };
+      })) as {
+        token: string;
+        email: string;
+        membership: string;
+        delivery?: "email" | "manual";
+        joinLink?: string;
+      };
+      // An emailed or manual membership invitation admits and joins them in
+      // one step, so the separate group link is only for the other outcomes.
       setInviteLink({
-        url: `${window.location.origin}/groups/join/${created.token}`,
+        url:
+          created.membership === "invited"
+            ? null
+            : `${window.location.origin}/groups/join/${created.token}`,
         email: created.email,
+        membership: created.membership,
+        joinLink: created.joinLink,
       });
       setEmail("");
       router.refresh();
@@ -200,25 +215,52 @@ export function GroupMembers({
           </p>
           {inviteLink && (
             <div className="notice" role="status">
-              <p>{format(t.inviteCreated, { email: inviteLink.email })}</p>
-              <p className="invite-url">
-                <code>{inviteLink.url}</code>
+              <p>
+                {format(
+                  inviteLink.membership === "invited"
+                    ? inviteLink.joinLink
+                      ? t.inviteMembershipManual
+                      : t.inviteMembershipEmailed
+                    : inviteLink.membership === "pending"
+                      ? t.inviteMembershipPending
+                      : inviteLink.membership === "unavailable"
+                        ? t.inviteMembershipUnavailable
+                        : inviteLink.membership === "quota"
+                          ? t.inviteMembershipQuota
+                          : t.inviteCreated,
+                  { email: inviteLink.email },
+                )}
               </p>
-              <button
-                type="button"
-                className="button secondary small"
-                onClick={async () => {
-                  try {
-                    await navigator.clipboard.writeText(inviteLink.url);
-                    setInviteFeedback({ tone: "success", text: t.copied });
-                  } catch {
-                    setInviteFeedback({ tone: "error", text: t.shareFailed });
-                  }
-                }}
-              >
-                <Link2 size={14} aria-hidden="true" />
-                {t.copyLink}
-              </button>
+              {[inviteLink.joinLink ?? inviteLink.url].map((link) =>
+                link ? (
+                  <div key={link}>
+                    <p className="invite-url">
+                      <code>{link}</code>
+                    </p>
+                    <button
+                      type="button"
+                      className="button secondary small"
+                      onClick={async () => {
+                        try {
+                          await navigator.clipboard.writeText(link);
+                          setInviteFeedback({
+                            tone: "success",
+                            text: t.copied,
+                          });
+                        } catch {
+                          setInviteFeedback({
+                            tone: "error",
+                            text: t.shareFailed,
+                          });
+                        }
+                      }}
+                    >
+                      <Link2 size={14} aria-hidden="true" />
+                      {t.copyLink}
+                    </button>
+                  </div>
+                ) : null,
+              )}
             </div>
           )}
           {invites.length > 0 && (

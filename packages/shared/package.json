@@ -4,6 +4,7 @@
   "version": "0.1.0",
   "exports": {
     ".": "./src/index.ts",
-    "./mail": "./src/mail.ts"
+    "./mail": "./src/mail.ts",
+    "./map-import": "./src/map-import.ts"
   }
 }

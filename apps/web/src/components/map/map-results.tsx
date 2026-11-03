@@ -1,5 +1,5 @@
 "use client";
-import type { MouseEvent } from "react";
+import type { MouseEvent, ReactNode } from "react";
 import {
   CalendarDays,
   FileText,
@@ -10,7 +10,9 @@ import {
   ExternalLink,
 } from "lucide-react";
 import type { LayerEvent } from "@taiwanhub/shared";
-import type { MapItem } from "@/features/map/query";
+import type { LayerAvailability, MapItem } from "@/features/map/query";
+import { LayerSection, groupByLayer } from "@/components/map/layer-section";
+import { layerTitle } from "@/lib/layer-labels";
 import { eventRange, eventTitle } from "@/lib/event-time";
 import {
   type Copy,
@@ -160,6 +162,8 @@ export function ResultRow({
   onHover,
   events,
   timeZone = "America/Chicago",
+  showNote = false,
+  extra,
 }: {
   item: MapItem;
   t: Copy;
@@ -171,6 +175,10 @@ export function ResultRow({
   /** Upcoming events attached to this place in the applied layers. */
   events?: LayerEvent[];
   timeZone?: string;
+  /** Layer contents quote the curator's note under the title. */
+  showNote?: boolean;
+  /** Content rendered below the row link, outside the select target. */
+  extra?: ReactNode;
 }) {
   const Icon = icons[item.type];
   const kind = markerKind(item);
@@ -217,6 +225,9 @@ export function ResultRow({
           </span>
           <span className="row-title">{name}</span>
           <ItemMeta {...{ item, t, locale }} />
+          {showNote && item.note && (
+            <span className="row-note">{item.note}</span>
+          )}
           <NextEvent events={events} locale={locale} timeZone={timeZone} />
           <span className="row-foot">
             <LocationLabel item={item} t={t} />
@@ -235,6 +246,7 @@ export function ResultRow({
         t={t}
         className="row-tabelog"
       />
+      {extra}
     </li>
   );
 }
@@ -250,6 +262,7 @@ export function MapResults({
   onHover,
   events = {},
   timeZone,
+  layers,
 }: {
   items: MapItem[];
   unmapped: MapItem[];
@@ -262,20 +275,49 @@ export function MapResults({
   onHover?: (key: string | null) => void;
   events?: Record<string, LayerEvent[]>;
   timeZone?: string;
+  /** Applied layers; when given, the list is grouped under one section each. */
+  layers?: LayerAvailability[];
 }) {
   const visible = items.slice(0, limit);
+  const row = (item: MapItem, prefix = "") => (
+    <ResultRow
+      key={prefix + item.key}
+      {...{ item, t, locale, onSelect, onHover, timeZone }}
+      events={events[item.key]}
+      selected={item.key === selectedKey}
+    />
+  );
+  const { groups, rest } = groupByLayer(visible, layers);
   return (
     <>
-      <ul className="result-list" aria-label={t.resultsTab}>
-        {visible.map((item) => (
-          <ResultRow
-            key={item.key}
-            {...{ item, t, locale, onSelect, onHover, timeZone }}
-            events={events[item.key]}
-            selected={item.key === selectedKey}
-          />
-        ))}
-      </ul>
+      {layers && groups.length > 0 ? (
+        <>
+          {groups.map(({ layer, rows }) => (
+            <LayerSection
+              key={layer.slug}
+              layer={layer}
+              locale={locale}
+              count={rows.length}
+            >
+              <ul
+                className="result-list"
+                aria-label={layerTitle(layer, locale)}
+              >
+                {rows.map((item) => row(item, `${layer.slug}:`))}
+              </ul>
+            </LayerSection>
+          ))}
+          {rest.length > 0 && (
+            <ul className="result-list" aria-label={t.resultsTab}>
+              {rest.map((item) => row(item))}
+            </ul>
+          )}
+        </>
+      ) : (
+        <ul className="result-list" aria-label={t.resultsTab}>
+          {visible.map((item) => row(item))}
+        </ul>
+      )}
       {items.length > limit && (
         <button
           type="button"

@@ -2,6 +2,7 @@ import { mkdtempSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { defineConfig, devices } from "@playwright/test";
+import { messagingServerEnv } from "./tests/e2e/mvp/messaging-env";
 const port = Number(process.env.E2E_PORT ?? 3000);
 const origin = `http://localhost:${port}`;
 /*
@@ -36,8 +37,6 @@ const membershipEnv: Record<string, string> = {
 Object.assign(process.env, membershipEnv);
 export default defineConfig({
   testDir: "./tests/e2e",
-  // Map MVP specs need FEATURE_MAP_MVP on: playwright.mvp.config.ts runs them.
-  testIgnore: "**/mvp/**",
   fullyParallel: false,
   workers: 1,
   timeout: 60000,
@@ -55,13 +54,16 @@ export default defineConfig({
     // Browser tests use the deterministic fake places provider: no live key,
     // no paid requests. A reused server must be started with the same values.
     env: {
+      E2E_ISOLATED_BUILD: "true",
       FEATURE_GOOGLE_PLACES_DISCOVERY: "true",
       FEATURE_PLACE_REVIEW_WRITES: "true",
       FEATURE_EXTERNAL_PLACE_COLLECTIONS: "true",
       FEATURE_LAYER_CUSTOM_PLACES: "true",
       NEXT_PUBLIC_GOOGLE_PLACES_UI_KIT_KEY: "fake",
-      // The flag-off map, whatever a local .env says; playwright.mvp.config.ts turns it on.
-      FEATURE_MAP_MVP: "false",
+      // Google links resolve through the deterministic fake resolver.
+      GOOGLE_MAPS_LINK_API_KEY: "fake",
+      // Send places from chat: test-only channel secrets, replies captured to files.
+      ...messagingServerEnv(),
       ...membershipEnv,
     },
   },

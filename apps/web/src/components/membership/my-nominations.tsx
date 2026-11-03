@@ -6,6 +6,7 @@ import { api, StatusMessage } from "../actions";
 type Nomination = {
   id: string;
   status: string;
+  source?: string;
   note: string | null;
   revision: number;
   createdAt: string;
@@ -30,6 +31,9 @@ function NominationRow({ t, nomination }: { t: Copy; nomination: Nomination }) {
     <li className="settings-row" style={{ flexDirection: "column", alignItems: "stretch", gap: "0.5rem" }}>
       <div style={{ display: "flex", justifyContent: "space-between" }}>
         <span>{t[statusKey[nomination.status] ?? "membershipStatusClosed"]}</span>
+        {nomination.source === "group_owner" && (
+          <span className="muted">{t.membershipInvitedByGroupOwner}</span>
+        )}
       </div>
       {nomination.status === "needs_info" && (
         <div className="form-stack">

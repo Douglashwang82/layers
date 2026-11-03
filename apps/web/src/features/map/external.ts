@@ -5,15 +5,11 @@ import {
   type Actor,
   type MapState,
 } from "@taiwanhub/shared";
-import { flags } from "@/lib/config";
 import { resolveLayers, type LayerWithAccess } from "../layers/repository";
 import { placeLocations } from "../google-links/locations";
 import type { MapCity } from "./query";
-/**
- * Every MVP layer place is external, so a whole layer resolves in one page
- * there; elsewhere external places supplement catalog results in small pages.
- */
-export const externalPageSize = flags.mapMvp ? 60 : 12;
+/** Layer places are external, so a whole layer resolves in one page. */
+export const externalPageSize = 60;
 export type ExternalReference = {
   subjectId: string;
   canonicalKey: `subject:${string}`;
@@ -24,19 +20,20 @@ export type ExternalReference = {
   layers: string[];
   cityReviewStatus: "unreviewed" | "approved";
   isDailyPick?: boolean;
-  /** Cached Google coordinates (map MVP, at most 30 days old), for the pin. */
+  /** Cached Google coordinates (at most 30 days old), for the pin. */
   location?: { lat: number; lng: number } | null;
   /** Cached Google place types, fetched and expired with the coordinates. */
   types?: string[] | null;
+  /** A layer editor's custom pin image (first layer that sets one wins). */
+  markerImageUrl?: string | null;
 };
 /**
  * Authorized external (provider-referenced) places for the same layer/type/
  * date context as the map query, or the actor's own saves. The server stores
  * no provider business fields, so it cannot search or sort these by them:
  * text search covers LocalLink-authored notes and pasted-link names only.
- * Location is resolved
- * client-side through the provider component, except that the map MVP adds
- * cached coordinates (at most 30 days old) so pins need no component load.
+ * Browsing reads cached coordinates only (at most 30 days old); missing
+ * locations stay list-only and never trigger provider resolution.
  */
 export async function listExternalReferences(
   state: MapState,
@@ -45,17 +42,49 @@ export async function listExternalReferences(
   cursor: number,
   now = new Date(),
 ) {
-  const empty = {
-    references: [] as ExternalReference[],
-    nextCursor: null as string | null,
-    totalAuthorizedReferences: 0,
+  const matching = await collectExternalReferences(state, city, actor, now);
+  const page = matching.slice(cursor, cursor + externalPageSize);
+  if (page.length) {
+    const picks = await pool.query<{ subject_id: string }>(
+      `SELECT subject_id FROM daily_pick WHERE city_id=$1 AND pick_date=$2 AND status='published' AND subject_id=ANY($3::uuid[])`,
+      [city.id, localDate(now, city.timezone), page.map((r) => r.subjectId)],
+    );
+    const picked = new Set(picks.rows.map((r) => r.subject_id));
+    for (const ref of page) ref.isDailyPick = picked.has(ref.subjectId);
+    {
+      const locations = await placeLocations(page.map((r) => r.subjectId));
+      for (const ref of page) {
+        const cached = locations.get(ref.subjectId);
+        ref.location = cached ? { lat: cached.lat, lng: cached.lng } : null;
+        ref.types = cached?.types ?? null;
+      }
+    }
+  }
+  return {
+    references: page,
+    nextCursor:
+      cursor + externalPageSize < matching.length
+        ? String(cursor + externalPageSize)
+        : null,
+    totalAuthorizedReferences: matching.length,
     pageSize: externalPageSize,
-    spatialFilter: "pending-provider-resolution" as const,
+    spatialFilter: "cached-locations" as const,
   };
+}
+/**
+ * Every external reference the map would list for this query, in order and
+ * unpaged, without per-page enrichment (Daily Pick badge, cached location).
+ */
+export async function collectExternalReferences(
+  state: MapState,
+  city: MapCity,
+  actor: Actor | null,
+  now = new Date(),
+): Promise<ExternalReference[]> {
   const types = state.types?.length ? state.types : ["place"];
   // External places are places; city-wide text search only covers the catalog.
-  if (!types.includes("place") || state.layers === "none") return empty;
-  if (state.scope === "city" && state.q) return empty;
+  if (!types.includes("place") || state.layers === "none") return [];
+  if (state.scope === "city" && state.q) return [];
   const { resolved } = await resolveLayers(state.layers, actor, city);
   const ordered: ExternalReference[] = [];
   const byId = new Map<string, ExternalReference>();
@@ -65,6 +94,7 @@ export async function listExternalReferences(
     note: string | null;
     link_name: string | null;
     city_review_status: "unreviewed" | "approved";
+    marker_image_url?: string | null;
     slug: string;
   }) => {
     const existing = byId.get(row.subject_id);
@@ -72,6 +102,7 @@ export async function listExternalReferences(
       if (!existing.layers.includes(row.slug)) existing.layers.push(row.slug);
       existing.localNote ??= row.note || null;
       existing.name ??= row.link_name || null;
+      existing.markerImageUrl ??= row.marker_image_url || null;
       return;
     }
     const ref: ExternalReference = {
@@ -82,11 +113,13 @@ export async function listExternalReferences(
       name: row.link_name || null,
       layers: [row.slug],
       cityReviewStatus: row.city_review_status,
+      markerImageUrl: row.marker_image_url || null,
     };
     byId.set(row.subject_id, ref);
     ordered.push(ref);
   };
   const provider = `(SELECT r.provider_place_id FROM place_provider_reference r WHERE r.subject_id=s.id AND r.state='current' LIMIT 1) AS provider_place_id`;
+  const marker = `(SELECT mi.url FROM image mi WHERE mi.id=i.marker_image_id) AS marker_image_url`;
   for (const { layer, access } of resolved) {
     if (layer.rule?.kind === "saves") {
       if (!actor) continue;
@@ -112,7 +145,7 @@ export async function listExternalReferences(
       if (layer.rule?.kind !== "discover" && layer.rule?.kind !== "daily_pick")
         continue;
       const rows = await pool.query(
-        `SELECT s.id AS subject_id,${provider},i.note,i.link_name,s.city_review_status
+        `SELECT s.id AS subject_id,${provider},i.note,i.link_name,s.city_review_status,${marker}
          FROM layer_item i JOIN place_subject s ON s.id=i.subject_id
          WHERE i.layer_id=$1 AND s.status='active' AND s.catalog_place_id IS NULL
            AND s.city_review_status='approved'
@@ -138,7 +171,7 @@ export async function listExternalReferences(
     // Public viewers see only city-reviewed external places; owners and members see their own curation.
     const member = access.role !== "public";
     const rows = await pool.query(
-      `SELECT s.id AS subject_id,${provider},i.note,i.link_name,s.city_review_status
+      `SELECT s.id AS subject_id,${provider},i.note,i.link_name,s.city_review_status,${marker}
        FROM layer_item i JOIN place_subject s ON s.id=i.subject_id
        WHERE i.layer_id=$1 AND s.status='active' AND s.catalog_place_id IS NULL
          AND ($2::boolean OR s.city_review_status='approved')
@@ -154,32 +187,7 @@ export async function listExternalReferences(
         `${r.localNote ?? ""} ${r.name ?? ""}`.toLowerCase().includes(q),
       )
     : ordered;
-  const page = matching.slice(cursor, cursor + externalPageSize);
-  if (page.length) {
-    const picks = await pool.query<{ subject_id: string }>(
-      `SELECT subject_id FROM daily_pick WHERE city_id=$1 AND pick_date=$2 AND status='published' AND subject_id=ANY($3::uuid[])`,
-      [city.id, localDate(now, city.timezone), page.map((r) => r.subjectId)],
-    );
-    const picked = new Set(picks.rows.map((r) => r.subject_id));
-    for (const ref of page) ref.isDailyPick = picked.has(ref.subjectId);
-    if (flags.mapMvp) {
-      const locations = await placeLocations(page.map((r) => r.subjectId));
-      for (const ref of page) {
-        const cached = locations.get(ref.subjectId);
-        ref.location = cached ? { lat: cached.lat, lng: cached.lng } : null;
-        ref.types = cached?.types ?? null;
-      }
-    }
-  }
-  return {
-    ...empty,
-    references: page,
-    nextCursor:
-      cursor + externalPageSize < matching.length
-        ? String(cursor + externalPageSize)
-        : null,
-    totalAuthorizedReferences: matching.length,
-  };
+  return matching;
 }
 /**
  * How many external places each resolved member layer contributes, by the

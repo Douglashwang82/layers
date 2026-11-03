@@ -1,0 +1,2106 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Send places from chat: prototype</title>
+    <!--
+      Clickable prototype for docs/plans/dm-link-to-layer-design.md.
+      Self-contained: no network requests. All names, layers, groups and
+      handles are illustrative, not real businesses, people or accounts.
+      The LINE / Instagram threads are generic chat mock-ups, not platform UI.
+    -->
+    <style>
+      :root {
+        --th-canvas: #f7fcf8;
+        --th-surface: #ffffff;
+        --th-surface-soft: #eff8f1;
+        --th-text: #14261f;
+        --th-muted: #53665c;
+        --th-primary: #c7f464;
+        --th-primary-hover: #b8e653;
+        --th-mint: #27d8a1;
+        --th-coral: #ff846b;
+        --th-sun: #ffd76a;
+        --th-brand-text: #006a51;
+        --th-divider: #dde9e0;
+        --th-control-border: #7b8f83;
+        --th-focus: #2855d9;
+        --ok-fg: #116b40;
+        --ok-bg: #e7f8ed;
+        --warn-fg: #805600;
+        --warn-bg: #fff5d6;
+        --err-fg: #b4233a;
+        --err-bg: #fff0f2;
+        --line-bg: #8aa3c6;
+        --line-me: #a6e483;
+        --ig-me: #3d5afe;
+        font-family:
+          system-ui,
+          -apple-system,
+          BlinkMacSystemFont,
+          "Segoe UI",
+          "PingFang TC",
+          "Microsoft JhengHei",
+          sans-serif;
+        color: var(--th-text);
+      }
+      * {
+        box-sizing: border-box;
+      }
+      body {
+        margin: 0;
+        background: #e9efeb;
+        min-height: 100vh;
+      }
+      button,
+      select,
+      input {
+        font: inherit;
+        color: inherit;
+      }
+      :focus-visible {
+        outline: 3px solid var(--th-focus);
+        outline-offset: 2px;
+      }
+      .proto-bar {
+        position: sticky;
+        top: 0;
+        z-index: 20;
+        background: var(--th-text);
+        color: #fff;
+        padding: 8px 12px;
+        display: flex;
+        flex-wrap: nowrap;
+        gap: 8px;
+        align-items: center;
+      }
+      .proto-bar h1 {
+        font-size: 15px;
+        margin: 0 8px 0 0;
+        font-weight: 600;
+      }
+      .tabs {
+        display: flex;
+        gap: 4px;
+        overflow-x: auto;
+        flex: 1 1 auto;
+        min-width: 0;
+      }
+      .tabs button,
+      .lang button {
+        background: transparent;
+        border: 1px solid #5b7468;
+        color: #fff;
+        border-radius: 999px;
+        padding: 6px 12px;
+        white-space: nowrap;
+        cursor: pointer;
+        min-height: 36px;
+      }
+      .tabs button[aria-selected="true"],
+      .lang button[aria-pressed="true"] {
+        background: var(--th-primary);
+        color: var(--th-text);
+        border-color: var(--th-primary);
+      }
+      .lang {
+        display: flex;
+        gap: 4px;
+      }
+      main {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 24px;
+        justify-content: center;
+        padding: 16px;
+      }
+      .phone {
+        width: 390px;
+        max-width: 100%;
+        height: 760px;
+        max-height: calc(100vh - 140px);
+        min-height: 560px;
+        background: #fff;
+        border-radius: 28px;
+        border: 8px solid #1b2a23;
+        overflow: hidden;
+        display: flex;
+        flex-direction: column;
+        box-shadow: 0 12px 40px rgba(20, 38, 31, 0.25);
+      }
+      .controls {
+        width: 340px;
+        max-width: 100%;
+        background: var(--th-surface);
+        border-radius: 14px;
+        padding: 16px;
+        align-self: flex-start;
+        border: 1px solid var(--th-divider);
+      }
+      .controls h2 {
+        font-size: 16px;
+        margin: 0 0 4px;
+      }
+      .controls p {
+        font-size: 13px;
+        color: var(--th-muted);
+        margin: 0 0 12px;
+        line-height: 1.45;
+      }
+      .controls .btns {
+        display: flex;
+        flex-direction: column;
+        gap: 8px;
+      }
+      .controls button {
+        text-align: left;
+        border: 1px solid var(--th-control-border);
+        background: var(--th-surface);
+        border-radius: 10px;
+        padding: 10px 12px;
+        cursor: pointer;
+        min-height: 44px;
+      }
+      .controls button:hover {
+        background: var(--th-surface-soft);
+      }
+      .controls .note {
+        margin-top: 12px;
+        font-size: 12px;
+        background: var(--warn-bg);
+        color: var(--warn-fg);
+        padding: 8px 10px;
+        border-radius: 10px;
+      }
+
+      /* ---------- Chat (LINE-style and IG-style) ---------- */
+      .chat-head {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        padding: 10px 14px;
+        color: #fff;
+        background: #253a5e;
+        min-height: 54px;
+      }
+      .chat-head .avatar {
+        width: 34px;
+        height: 34px;
+        border-radius: 50%;
+        background: var(--th-primary);
+        color: var(--th-text);
+        display: grid;
+        place-items: center;
+        font-weight: 700;
+        font-size: 14px;
+      }
+      .chat-head b {
+        display: block;
+        font-size: 15px;
+      }
+      .chat-head small {
+        font-size: 12px;
+        opacity: 0.8;
+      }
+      .ig .chat-head {
+        background: #fff;
+        color: #111;
+        border-bottom: 1px solid #eee;
+      }
+      .log {
+        flex: 1;
+        overflow-y: auto;
+        padding: 12px;
+        background: var(--line-bg);
+        display: flex;
+        flex-direction: column;
+        gap: 10px;
+      }
+      .ig .log {
+        background: #fff;
+      }
+      .msg {
+        max-width: 82%;
+        display: flex;
+        gap: 6px;
+        align-items: flex-end;
+      }
+      .msg.me {
+        align-self: flex-end;
+        flex-direction: row-reverse;
+      }
+      .bubble {
+        background: #fff;
+        border-radius: 16px;
+        padding: 8px 12px;
+        font-size: 14px;
+        line-height: 1.45;
+        word-break: break-word;
+      }
+      .me .bubble {
+        background: var(--line-me);
+      }
+      .ig .bubble {
+        background: #efefef;
+      }
+      .ig .me .bubble {
+        background: var(--ig-me);
+        color: #fff;
+      }
+      .bubble a,
+      .url {
+        color: #0b57d0;
+        text-decoration: underline;
+      }
+      .ig .me .url {
+        color: #fff;
+      }
+      .time {
+        font-size: 10px;
+        color: #23324a;
+        opacity: 0.75;
+        white-space: nowrap;
+      }
+      .ig .time {
+        color: #888;
+      }
+      .typing {
+        background: #fff;
+        border-radius: 16px;
+        padding: 10px 14px;
+        display: inline-flex;
+        gap: 4px;
+      }
+      .typing i {
+        width: 6px;
+        height: 6px;
+        border-radius: 50%;
+        background: #8a97a8;
+        animation: blink 1s infinite;
+      }
+      .typing i:nth-child(2) {
+        animation-delay: 0.2s;
+      }
+      .typing i:nth-child(3) {
+        animation-delay: 0.4s;
+      }
+      @keyframes blink {
+        50% {
+          opacity: 0.2;
+        }
+      }
+      @media (prefers-reduced-motion: reduce) {
+        .typing i {
+          animation: none;
+        }
+      }
+      .system {
+        align-self: center;
+        background: rgba(20, 38, 31, 0.35);
+        color: #fff;
+        font-size: 12px;
+        padding: 3px 10px;
+        border-radius: 999px;
+      }
+      .ig .system {
+        background: #f2f2f2;
+        color: #555;
+      }
+      /* Flex-style card */
+      .card {
+        background: #fff;
+        border-radius: 16px;
+        overflow: hidden;
+        width: 270px;
+        max-width: 100%;
+        font-size: 14px;
+        border: 1px solid rgba(0, 0, 0, 0.06);
+      }
+      .card .hd {
+        background: var(--th-surface-soft);
+        padding: 10px 14px;
+      }
+      .card .hd b {
+        display: block;
+        font-size: 15px;
+      }
+      .card .hd small {
+        color: var(--th-muted);
+        font-size: 12px;
+      }
+      .card .hd.group {
+        background: #fff3df;
+      }
+      .card .bd {
+        padding: 10px 14px;
+      }
+      .card .bd .name {
+        font-weight: 600;
+        font-size: 16px;
+      }
+      .card .bd .prov {
+        color: var(--th-muted);
+        font-size: 12px;
+        margin-top: 2px;
+      }
+      .card .rows {
+        list-style: none;
+        margin: 0;
+        padding: 0;
+      }
+      .card .rows li {
+        display: flex;
+        justify-content: space-between;
+        gap: 8px;
+        padding: 6px 0;
+        border-bottom: 1px solid var(--th-divider);
+        font-size: 13px;
+      }
+      .card .rows li:last-child {
+        border-bottom: 0;
+      }
+      .st {
+        font-size: 12px;
+        border-radius: 999px;
+        padding: 1px 8px;
+        white-space: nowrap;
+        align-self: center;
+      }
+      .st.ok {
+        background: var(--ok-bg);
+        color: var(--ok-fg);
+      }
+      .st.warn {
+        background: var(--warn-bg);
+        color: var(--warn-fg);
+      }
+      .st.err {
+        background: var(--err-bg);
+        color: var(--err-fg);
+      }
+      .card .ft {
+        display: flex;
+        border-top: 1px solid var(--th-divider);
+      }
+      .card .ft button {
+        flex: 1;
+        background: none;
+        border: 0;
+        border-right: 1px solid var(--th-divider);
+        padding: 10px 6px;
+        color: var(--th-brand-text);
+        font-weight: 600;
+        cursor: pointer;
+        min-height: 44px;
+      }
+      .card .ft button:last-child {
+        border-right: 0;
+      }
+      .card .ft button[disabled] {
+        color: #9aa79f;
+        cursor: default;
+      }
+      .card.ig-tpl .ft {
+        flex-direction: column;
+      }
+      .card.ig-tpl .ft button {
+        border-right: 0;
+        border-bottom: 1px solid var(--th-divider);
+      }
+      .card.ig-tpl .ft button:last-child {
+        border-bottom: 0;
+      }
+      .carousel {
+        display: flex;
+        gap: 8px;
+        overflow-x: auto;
+        max-width: 100%;
+        padding-bottom: 4px;
+      }
+      .carousel .card {
+        flex: 0 0 220px;
+      }
+      .share-att {
+        width: 220px;
+        border-radius: 14px;
+        overflow: hidden;
+        background: #fafafa;
+        border: 1px solid #ddd;
+        color: #111;
+      }
+      .share-att .thumb {
+        height: 150px;
+        background: linear-gradient(135deg, #ffd76a, #ff846b 60%, #27d8a1);
+        display: grid;
+        place-items: center;
+        color: #fff;
+        font-weight: 700;
+        font-size: 13px;
+      }
+      .share-att .meta {
+        padding: 8px 10px;
+        font-size: 12px;
+      }
+      /* Quick replies + composer */
+      .quick {
+        display: flex;
+        gap: 6px;
+        overflow-x: auto;
+        padding: 8px 10px;
+        background: rgba(255, 255, 255, 0.9);
+        border-top: 1px solid #d5dde8;
+        min-height: 0;
+      }
+      .quick:empty {
+        display: none;
+      }
+      .quick button {
+        flex: 0 0 auto;
+        border: 1px solid #06a24a;
+        color: #06753a;
+        background: #fff;
+        border-radius: 999px;
+        padding: 6px 12px;
+        font-size: 13px;
+        cursor: pointer;
+        min-height: 36px;
+        max-width: 190px;
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+      }
+      .ig .quick button {
+        border-color: #3d5afe;
+        color: #2a3fc4;
+      }
+      .composer {
+        display: flex;
+        gap: 8px;
+        padding: 8px 10px;
+        border-top: 1px solid #d5dde8;
+        background: #fff;
+      }
+      .composer input {
+        flex: 1;
+        border: 1px solid #c7d0d9;
+        border-radius: 999px;
+        padding: 8px 14px;
+        min-height: 40px;
+        font-size: 14px;
+      }
+      .composer button {
+        border: 0;
+        background: #06c755;
+        color: #fff;
+        border-radius: 999px;
+        padding: 0 14px;
+        font-weight: 600;
+        cursor: pointer;
+      }
+      .ig .composer button {
+        background: #3d5afe;
+      }
+
+      /* ---------- Web (LocalLink) ---------- */
+      .web {
+        flex: 1;
+        overflow-y: auto;
+        background: var(--th-canvas);
+      }
+      .web-top {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        padding: 10px 16px;
+        background: var(--th-surface);
+        border-bottom: 1px solid var(--th-divider);
+        position: sticky;
+        top: 0;
+        z-index: 2;
+      }
+      .brand {
+        display: flex;
+        gap: 8px;
+        align-items: center;
+        font-weight: 700;
+      }
+      .brand i {
+        width: 28px;
+        height: 28px;
+        border-radius: 8px;
+        background: var(--th-mint);
+        display: grid;
+        place-items: center;
+        font-style: normal;
+        font-size: 13px;
+      }
+      .url-bar {
+        font-size: 11px;
+        color: var(--th-muted);
+        background: #eef2ef;
+        padding: 4px 16px;
+        border-bottom: 1px solid var(--th-divider);
+        font-family: ui-monospace, Consolas, monospace;
+      }
+      .pg {
+        padding: 16px 20px 32px;
+      }
+      .pg h1 {
+        font-size: 24px;
+        line-height: 30px;
+        margin: 4px 0 6px;
+      }
+      .pg h2 {
+        font-size: 18px;
+        margin: 24px 0 8px;
+      }
+      .pg p.lead {
+        color: var(--th-muted);
+        margin: 0 0 16px;
+        line-height: 1.5;
+        font-size: 15px;
+      }
+      .back {
+        color: var(--th-brand-text);
+        font-size: 14px;
+        background: none;
+        border: 0;
+        padding: 0;
+        cursor: pointer;
+      }
+      .panel {
+        background: var(--th-surface);
+        border: 1px solid var(--th-divider);
+        border-radius: 14px;
+        padding: 14px;
+        margin-bottom: 12px;
+      }
+      .ch-row {
+        display: flex;
+        align-items: center;
+        gap: 12px;
+      }
+      .ch-mark {
+        width: 40px;
+        height: 40px;
+        border-radius: 10px;
+        display: grid;
+        place-items: center;
+        color: #fff;
+        font-weight: 800;
+        font-size: 12px;
+        flex: 0 0 auto;
+      }
+      .ch-mark.line {
+        background: #06c755;
+      }
+      .ch-mark.ig {
+        background: linear-gradient(135deg, #f58529, #dd2a7b, #8134af);
+      }
+      .ch-row .ch-txt {
+        flex: 1;
+      }
+      .ch-row b {
+        display: block;
+      }
+      .chip {
+        display: inline-block;
+        font-size: 12px;
+        padding: 2px 8px;
+        border-radius: 999px;
+        margin-top: 2px;
+      }
+      .chip.ok {
+        background: var(--ok-bg);
+        color: var(--ok-fg);
+      }
+      .chip.muted {
+        background: #eef2ef;
+        color: var(--th-muted);
+      }
+      .chip.err {
+        background: var(--err-bg);
+        color: var(--err-fg);
+      }
+      .chip.via {
+        background: var(--th-surface-soft);
+        color: var(--th-brand-text);
+        font-size: 12px;
+      }
+      .btn {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        min-height: 48px;
+        padding: 0 20px;
+        border-radius: 999px;
+        border: 0;
+        background: var(--th-primary);
+        font-weight: 600;
+        cursor: pointer;
+        width: 100%;
+        margin-top: 12px;
+      }
+      .btn:hover {
+        background: var(--th-primary-hover);
+      }
+      .btn.ghost {
+        background: var(--th-surface);
+        border: 1px solid var(--th-control-border);
+      }
+      .btn.danger {
+        background: var(--th-surface);
+        border: 1px solid var(--err-fg);
+        color: var(--err-fg);
+      }
+      .btn-row {
+        display: flex;
+        gap: 8px;
+      }
+      .btn-row .btn {
+        flex: 1;
+      }
+      label.fl {
+        display: block;
+        font-size: 14px;
+        font-weight: 600;
+        margin: 14px 0 6px;
+      }
+      select.fs {
+        width: 100%;
+        min-height: 48px;
+        border-radius: 10px;
+        border: 1px solid var(--th-control-border);
+        padding: 0 12px;
+        background: #fff;
+      }
+      .msgbox {
+        font-size: 13px;
+        border-radius: 10px;
+        padding: 8px 10px;
+        margin-top: 8px;
+        line-height: 1.4;
+      }
+      .msgbox.warn {
+        background: var(--warn-bg);
+        color: var(--warn-fg);
+      }
+      .msgbox.ok {
+        background: var(--ok-bg);
+        color: var(--ok-fg);
+      }
+      .msgbox.err {
+        background: var(--err-bg);
+        color: var(--err-fg);
+      }
+      .qr {
+        width: 140px;
+        height: 140px;
+        margin: 12px auto 0;
+        background:
+          repeating-linear-gradient(90deg, #14261f 0 7px, transparent 7px 14px),
+          repeating-linear-gradient(0deg, #14261f 0 7px, #fff 7px 14px);
+        background-blend-mode: difference;
+        border: 8px solid #fff;
+        outline: 1px solid var(--th-divider);
+      }
+      .code {
+        font-family: ui-monospace, Consolas, monospace;
+        font-size: 28px;
+        letter-spacing: 3px;
+        text-align: center;
+        background: var(--th-surface-soft);
+        border-radius: 10px;
+        padding: 12px;
+        margin-top: 10px;
+      }
+      .list {
+        list-style: none;
+        padding: 0;
+        margin: 0;
+      }
+      .list li {
+        display: flex;
+        gap: 10px;
+        align-items: center;
+        padding: 12px 0;
+        border-bottom: 1px solid var(--th-divider);
+        min-height: 72px;
+      }
+      .list .ttl {
+        font-weight: 600;
+        font-size: 15px;
+      }
+      .list .sub {
+        font-size: 13px;
+        color: var(--th-muted);
+        margin-top: 2px;
+      }
+      .list .grow {
+        flex: 1;
+        min-width: 0;
+      }
+      .icon-btn {
+        width: 44px;
+        height: 44px;
+        border-radius: 10px;
+        border: 1px solid var(--th-divider);
+        background: #fff;
+        cursor: pointer;
+        font-size: 18px;
+        flex: 0 0 auto;
+      }
+      .menu {
+        background: #fff;
+        border: 1px solid var(--th-divider);
+        border-radius: 10px;
+        box-shadow: 0 6px 20px rgba(0, 0, 0, 0.12);
+        display: flex;
+        flex-direction: column;
+        margin-top: 4px;
+      }
+      .menu button {
+        background: none;
+        border: 0;
+        text-align: left;
+        padding: 12px 14px;
+        min-height: 44px;
+        cursor: pointer;
+      }
+      .menu button + button {
+        border-top: 1px solid var(--th-divider);
+      }
+      .sheet {
+        position: absolute;
+        inset: auto 0 0 0;
+        background: #fff;
+        border-radius: 20px 20px 0 0;
+        padding: 16px 20px 24px;
+        box-shadow: 0 -8px 30px rgba(0, 0, 0, 0.2);
+        max-height: 80%;
+        overflow-y: auto;
+      }
+      .scrim {
+        position: absolute;
+        inset: 0;
+        background: rgba(20, 38, 31, 0.4);
+      }
+      .phone-inner {
+        position: relative;
+        flex: 1;
+        display: flex;
+        flex-direction: column;
+        min-height: 0;
+      }
+      .radio {
+        display: flex;
+        gap: 10px;
+        align-items: center;
+        padding: 12px 0;
+        border-bottom: 1px solid var(--th-divider);
+        min-height: 48px;
+      }
+      .radio input {
+        width: 20px;
+        height: 20px;
+      }
+      .radio small {
+        display: block;
+        color: var(--th-muted);
+      }
+      .segmented {
+        display: flex;
+        border: 1px solid var(--th-control-border);
+        border-radius: 999px;
+        overflow: hidden;
+        margin-bottom: 12px;
+      }
+      .segmented button {
+        flex: 1;
+        border: 0;
+        background: #fff;
+        padding: 8px;
+        min-height: 40px;
+        cursor: pointer;
+      }
+      .segmented button[aria-pressed="true"] {
+        background: var(--th-surface-soft);
+        font-weight: 600;
+        color: var(--th-brand-text);
+      }
+      .dialog-line {
+        flex: 1;
+        display: grid;
+        place-items: center;
+        background: #f3f5f7;
+        padding: 20px;
+      }
+      .dialog-line .box {
+        background: #fff;
+        border-radius: 14px;
+        padding: 20px;
+        text-align: center;
+        width: 100%;
+      }
+      .dialog-line .btn {
+        background: #06c755;
+        color: #fff;
+      }
+      .help-steps {
+        margin: 6px 0 0 18px;
+        padding: 0;
+        font-size: 14px;
+        line-height: 1.6;
+      }
+      @media (min-width: 1100px) {
+        .phone.wide {
+          width: 980px;
+        }
+        .phone.wide .pg.cols {
+          display: grid;
+          grid-template-columns: 360px 1fr;
+          gap: 24px;
+          align-items: start;
+        }
+        .phone.wide .pg.cols > h1,
+        .phone.wide .pg.cols > .lead,
+        .phone.wide .pg.cols > .back,
+        .phone.wide .pg.cols > .segmented {
+          grid-column: 1 / -1;
+        }
+        .phone.wide .pg.cols h2:first-child {
+          margin-top: 0;
+        }
+      }
+      .sr-only {
+        position: absolute;
+        width: 1px;
+        height: 1px;
+        overflow: hidden;
+        clip: rect(0 0 0 0);
+      }
+      @media (max-width: 460px) {
+        body {
+          height: 100vh;
+          height: 100dvh;
+          display: flex;
+          flex-direction: column;
+          overflow: hidden;
+        }
+        .proto-bar {
+          position: static;
+        }
+        .proto-bar h1 {
+          display: none;
+        }
+        .tabs {
+          flex-wrap: nowrap;
+        }
+        main {
+          flex: 1;
+          min-height: 0;
+          flex-direction: column;
+          flex-wrap: nowrap;
+          padding: 0;
+          gap: 0;
+        }
+        .controls {
+          order: -1;
+          width: 100%;
+          padding: 6px 10px;
+          border-radius: 0;
+          border-width: 0 0 1px;
+        }
+        .controls h2,
+        .controls p,
+        .controls .note {
+          display: none;
+        }
+        .controls .btns {
+          flex-direction: row;
+          overflow-x: auto;
+        }
+        .controls button {
+          white-space: nowrap;
+          min-height: 40px;
+          padding: 8px 10px;
+          font-size: 13px;
+        }
+        .phone {
+          flex: 1;
+          min-height: 0;
+          height: auto;
+          max-height: none;
+          border: 0;
+          border-radius: 0;
+          width: 100%;
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <div class="proto-bar">
+      <h1 id="proto-title">Send places from chat · prototype</h1>
+      <div class="tabs" role="tablist" aria-label="Scenarios">
+        <button role="tab" data-scene="line" aria-selected="true">
+          LINE · connected
+        </button>
+        <button role="tab" data-scene="unlinked" aria-selected="false">
+          LINE · not connected
+        </button>
+        <button role="tab" data-scene="ig" aria-selected="false">
+          Instagram fallback
+        </button>
+        <button role="tab" data-scene="web" aria-selected="false">
+          Web settings + Inbox
+        </button>
+      </div>
+      <div class="lang" aria-label="Language">
+        <button data-lang="en" aria-pressed="true">EN</button>
+        <button data-lang="zh" aria-pressed="false">繁中</button>
+      </div>
+    </div>
+    <main>
+      <section class="phone" id="phone" aria-label="Phone preview"></section>
+      <aside
+        class="controls"
+        id="controls"
+        aria-label="Prototype controls"
+      ></aside>
+    </main>
+
+    <script>
+      "use strict";
+      const BRAND = "LocalLink";
+      const C = {
+        en: {
+          oaName: BRAND,
+          oaSub: "Official account",
+          welcome: `Send me a Google Maps link and I'll add the place to your ${BRAND} layer.`,
+          connectPrompt: `First, connect your ${BRAND} account.`,
+          connectButton: "Connect account",
+          heldLink: "I'll add this place once you connect (within 15 minutes).",
+          connected: "Connected. Send me any Google Maps link.",
+          addedTo: "Added to {layer}",
+          movedTo: "Moved to {layer}",
+          audiencePrivate: "Private · only you",
+          audienceGroup: "Group · {count} members can see it",
+          fromLink: "From your Google Maps link",
+          fromPost: "From a post you shared",
+          fromSearch: 'From your search "{q}"',
+          openInApp: `Open in ${BRAND}`,
+          undo: "Undo",
+          undoAll: "Undo all",
+          undone: "Removed from {layer}.",
+          alreadyUndone: "Already undone.",
+          moveMore: "More layers…",
+          inbox: "Inbox",
+          group: "Group: ",
+          batchSummary: "{added} added · {skipped} not added",
+          rowAdded: "Added",
+          rowAlready: "Already there",
+          rowNotFound: "Not found",
+          rowUnsupported: "Not a place link",
+          notPlaceLink:
+            "I can add places from Google Maps links. This link isn't one.",
+          noPlaceName:
+            "This link doesn't include the place name. Send the place's share link, or reply with the name.",
+          replyWithName: "Reply with the name",
+          pickOnWeb: "Pick on the web",
+          skip: "Skip",
+          skipped: "OK, skipped.",
+          askName: "What's the place called? (Reply within 10 minutes.)",
+          bestMatch: 'Best match for "{q}"',
+          checkOnGoogle: "Open in Google Maps",
+          add: "Add",
+          notIt: "Not it",
+          notItReply:
+            "No problem. Pick it on the web; you can drop a pin there.",
+          igWorking: "Looking at this post. I'll message you when it's done.",
+          igCandidates: "Is it one of these?",
+          igNoPlace: "Couldn't find the place in this post.",
+          move: "Move…",
+          you: "You",
+          now: "now",
+          typeHere: "Message",
+          send: "Send",
+          follow: "You added LocalLink as a friend",
+          linkedSys: "Account connected",
+          // web
+          chatTitle: "Send places from chat",
+          chatIntro: `Forward a Google Maps link to ${BRAND} on LINE and it lands in your layer.`,
+          connectLine: "Connect LINE",
+          connectIg: "Connect Instagram",
+          openLine: "Open LINE",
+          scanQr: "Or scan with LINE on your phone",
+          isConnected: "Connected",
+          since: "Connected Nov 1",
+          notConnected: "Not connected",
+          comingSoon: "Coming soon",
+          disconnect: "Disconnect",
+          destination: "Where sent places go",
+          destInbox: "Inbox (private)",
+          groupWarn: "Members of Saturday Club will see places you send.",
+          recent: "Recently sent",
+          recentEmpty: "Places you send in chat appear here.",
+          howTo: "How to send",
+          howSteps: [
+            "Open a place in Google Maps.",
+            "Tap Share → LINE.",
+            `Choose ${BRAND}.`,
+          ],
+          via: "via {ch}",
+          moveBtn: "Move",
+          remove: "Remove",
+          findPlace: "Find place",
+          stAdded: "Added",
+          stNotFound: "Not found",
+          stUndone: "Undone",
+          stPending: "Waiting for you to pick",
+          confirmTitle: "Connect LINE to Doug's account?",
+          confirmBody:
+            "Places you send to LocalLink on LINE will be added to your layers. You can disconnect anytime.",
+          cancel: "Cancel",
+          connect: "Connect",
+          lineDialog: "Link your LINE account with LocalLink?",
+          lineDialogSub: "Mock of LINE's account-link screen (owned by LINE).",
+          allow: "Link",
+          signInFirst: "Sign in to connect LINE",
+          signInBody:
+            "We'll bring you back here after you sign in. Your link stays valid for 10 minutes.",
+          signIn: "Continue with email",
+          inviteOnly: `${BRAND} is invite-only right now. You can connect after you join.`,
+          requestAccess: "Request an invite",
+          igCodeTitle: "Connect Instagram",
+          igCodeBody:
+            "Send this code to @locallink in Instagram DMs. It works once and expires in 10 minutes.",
+          copyOpen: "Copy and open Instagram",
+          waiting: "Waiting for your message…",
+          simulateDm: "(Prototype) Simulate: code received",
+          igConfirm: "An Instagram account wants to connect. Is this you?",
+          itsMe: "Yes, connect",
+          notMe: "No, cancel",
+          disconnectQ:
+            "Disconnect LINE? Places you already sent stay in your layers.",
+          movedToast: "Moved to {layer}.",
+          removedToast: "Removed from {layer}.",
+          inboxLayer: "Inbox",
+          layerPrivate: "Private · 4 places",
+          sortHint: "Sort these into your layers with Move.",
+          addedBy: "Added by you",
+          screensTab: ["Connections", "Inbox layer"],
+          moveTitle: "Move to layer",
+          moveCta: "Move here",
+          editorOnly: "Badge shown to this layer's editors only.",
+          // controls
+          ctlLineTitle: "LINE thread, connected member",
+          ctlLineDesc:
+            "Send links as the member. Then use the card's buttons and quick replies (green chips) to move or undo.",
+          ctlSend1: "Send a Google Maps short link",
+          ctlSend3: "Send 3 links in one message",
+          ctlSendBad: "Send a non-place link",
+          ctlSendCid: "Send a link without a place name",
+          ctlReset: "Reset thread",
+          ctlUnTitle: "Not connected yet",
+          ctlUnDesc:
+            "A stranger sends a link. The bot holds only that URL for 15 minutes and asks them to connect.",
+          ctlUnSend: "Send a Google Maps link (unlinked)",
+          ctlUnSignedOut: "Variant: signed out on the web",
+          ctlUnNotMember: "Variant: signed in, not a member",
+          ctlUnMember: "Variant: signed-in member (default)",
+          ctlIgTitle: "Instagram fallback",
+          ctlIgDesc:
+            "Instagram shares carry only a URL; no location tag. Candidates (from the caption worker) always need a tap.",
+          ctlIgShareNo: "Share a reel: no place found",
+          ctlIgShareYes: "Share a reel: 2 candidates",
+          ctlWebTitle: "Web: Profile → Send places from chat",
+          ctlWebDesc:
+            "Switch connection states. On a desktop-width window the page uses two columns.",
+          ctlWebNone: "State: nothing connected",
+          ctlWebLine: "State: LINE connected",
+          ctlWebIg: "Start Instagram connect (code flow)",
+          ctlWebEmpty: "State: connected, nothing sent yet",
+          ctlWebOff: "State: feature not configured",
+          notAvail: "Not available yet",
+          ctlNote:
+            "Illustrative names only. Cards never show Google place data: names come from the member's own link or search text.",
+        },
+        zh: {
+          oaName: BRAND,
+          oaSub: "官方帳號",
+          welcome: `傳 Google 地圖連結給我，我會把地點加進你的 ${BRAND} 圖層。`,
+          connectPrompt: `請先連結你的 ${BRAND} 帳號。`,
+          connectButton: "連結帳號",
+          heldLink: "連結帳號後（15 分鐘內），我會幫你加入這個地點。",
+          connected: "已連結！之後傳 Google 地圖連結給我就可以了。",
+          addedTo: "已加入「{layer}」",
+          movedTo: "已移到「{layer}」",
+          audiencePrivate: "私人・只有你看得到",
+          audienceGroup: "群組・{count} 位成員看得到",
+          fromLink: "來自你的 Google 地圖連結",
+          fromPost: "來自你分享的貼文",
+          fromSearch: "來自你的搜尋「{q}」",
+          openInApp: `在 ${BRAND} 開啟`,
+          undo: "復原",
+          undoAll: "全部復原",
+          undone: "已從「{layer}」移除。",
+          alreadyUndone: "已經復原了。",
+          moveMore: "更多圖層…",
+          inbox: "收件匣",
+          group: "群組：",
+          batchSummary: "已加入 {added} 個・{skipped} 個未加入",
+          rowAdded: "已加入",
+          rowAlready: "已存在",
+          rowNotFound: "找不到",
+          rowUnsupported: "不是地點連結",
+          notPlaceLink: "我只能加入 Google 地圖地點連結，這個連結不是。",
+          noPlaceName:
+            "這個連結沒有地點名稱。請改傳地點的分享連結，或直接回覆店名。",
+          replyWithName: "回覆店名",
+          pickOnWeb: "到網站選擇",
+          skip: "略過",
+          skipped: "好的，已略過。",
+          askName: "這個地點叫什麼名字？（請在 10 分鐘內回覆）",
+          bestMatch: "「{q}」最相符的結果",
+          checkOnGoogle: "在 Google 地圖查看",
+          add: "加入",
+          notIt: "不是這個",
+          notItReply: "沒問題，請到網站選擇，也可以直接在地圖上放置圖釘。",
+          igWorking: "正在查看這則貼文，完成後會通知你。",
+          igCandidates: "是下面其中一個嗎？",
+          igNoPlace: "在這則貼文中找不到地點。",
+          move: "移動…",
+          you: "你",
+          now: "剛剛",
+          typeHere: "輸入訊息",
+          send: "傳送",
+          follow: "你已將 LocalLink 加為好友",
+          linkedSys: "帳號已連結",
+          chatTitle: "從聊天傳送地點",
+          chatIntro: `在 LINE 把 Google 地圖連結轉傳給 ${BRAND}，地點就會加入你的圖層。`,
+          connectLine: "連結 LINE",
+          connectIg: "連結 Instagram",
+          openLine: "開啟 LINE",
+          scanQr: "或用手機 LINE 掃描",
+          isConnected: "已連結",
+          since: "11 月 1 日連結",
+          notConnected: "尚未連結",
+          comingSoon: "即將推出",
+          disconnect: "解除連結",
+          destination: "傳送的地點要放到",
+          destInbox: "收件匣（私人）",
+          groupWarn: "週六俱樂部的成員會看到你傳送的地點。",
+          recent: "最近傳送",
+          recentEmpty: "你在聊天中傳送的地點會出現在這裡。",
+          howTo: "如何傳送",
+          howSteps: [
+            "在 Google 地圖開啟地點。",
+            "點「分享」→ LINE。",
+            `選擇 ${BRAND}。`,
+          ],
+          via: "經由 {ch}",
+          moveBtn: "移動",
+          remove: "移除",
+          findPlace: "尋找地點",
+          stAdded: "已加入",
+          stNotFound: "找不到",
+          stUndone: "已復原",
+          stPending: "等待你選擇",
+          confirmTitle: "要將 LINE 連結到 Doug 的帳號嗎？",
+          confirmBody:
+            "你在 LINE 傳給 LocalLink 的地點會加入你的圖層，隨時可以解除連結。",
+          cancel: "取消",
+          connect: "連結",
+          lineDialog: "要將你的 LINE 帳號與 LocalLink 連結嗎？",
+          lineDialogSub: "LINE 帳號連結畫面示意（由 LINE 提供）。",
+          allow: "連結",
+          signInFirst: "登入以連結 LINE",
+          signInBody: "登入後會回到這裡，連結 10 分鐘內有效。",
+          signIn: "以電子郵件繼續",
+          inviteOnly: `${BRAND} 目前採邀請制，加入後即可連結。`,
+          requestAccess: "申請邀請",
+          igCodeTitle: "連結 Instagram",
+          igCodeBody:
+            "在 Instagram 私訊傳送這組代碼給 @locallink。代碼只能用一次，10 分鐘後失效。",
+          copyOpen: "複製並開啟 Instagram",
+          waiting: "等待你的訊息…",
+          simulateDm: "（原型）模擬：已收到代碼",
+          igConfirm: "有一個 Instagram 帳號要求連結，是你嗎？",
+          itsMe: "是，連結",
+          notMe: "不是，取消",
+          disconnectQ: "要解除 LINE 連結嗎？已傳送的地點會保留在圖層中。",
+          movedToast: "已移到「{layer}」。",
+          removedToast: "已從「{layer}」移除。",
+          inboxLayer: "收件匣",
+          layerPrivate: "私人・4 個地點",
+          sortHint: "用「移動」把地點整理到你的圖層。",
+          addedBy: "由你新增",
+          screensTab: ["連結設定", "收件匣圖層"],
+          moveTitle: "移到圖層",
+          moveCta: "移到這裡",
+          editorOnly: "此標籤只有圖層編輯者看得到。",
+          ctlLineTitle: "LINE 對話（已連結成員）",
+          ctlLineDesc:
+            "以成員身分傳送連結，再用卡片按鈕與快速回覆（綠色按鈕）移動或復原。",
+          ctlSend1: "傳送 Google 地圖短網址",
+          ctlSend3: "一則訊息傳 3 個連結",
+          ctlSendBad: "傳送非地點連結",
+          ctlSendCid: "傳送沒有地點名稱的連結",
+          ctlReset: "重設對話",
+          ctlUnTitle: "尚未連結",
+          ctlUnDesc:
+            "陌生人傳來連結。機器人只保留該網址 15 分鐘，並請對方連結帳號。",
+          ctlUnSend: "傳送 Google 地圖連結（未連結）",
+          ctlUnSignedOut: "情境：網站未登入",
+          ctlUnNotMember: "情境：已登入但非會員",
+          ctlUnMember: "情境：已登入會員（預設）",
+          ctlIgTitle: "Instagram 備援流程",
+          ctlIgDesc:
+            "Instagram 分享只帶網址，沒有地點標籤。候選地點（來自說明文字）一定要使用者點選確認。",
+          ctlIgShareNo: "分享 Reel：找不到地點",
+          ctlIgShareYes: "分享 Reel：2 個候選",
+          ctlWebTitle: "網站：個人檔案 → 從聊天傳送地點",
+          ctlWebDesc: "切換連結狀態。桌機寬度時頁面為兩欄。",
+          ctlWebNone: "狀態：尚未連結",
+          ctlWebLine: "狀態：已連結 LINE",
+          ctlWebIg: "開始連結 Instagram（代碼流程）",
+          ctlWebEmpty: "狀態：已連結、尚未傳送",
+          ctlWebOff: "狀態：功能尚未設定",
+          notAvail: "尚未開放",
+          ctlNote:
+            "名稱皆為示意。卡片不顯示 Google 地點資料：名稱來自成員自己的連結或搜尋文字。",
+        },
+      };
+      const PLACES = {
+        jade: { en: "Jade Noodle House", zh: "翡翠麵館" },
+        soy: { en: "Morning Soy Milk", zh: "晨光豆漿" },
+        tea: { en: "Bayou Tea Bar", zh: "河灣茶飲" },
+        tiger: { en: "Tiger Den Noodles", zh: "虎穴拉麵" },
+        lantern: { en: "Lantern Dumpling Co.", zh: "燈籠餃子館" },
+      };
+      const LAYERS = [
+        { id: "inbox", en: "Inbox", zh: "收件匣", group: false },
+        {
+          id: "sat",
+          en: "Saturday outing",
+          zh: "週六聚會",
+          group: true,
+          count: 8,
+        },
+        { id: "tokyo", en: "Tokyo trip", zh: "東京之旅", group: false },
+        { id: "family", en: "Family eats", zh: "家庭聚餐", group: false },
+      ];
+
+      let lang = "en";
+      let scene = "line";
+      const S = {
+        unVariant: "member",
+        web: { state: "line", screen: 0, dest: "inbox", toast: "" },
+      };
+      const t = (k, v = {}) =>
+        String(C[lang][k] ?? k).replace(/\{(\w+)\}/g, (_, x) => v[x] ?? "");
+      const pn = (key) => PLACES[key][lang];
+      const ln = (id) => LAYERS.find((l) => l.id === id)[lang];
+      const esc = (s) =>
+        String(s).replace(
+          /[&<>"']/g,
+          (c) =>
+            ({
+              "&": "&amp;",
+              "<": "&lt;",
+              ">": "&gt;",
+              '"': "&quot;",
+              "'": "&#39;",
+            })[c],
+        );
+      const phone = document.getElementById("phone");
+      const controls = document.getElementById("controls");
+
+      /* ---------------- chat engine ---------------- */
+      let log, quick;
+      function chatShell(kind) {
+        phone.classList.remove("wide");
+        phone.innerHTML = `<div class="phone-inner ${kind === "ig" ? "ig" : ""}">
+          <div class="chat-head">
+            <div class="avatar" aria-hidden="true">LL</div>
+            <div><b>${esc(t("oaName"))}</b><small>${kind === "ig" ? "@locallink" : esc(t("oaSub"))}</small></div>
+          </div>
+          <div class="log" role="log" aria-live="polite" aria-label="Chat"></div>
+          <div class="quick" aria-label="Quick replies"></div>
+          <form class="composer"><input aria-label="${esc(t("typeHere"))}" placeholder="${esc(t("typeHere"))}" /><button>${esc(t("send"))}</button></form>
+        </div>`;
+        log = phone.querySelector(".log");
+        quick = phone.querySelector(".quick");
+        phone.querySelector(".composer").addEventListener("submit", (e) => {
+          e.preventDefault();
+          const input = e.target.querySelector("input");
+          const v = input.value.trim();
+          if (!v) return;
+          input.value = "";
+          onFreeText(v);
+        });
+      }
+      function scroll() {
+        log.scrollTop = log.scrollHeight;
+      }
+      function me(html) {
+        const d = document.createElement("div");
+        d.className = "msg me";
+        d.innerHTML = `<div class="bubble">${html}</div><span class="time">${esc(t("now"))}</span>`;
+        log.appendChild(d);
+        scroll();
+      }
+      function bot(html, raw = false) {
+        const d = document.createElement("div");
+        d.className = "msg";
+        d.innerHTML = raw
+          ? `${html}<span class="time">${esc(t("now"))}</span>`
+          : `<div class="bubble">${html}</div><span class="time">${esc(t("now"))}</span>`;
+        log.appendChild(d);
+        scroll();
+        return d;
+      }
+      function sys(text) {
+        const d = document.createElement("div");
+        d.className = "system";
+        d.textContent = text;
+        log.appendChild(d);
+        scroll();
+      }
+      function setQuick(items) {
+        quick.innerHTML = "";
+        for (const it of items) {
+          const b = document.createElement("button");
+          b.type = "button";
+          b.textContent = it.label;
+          b.title = it.label;
+          b.addEventListener("click", () => {
+            setQuick([]);
+            if (it.echo !== false) me(esc(it.label));
+            it.run();
+          });
+          quick.appendChild(b);
+        }
+      }
+      function typing(ms, then) {
+        const d = document.createElement("div");
+        d.className = "msg";
+        d.innerHTML =
+          '<div class="typing" aria-label="Loading"><i></i><i></i><i></i></div>';
+        log.appendChild(d);
+        scroll();
+        setTimeout(() => {
+          d.remove();
+          then();
+        }, ms);
+      }
+      function card({ head, sub, groupHead, name, prov, rows, buttons, ig }) {
+        const rowsHtml = rows
+          ? `<ul class="rows">${rows
+              .map(
+                (r) =>
+                  `<li><span>${esc(r.name)}</span><span class="st ${r.tone}">${esc(r.status)}</span></li>`,
+              )
+              .join("")}</ul>`
+          : "";
+        const el = bot(
+          `<div class="card ${ig ? "ig-tpl" : ""}">
+            <div class="hd ${groupHead ? "group" : ""}"><b>${esc(head)}</b>${sub ? `<small>${esc(sub)}</small>` : ""}</div>
+            ${name || prov || rows ? `<div class="bd">${name ? `<div class="name">${esc(name)}</div>` : ""}${prov ? `<div class="prov">${esc(prov)}</div>` : ""}${rowsHtml}</div>` : ""}
+            ${buttons?.length ? `<div class="ft">${buttons.map((b, i) => `<button type="button" data-i="${i}">${esc(b.label)}</button>`).join("")}</div>` : ""}
+          </div>`,
+          true,
+        );
+        el.querySelectorAll(".ft button").forEach((btn) =>
+          btn.addEventListener("click", () => buttons[+btn.dataset.i].run(btn)),
+        );
+        return el;
+      }
+      const audience = (id) => {
+        const l = LAYERS.find((x) => x.id === id);
+        return l.group
+          ? t("audienceGroup", { count: l.count })
+          : t("audiencePrivate");
+      };
+      const isGroup = (id) => LAYERS.find((x) => x.id === id).group;
+
+      /* A receipt: places added together, which layer they're in, undo state. */
+      function receipt(placeKeys, layerId, provKey, ig = false, q = "") {
+        return {
+          placeKeys,
+          layerId,
+          origin: layerId,
+          provKey,
+          undone: false,
+          ig,
+          q,
+        };
+      }
+      function layerQuick(r) {
+        const opts = LAYERS.filter((l) => l.id !== r.layerId).map((l) => ({
+          label: (l.group ? t("group") : "") + l[lang],
+          run: () => moveReceipt(r, l.id),
+        }));
+        return [
+          ...opts,
+          { label: t("moveMore"), run: () => goWebMove() },
+          { label: t("undo"), run: () => undoReceipt(r) },
+        ];
+      }
+      function confirmCard(r, headKey = "addedTo") {
+        const multi = r.placeKeys.length > 1;
+        const buttons = r.ig
+          ? [
+              { label: t("openInApp"), run: () => goWeb(1) },
+              { label: t("undo"), run: (b) => undoReceipt(r, b) },
+              { label: t("move"), run: () => goWebMove() },
+            ]
+          : [
+              { label: t("openInApp"), run: () => goWeb(1) },
+              {
+                label: multi ? t("undoAll") : t("undo"),
+                run: (b) => undoReceipt(r, b),
+              },
+            ];
+        card({
+          head: t(headKey, { layer: ln(r.layerId) }),
+          sub: audience(r.layerId),
+          groupHead: isGroup(r.layerId),
+          name: multi ? null : pn(r.placeKeys[0]),
+          prov: multi ? null : t(r.provKey, { q: r.q }),
+          rows: r.rows,
+          buttons,
+          ig: r.ig,
+        });
+        setQuick(layerQuick(r));
+      }
+      function moveReceipt(r, to) {
+        if (r.undone) {
+          bot(esc(t("alreadyUndone")));
+          return;
+        }
+        typing(500, () => {
+          r.layerId = to;
+          confirmCard(r, "movedTo");
+        });
+      }
+      function undoReceipt(r, btn) {
+        if (btn) me(esc(btn.textContent));
+        typing(350, () => {
+          if (r.undone) bot(esc(t("alreadyUndone")));
+          else {
+            r.undone = true;
+            bot(esc(t("undone", { layer: ln(r.layerId) })));
+          }
+          setQuick([]);
+        });
+      }
+      const url = (u) => `<span class="url">${esc(u)}</span>`;
+
+      /* free text typed into the composer */
+      let awaitingName = null;
+      function onFreeText(v) {
+        me(esc(v));
+        if (awaitingName) {
+          const ctx = awaitingName;
+          awaitingName = null;
+          typing(700, () => bestMatch(v, ctx));
+          return;
+        }
+        if (/https?:\/\//.test(v) || /goo\.gl|google\./.test(v)) {
+          typing(800, () => {
+            const r = receipt(["jade"], "inbox", "fromLink", scene === "ig");
+            confirmCard(r);
+          });
+          return;
+        }
+        typing(400, () =>
+          bot(
+            esc(
+              lang === "en"
+                ? "Send a Google Maps place link to add it. Commands: help · inbox · disconnect"
+                : "傳 Google 地圖地點連結即可加入。指令：說明・收件匣・解除連結",
+            ),
+          ),
+        );
+      }
+      function bestMatch(q, ctx) {
+        const buttons = [
+          { label: t("checkOnGoogle"), run: () => {} },
+          {
+            label: t("add"),
+            run: (b) => {
+              me(esc(b.textContent));
+              typing(500, () =>
+                confirmCard(
+                  receipt(["tiger"], "inbox", "fromSearch", ctx.ig, q),
+                ),
+              );
+            },
+          },
+          {
+            label: t("notIt"),
+            run: (b) => {
+              me(esc(b.textContent));
+              typing(300, () => {
+                bot(esc(t("notItReply")));
+                setQuick([{ label: t("pickOnWeb"), run: () => goWebMove() }]);
+              });
+            },
+          },
+        ];
+        card({
+          head: t("bestMatch", { q }),
+          sub: lang === "en" ? "Near Houston" : "休士頓附近",
+          buttons,
+          ig: ctx.ig,
+        });
+      }
+      function fallbackQuick(ctx) {
+        setQuick([
+          {
+            label: t("replyWithName"),
+            run: () =>
+              typing(300, () => {
+                bot(esc(t("askName")));
+                awaitingName = ctx;
+                const input = phone.querySelector(".composer input");
+                input.value = lang === "en" ? "Tiger Den" : "虎穴拉麵";
+                input.focus();
+              }),
+          },
+          { label: t("pickOnWeb"), run: () => goWebMove() },
+          {
+            label: t("skip"),
+            run: () => typing(250, () => bot(esc(t("skipped")))),
+          },
+        ]);
+      }
+
+      /* ---------------- scenes ---------------- */
+      function sceneLine() {
+        chatShell("line");
+        sys(t("linkedSys"));
+        bot(esc(t("connected")));
+        controlsFor(
+          [
+            ["ctlSend1", lineSend1],
+            ["ctlSend3", lineSend3],
+            ["ctlSendBad", lineBad],
+            ["ctlSendCid", lineCid],
+            ["ctlReset", sceneLine],
+          ],
+          "ctlLineTitle",
+          "ctlLineDesc",
+        );
+      }
+      function lineSend1() {
+        me(url("https://maps.app.goo.gl/x7Qp2"));
+        typing(900, () => confirmCard(receipt(["jade"], "inbox", "fromLink")));
+      }
+      function lineSend3() {
+        me(
+          `${lang === "en" ? "for saturday" : "週六可以去"}<br>${url("https://maps.app.goo.gl/a1")}<br>${url("https://www.google.com/maps/place/…")}<br>${url("https://maps.app.goo.gl/c3")}`,
+        );
+        typing(1100, () => {
+          const r = receipt(["soy", "tea", "lantern"], "inbox", "fromLink");
+          r.rows = [
+            { name: pn("soy"), status: t("rowAdded"), tone: "ok" },
+            { name: pn("tea"), status: t("rowAlready"), tone: "warn" },
+            {
+              name: "maps.app.goo.gl/c3",
+              status: t("rowNotFound"),
+              tone: "err",
+            },
+          ];
+          r.placeKeys = ["soy", "tea"];
+          confirmCard(r);
+          bot(esc(t("batchSummary", { added: 1, skipped: 2 })));
+        });
+      }
+      function lineBad() {
+        me(url("https://example.com/best-boba-2026"));
+        typing(400, () => bot(esc(t("notPlaceLink"))));
+      }
+      function lineCid() {
+        me(url("https://maps.google.com/?cid=1234567890"));
+        typing(600, () => {
+          bot(esc(t("noPlaceName")));
+          fallbackQuick({ ig: false });
+        });
+      }
+
+      function sceneUnlinked() {
+        chatShell("line");
+        sys(t("follow"));
+        bot(esc(t("welcome")));
+        controlsFor(
+          [
+            ["ctlUnSend", unSend],
+            ["ctlUnMember", () => setVariant("member")],
+            ["ctlUnSignedOut", () => setVariant("signedOut")],
+            ["ctlUnNotMember", () => setVariant("notMember")],
+            ["ctlReset", sceneUnlinked],
+          ],
+          "ctlUnTitle",
+          "ctlUnDesc",
+        );
+      }
+      function setVariant(v) {
+        S.unVariant = v;
+        sceneUnlinked();
+      }
+      function unSend() {
+        me(url("https://maps.app.goo.gl/k9Zt4"));
+        typing(600, () => {
+          card({
+            head: t("connectPrompt"),
+            name: null,
+            prov: t("heldLink"),
+            buttons: [
+              { label: t("connectButton"), run: () => webConnectLine() },
+            ],
+          });
+        });
+      }
+      function webShell(path, inner, wide = false) {
+        phone.classList.toggle("wide", wide);
+        phone.innerHTML = `<div class="phone-inner">
+          <div class="web-top"><span class="brand"><i aria-hidden="true">LL</i>${BRAND}</span><span class="chip muted">${lang === "en" ? "EN" : "繁中"}</span></div>
+          <div class="url-bar">${esc(path)}</div>
+          <div class="web">${inner}</div>
+        </div>`;
+      }
+      function webConnectLine() {
+        const v = S.unVariant;
+        let inner;
+        if (v === "signedOut") {
+          inner = `<div class="pg"><h1>${esc(t("signInFirst"))}</h1><p class="lead">${esc(t("signInBody"))}</p>
+            <button class="btn" id="go-signin">${esc(t("signIn"))}</button></div>`;
+        } else if (v === "notMember") {
+          inner = `<div class="pg"><h1>${esc(t("connectLine"))}</h1>
+            <div class="msgbox warn" role="status">${esc(t("inviteOnly"))}</div>
+            <button class="btn ghost" id="back-chat">${esc(t("requestAccess"))}</button></div>`;
+        } else {
+          inner = `<div class="pg"><h1>${esc(t("confirmTitle"))}</h1><p class="lead">${esc(t("confirmBody"))}</p>
+            <div class="btn-row"><button class="btn ghost" id="back-chat">${esc(t("cancel"))}</button><button class="btn" id="do-connect">${esc(t("connect"))}</button></div></div>`;
+        }
+        webShell("/connect/line?linkToken=••••", inner);
+        phone.querySelector("#go-signin")?.addEventListener("click", () => {
+          S.unVariant = "member";
+          webConnectLine();
+        });
+        phone
+          .querySelector("#back-chat")
+          ?.addEventListener("click", sceneUnlinked);
+        phone
+          .querySelector("#do-connect")
+          ?.addEventListener("click", lineDialog);
+      }
+      function lineDialog() {
+        phone.classList.remove("wide");
+        phone.innerHTML = `<div class="phone-inner"><div class="url-bar">access.line.me/dialog/bot/accountLink</div>
+          <div class="dialog-line"><div class="box"><p><b>${esc(t("lineDialog"))}</b></p><p style="font-size:12px;color:#666">${esc(t("lineDialogSub"))}</p>
+          <button class="btn" id="allow">${esc(t("allow"))}</button><button class="btn ghost" id="deny">${esc(t("cancel"))}</button></div></div></div>`;
+        phone.querySelector("#deny").addEventListener("click", sceneUnlinked);
+        phone.querySelector("#allow").addEventListener("click", () => {
+          chatShell("line");
+          sys(t("follow"));
+          me(url("https://maps.app.goo.gl/k9Zt4"));
+          sys(t("linkedSys"));
+          bot(esc(t("connected")));
+          typing(700, () =>
+            confirmCard(receipt(["lantern"], "inbox", "fromLink")),
+          );
+        });
+      }
+
+      function sceneIg() {
+        chatShell("ig");
+        controlsFor(
+          [
+            ["ctlIgShareNo", () => igShare(false)],
+            ["ctlIgShareYes", () => igShare(true)],
+            ["ctlReset", sceneIg],
+          ],
+          "ctlIgTitle",
+          "ctlIgDesc",
+        );
+      }
+      function igShare(found) {
+        const d = document.createElement("div");
+        d.className = "msg me";
+        d.innerHTML = `<div class="share-att"><div class="thumb">Reel</div><div class="meta"><b>@tasty.houston</b><br>${lang === "en" ? "best noodles this month…" : "這個月最好吃的麵…"}</div></div><span class="time">${esc(t("now"))}</span>`;
+        log.appendChild(d);
+        scroll();
+        typing(500, () => {
+          bot(esc(t("igWorking")));
+          typing(1400, () => {
+            if (!found) {
+              bot(esc(t("igNoPlace")));
+              fallbackQuick({ ig: true });
+              return;
+            }
+            bot(esc(t("igCandidates")));
+            const wrap = document.createElement("div");
+            wrap.className = "msg";
+            wrap.style.maxWidth = "100%";
+            const cands = ["tiger", "lantern"];
+            wrap.innerHTML = `<div class="carousel">${cands
+              .map(
+                (
+                  k,
+                  i,
+                ) => `<div class="card ig-tpl"><div class="hd"><b>${esc(pn(k))}</b><small>${esc(t("fromPost"))}</small></div>
+                <div class="ft"><button type="button">${esc(t("checkOnGoogle"))}</button><button type="button" data-add="${i}">${esc(t("add"))}</button></div></div>`,
+              )
+              .join("")}</div>`;
+            log.appendChild(wrap);
+            scroll();
+            wrap.querySelectorAll("[data-add]").forEach((b) =>
+              b.addEventListener("click", () => {
+                me(esc(b.textContent));
+                typing(500, () =>
+                  confirmCard(
+                    receipt([cands[+b.dataset.add]], "inbox", "fromPost", true),
+                  ),
+                );
+              }),
+            );
+            setQuick([
+              {
+                label: t("notIt"),
+                run: () =>
+                  typing(300, () => {
+                    bot(esc(t("igNoPlace")));
+                    fallbackQuick({ ig: true });
+                  }),
+              },
+            ]);
+          });
+        });
+      }
+
+      /* ---------------- web ---------------- */
+      const RECENT = () => [
+        {
+          key: "lantern",
+          layer: "inbox",
+          ch: "LINE",
+          st: "stAdded",
+          tone: "ok",
+          time: lang === "en" ? "2 min ago" : "2 分鐘前",
+        },
+        {
+          key: "jade",
+          layer: "sat",
+          ch: "LINE",
+          st: "stAdded",
+          tone: "ok",
+          time: lang === "en" ? "Yesterday" : "昨天",
+        },
+        {
+          raw: "maps.app.goo.gl/c3",
+          layer: null,
+          ch: "LINE",
+          st: "stNotFound",
+          tone: "err",
+          time: lang === "en" ? "Yesterday" : "昨天",
+        },
+        {
+          key: "soy",
+          layer: "inbox",
+          ch: "LINE",
+          st: "stUndone",
+          tone: "muted",
+          time: lang === "en" ? "Oct 29" : "10 月 29 日",
+        },
+      ];
+      function goWeb(screen = 0) {
+        S.web.screen = screen;
+        S.web.state = "line";
+        selectScene("web", true);
+      }
+      function goWebMove() {
+        S.web.state = "line";
+        S.web.screen = 0;
+        selectScene("web", true);
+        openMoveSheet(RECENT()[0]);
+      }
+      function sceneWeb() {
+        controlsFor(
+          [
+            ["ctlWebLine", () => setWeb("line")],
+            ["ctlWebNone", () => setWeb("none")],
+            ["ctlWebEmpty", () => setWeb("empty")],
+            ["ctlWebIg", () => setWeb("igcode")],
+            ["ctlWebOff", () => setWeb("off")],
+          ],
+          "ctlWebTitle",
+          "ctlWebDesc",
+        );
+        renderWeb();
+      }
+      function setWeb(s) {
+        S.web.state = s;
+        S.web.screen = 0;
+        S.web.toast = "";
+        renderWeb();
+      }
+      function renderWeb() {
+        const st = S.web.state;
+        const seg = `<div class="segmented" role="group" aria-label="Screens">${C[
+          lang
+        ].screensTab
+          .map(
+            (l, i) =>
+              `<button type="button" data-screen="${i}" aria-pressed="${S.web.screen === i}">${esc(l)}</button>`,
+          )
+          .join("")}</div>`;
+        if (S.web.screen === 1) {
+          renderInboxLayer(seg);
+          return;
+        }
+        const lineConnected = st === "line" || st === "empty";
+        const lineCard =
+          st === "off"
+            ? `<div class="panel"><div class="ch-row"><div class="ch-mark line" aria-hidden="true">LINE</div><div class="ch-txt"><b>LINE</b><span class="chip muted">${esc(t("notAvail"))}</span></div></div></div>`
+            : lineConnected
+              ? `<div class="panel"><div class="ch-row"><div class="ch-mark line" aria-hidden="true">LINE</div><div class="ch-txt"><b>LINE</b><span class="chip ok">${esc(t("isConnected"))}</span> <small style="color:var(--th-muted)">${esc(t("since"))}</small></div></div>
+                <label class="fl" for="dest">${esc(t("destination"))}</label>
+                <select class="fs" id="dest">
+                  <option value="inbox" ${S.web.dest === "inbox" ? "selected" : ""}>${esc(t("destInbox"))}</option>
+                  <option value="sat" ${S.web.dest === "sat" ? "selected" : ""}>${esc(t("group") + ln("sat"))}</option>
+                  <option value="tokyo" ${S.web.dest === "tokyo" ? "selected" : ""}>${esc(ln("tokyo"))}</option>
+                  <option value="family" ${S.web.dest === "family" ? "selected" : ""}>${esc(ln("family"))}</option>
+                </select>
+                ${S.web.dest === "sat" ? `<div class="msgbox warn" role="status">${esc(t("groupWarn"))}</div>` : ""}
+                <button class="btn danger" id="disc">${esc(t("disconnect"))}</button></div>`
+              : `<div class="panel"><div class="ch-row"><div class="ch-mark line" aria-hidden="true">LINE</div><div class="ch-txt"><b>LINE</b><span class="chip muted">${esc(t("notConnected"))}</span></div></div>
+                <button class="btn" id="open-line">${esc(t("openLine"))}</button>
+                <p style="text-align:center;font-size:13px;color:var(--th-muted);margin:12px 0 0">${esc(t("scanQr"))}</p>
+                <div class="qr" role="img" aria-label="QR code to add ${BRAND} on LINE"></div></div>`;
+        const igCard =
+          st === "igcode"
+            ? `<div class="panel" id="igpanel"><div class="ch-row"><div class="ch-mark ig" aria-hidden="true">IG</div><div class="ch-txt"><b>${esc(t("igCodeTitle"))}</b></div></div>
+                <p style="font-size:14px;line-height:1.5">${esc(t("igCodeBody"))}</p>
+                <div class="code" aria-label="Code">LL-7K4Q-9M</div>
+                <button class="btn">${esc(t("copyOpen"))}</button>
+                <div class="msgbox ok" role="status" id="igwait">${esc(t("waiting"))}</div>
+                <button class="btn ghost" id="sim">${esc(t("simulateDm"))}</button></div>`
+            : `<div class="panel"><div class="ch-row"><div class="ch-mark ig" aria-hidden="true">IG</div><div class="ch-txt"><b>Instagram</b><span class="chip muted">${esc(st === "off" ? t("notAvail") : t("comingSoon"))}</span></div></div></div>`;
+        const recent =
+          st === "line"
+            ? `<ul class="list">${RECENT()
+                .map(
+                  (
+                    r,
+                    i,
+                  ) => `<li><div class="grow"><div class="ttl">${esc(r.key ? pn(r.key) : r.raw)}</div>
+                <div class="sub">${r.layer ? "→ " + esc(ln(r.layer)) + " · " : ""}${esc(r.time)} · <span class="chip via">${esc(t("via", { ch: r.ch }))}</span></div>
+                <span class="chip ${r.tone}">${esc(t(r.st))}</span></div>
+                ${r.st === "stUndone" ? "" : `<button class="icon-btn" aria-label="${esc(r.key ? pn(r.key) : r.raw)}: more actions" aria-expanded="false" data-row="${i}">⋯</button>`}</li>`,
+                )
+                .join("")}</ul>`
+            : `<div class="panel"><p style="margin:0 0 8px">${esc(t("recentEmpty"))}</p><b>${esc(t("howTo"))}</b><ol class="help-steps">${C[lang].howSteps.map((s) => `<li>${esc(s)}</li>`).join("")}</ol></div>`;
+        const toast = S.web.toast
+          ? `<div class="msgbox ok" role="status">${esc(S.web.toast)}</div>`
+          : "";
+        webShell(
+          "/profile/connections",
+          `<div class="pg cols">${seg}
+            <h1>${esc(t("chatTitle"))}</h1><p class="lead">${esc(t("chatIntro"))}</p>
+            <div>${lineCard}${igCard}</div>
+            <div><h2>${esc(t("recent"))}</h2>${toast}${st === "off" ? "" : recent}</div>
+          </div>`,
+          true,
+        );
+        wireWeb();
+      }
+      function wireWeb() {
+        phone.querySelectorAll("[data-screen]").forEach((b) =>
+          b.addEventListener("click", () => {
+            S.web.screen = +b.dataset.screen;
+            renderWeb();
+          }),
+        );
+        phone.querySelector("#dest")?.addEventListener("change", (e) => {
+          S.web.dest = e.target.value;
+          renderWeb();
+        });
+        phone.querySelector("#disc")?.addEventListener("click", () => {
+          if (confirm(t("disconnectQ"))) setWeb("none");
+        });
+        phone.querySelector("#open-line")?.addEventListener("click", () => {
+          S.unVariant = "member";
+          selectScene("unlinked");
+        });
+        phone.querySelector("#sim")?.addEventListener("click", () => {
+          const p = phone.querySelector("#igpanel");
+          p.innerHTML = `<div class="ch-row"><div class="ch-mark ig" aria-hidden="true">IG</div><div class="ch-txt"><b>${esc(t("igConfirm"))}</b><span class="chip muted">@doug.eats</span></div></div>
+            <div class="btn-row"><button class="btn ghost" id="ignot">${esc(t("notMe"))}</button><button class="btn" id="igyes">${esc(t("itsMe"))}</button></div>`;
+          p.querySelector("#ignot").addEventListener("click", () =>
+            setWeb("line"),
+          );
+          p.querySelector("#igyes").addEventListener("click", () => {
+            p.innerHTML = `<div class="ch-row"><div class="ch-mark ig" aria-hidden="true">IG</div><div class="ch-txt"><b>Instagram</b><span class="chip ok">${esc(t("isConnected"))}</span></div></div>`;
+          });
+        });
+        phone.querySelectorAll("[data-row]").forEach((b) =>
+          b.addEventListener("click", () => {
+            const li = b.closest("li");
+            const open = li.querySelector(".menu");
+            phone.querySelectorAll(".menu").forEach((m) => m.remove());
+            phone
+              .querySelectorAll("[data-row]")
+              .forEach((x) => x.setAttribute("aria-expanded", "false"));
+            if (open) return;
+            const r = RECENT()[+b.dataset.row];
+            b.setAttribute("aria-expanded", "true");
+            const m = document.createElement("div");
+            m.className = "menu";
+            m.innerHTML = r.layer
+              ? `<button type="button" data-a="move">${esc(t("moveBtn"))}</button><button type="button" data-a="remove">${esc(t("remove"))}</button>`
+              : `<button type="button" data-a="find">${esc(t("findPlace"))}</button><button type="button" data-a="remove">${esc(t("remove"))}</button>`;
+            li.querySelector(".grow").appendChild(m);
+            m.querySelector("button").focus();
+            m.querySelectorAll("button").forEach((x) =>
+              x.addEventListener("click", () => {
+                if (x.dataset.a === "move") openMoveSheet(r);
+                else if (x.dataset.a === "remove") {
+                  S.web.toast = t("removedToast", {
+                    layer: r.layer ? ln(r.layer) : "",
+                  });
+                  renderWeb();
+                } else {
+                  selectScene("line");
+                  lineCid();
+                }
+              }),
+            );
+          }),
+        );
+      }
+      function openMoveSheet(r) {
+        const inner = phone.querySelector(".phone-inner");
+        const scrim = document.createElement("div");
+        scrim.className = "scrim";
+        const sheet = document.createElement("div");
+        sheet.className = "sheet";
+        sheet.setAttribute("role", "dialog");
+        sheet.setAttribute("aria-modal", "true");
+        sheet.setAttribute("aria-labelledby", "mv-title");
+        sheet.innerHTML = `<h2 id="mv-title" style="margin:0 0 4px;font-size:18px">${esc(t("moveTitle"))}</h2>
+          <p style="margin:0 0 8px;color:var(--th-muted)">${esc(pn(r.key))}</p>
+          <fieldset style="border:0;padding:0;margin:0"><legend class="sr-only">${esc(t("moveTitle"))}</legend>
+          ${LAYERS.map(
+            (l) =>
+              `<label class="radio"><input type="radio" name="mv" value="${l.id}" ${l.id === r.layer ? "checked" : ""}/><span>${esc(l[lang])}<small>${esc(audience(l.id))}</small></span></label>`,
+          ).join("")}</fieldset>
+          <div class="btn-row"><button class="btn ghost" id="mv-cancel">${esc(t("cancel"))}</button><button class="btn" id="mv-go">${esc(t("moveCta"))}</button></div>`;
+        inner.append(scrim, sheet);
+        sheet.querySelector("input:checked")?.focus();
+        const close = () => {
+          scrim.remove();
+          sheet.remove();
+        };
+        scrim.addEventListener("click", close);
+        sheet.addEventListener("keydown", (e) => e.key === "Escape" && close());
+        sheet.querySelector("#mv-cancel").addEventListener("click", close);
+        sheet.querySelector("#mv-go").addEventListener("click", () => {
+          const to = sheet.querySelector("input:checked").value;
+          S.web.toast = t("movedToast", { layer: ln(to) });
+          close();
+          renderWeb();
+        });
+      }
+      function renderInboxLayer(seg) {
+        const items = [
+          { key: "lantern", via: "LINE" },
+          { key: "tea", via: "LINE" },
+          { key: "tiger", via: "Instagram" },
+          { key: "soy", via: null },
+        ];
+        webShell(
+          "/layers/inbox-7f2c",
+          `<div class="pg">${seg}
+            <h1>${esc(t("inboxLayer"))}</h1>
+            <p class="lead">${esc(t("layerPrivate"))}</p>
+            <div class="msgbox warn">${esc(t("sortHint"))}</div>
+            <ul class="list">${items
+              .map(
+                (
+                  it,
+                ) => `<li><div class="grow"><div class="ttl">${esc(pn(it.key))}</div>
+                <div class="sub">${esc(t("addedBy"))}${it.via ? ` · <span class="chip via">${esc(t("via", { ch: it.via }))}</span>` : ""}</div></div>
+                <button class="icon-btn" aria-label="${esc(pn(it.key))}: ${esc(t("moveBtn"))}" data-mv="${it.key}">↗</button></li>`,
+              )
+              .join("")}</ul>
+            <p style="font-size:12px;color:var(--th-muted)">${esc(t("editorOnly"))}</p></div>`,
+        );
+        phone.querySelectorAll("[data-screen]").forEach((b) =>
+          b.addEventListener("click", () => {
+            S.web.screen = +b.dataset.screen;
+            renderWeb();
+          }),
+        );
+        phone
+          .querySelectorAll("[data-mv]")
+          .forEach((b) =>
+            b.addEventListener("click", () =>
+              openMoveSheet({ key: b.dataset.mv, layer: "inbox" }),
+            ),
+          );
+      }
+
+      /* ---------------- shell ---------------- */
+      function controlsFor(list, titleKey, descKey) {
+        controls.innerHTML = `<h2>${esc(t(titleKey))}</h2><p>${esc(t(descKey))}</p>
+          <div class="btns">${list.map(([k], i) => `<button type="button" data-c="${i}">${esc(t(k))}</button>`).join("")}</div>
+          <div class="note">${esc(t("ctlNote"))}</div>`;
+        controls
+          .querySelectorAll("[data-c]")
+          .forEach((b) =>
+            b.addEventListener("click", () => list[+b.dataset.c][1]()),
+          );
+      }
+      const SCENES = {
+        line: sceneLine,
+        unlinked: sceneUnlinked,
+        ig: sceneIg,
+        web: sceneWeb,
+      };
+      function selectScene(s, keepWeb = false) {
+        scene = s;
+        awaitingName = null;
+        document
+          .querySelectorAll("[data-scene]")
+          .forEach((b) =>
+            b.setAttribute("aria-selected", String(b.dataset.scene === s)),
+          );
+        if (s === "web" && !keepWeb) {
+          S.web.screen = 0;
+          S.web.toast = "";
+        }
+        SCENES[s]();
+      }
+      document
+        .querySelectorAll("[data-scene]")
+        .forEach((b) =>
+          b.addEventListener("click", () => selectScene(b.dataset.scene)),
+        );
+      document.querySelectorAll("[data-lang]").forEach((b) =>
+        b.addEventListener("click", () => {
+          lang = b.dataset.lang;
+          document.documentElement.lang = lang === "zh" ? "zh-Hant" : "en";
+          document
+            .querySelectorAll("[data-lang]")
+            .forEach((x) => x.setAttribute("aria-pressed", String(x === b)));
+          selectScene(scene, true);
+        }),
+      );
+      selectScene("line");
+    </script>
+  </body>
+</html>
