@@ -1,7 +1,5 @@
 "use client";
-import { useState } from "react";
-import Link from "next/link";
-import { useRouter } from "next/navigation";
+import { useEffect, useRef, useState } from "react";
 import {
   ArrowDown,
   ArrowUp,
@@ -17,14 +15,16 @@ import { distanceUnit, formatDistance } from "@taiwanhub/shared";
 import { api } from "@/components/actions";
 import { routeLinks } from "@/lib/route-link";
 import { tripCopy } from "@/lib/trip-copy";
+import { dayColor } from "@/lib/trip-map";
 import type {
   TripDayView,
   TripStopView,
   TripView,
 } from "@/features/trips/repository";
-import { TripMap, dayColor } from "./trip-map";
 
 type Toast = { stopId: string; name: string } | null;
+/** Every change is saved as it is made; this is what the person is told. */
+type Save = "idle" | "saving" | "saved" | "failed";
 
 function dateLabel(iso: string, locale: string) {
   return new Intl.DateTimeFormat(locale === "zh-TW" ? "zh-TW" : "en-US", {
@@ -36,59 +36,121 @@ function dateLabel(iso: string, locale: string) {
 }
 
 /**
- * A trip: day chips filter the map and the list together, so they always
- * agree. Every change goes to the server, which re-orders only the affected
- * day(s) and returns the new view; a stale revision reloads it.
+ * One trip in the map panel: day chips focus the map and the list together,
+ * so they always agree. Every change goes to the server, which re-orders only
+ * the affected day(s) and returns the new view; a stale revision reloads it.
+ * Changes are serialized, so quick keyboard presses never race on a revision.
  */
 export function TripPlanner({
-  initial,
+  view,
+  onView,
   locale,
-  mapToken,
+  focus,
+  onFocus,
+  selectedStopId,
+  onSelectStop,
+  mapShown,
+  onDeleted,
 }: {
-  initial: TripView;
+  view: TripView;
+  onView: (view: TripView) => void;
   locale: string;
-  mapToken?: string;
+  /** A day id, or "all". */
+  focus: string;
+  onFocus: (focus: string) => void;
+  selectedStopId: string | null;
+  onSelectStop: (stopId: string | null) => void;
+  /** The trip is drawn on the map; otherwise the list says it stands alone. */
+  mapShown: boolean;
+  onDeleted: () => void;
 }) {
   const t = tripCopy(locale);
-  const router = useRouter();
-  const [view, setView] = useState(initial);
-  const [focus, setFocus] = useState<string>("all");
-  const [busy, setBusy] = useState(false);
+  const [save, setSave] = useState<Save>("idle");
   const [notice, setNotice] = useState("");
   const [toast, setToast] = useState<Toast>(null);
-  const [mapOff, setMapOff] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState(false);
+  const [deleting, setDeleting] = useState(false);
+  // The newest view, for requests queued behind a running one.
+  const latest = useRef(view);
+  useEffect(() => {
+    latest.current = view;
+  }, [view]);
+  const queue = useRef<Promise<unknown>>(Promise.resolve());
+  const retry = useRef<(() => Promise<boolean>) | null>(null);
+  const [canRetry, setCanRetry] = useState(false);
+  const undoButton = useRef<HTMLButtonElement>(null);
   const unit = distanceUnit(view.trip.citySlug);
   const distance = (m: number) => formatDistance(m, unit);
   const name = (s: TripStopView) =>
     (locale === "zh-TW" && s.labelChinese) || s.label || t.unnamed;
   const base = `trips/${view.trip.id}`;
 
-  async function run(path: string, method: string, body: object = {}) {
-    setBusy(true);
-    setNotice("");
+  async function reload() {
     try {
-      const next: TripView = await api(path, method, {
-        ...body,
-        expectedRevision: view.revision,
-      });
-      setView(next);
+      const next: TripView = await api(base, "GET");
+      latest.current = next;
+      onView(next);
       return true;
-    } catch (e) {
-      const status = (e as { status?: number }).status;
-      if (status === 409) {
-        setView(await api(base, "GET"));
-        setNotice(t.conflict);
-      } else setNotice((e as Error).message || t.failed);
+    } catch {
       return false;
-    } finally {
-      setBusy(false);
     }
   }
 
+  function run(path: string, method: string, body: object = {}) {
+    const attempt = async (): Promise<boolean> => {
+      setSave("saving");
+      setNotice("");
+      try {
+        const next: TripView = await api(path, method, {
+          ...body,
+          expectedRevision: latest.current.revision,
+        });
+        latest.current = next;
+        onView(next);
+        setSave("saved");
+        retry.current = null;
+        setCanRetry(false);
+        return true;
+      } catch (e) {
+        const status = (e as { status?: number }).status;
+        setSave("failed");
+        if (status === 409) {
+          // Someone else changed it: show their version, then the person can redo the edit.
+          retry.current = null;
+          setCanRetry(false);
+          setNotice((await reload()) ? t.conflict : t.reloadFailed);
+        } else {
+          retry.current = attempt;
+          setCanRetry(true);
+          setNotice((e as Error).message || t.saveFailed);
+        }
+        return false;
+      }
+    };
+    const result = queue.current.then(attempt);
+    queue.current = result.catch(() => false);
+    return result;
+  }
+
+  useEffect(() => {
+    if (toast) undoButton.current?.focus();
+  }, [toast]);
+
+  // A pin picked on the map reveals and focuses its row; a row the person
+  // used themselves keeps focus where it is.
+  useEffect(() => {
+    if (!selectedStopId) return;
+    const row = document.getElementById(`trip-stop-${selectedStopId}`);
+    row?.scrollIntoView({ block: "nearest" });
+    if (!row?.contains(document.activeElement))
+      row?.querySelector<HTMLElement>("button")?.focus({ preventScroll: true });
+  }, [selectedStopId]);
+
   const remove = async (stop: TripStopView) => {
-    if (await run(`${base}/stops/${stop.id}`, "PATCH", { status: "removed" }))
+    if (await run(`${base}/stops/${stop.id}`, "PATCH", { status: "removed" })) {
+      if (selectedStopId === stop.id) onSelectStop(null);
       setToast({ stopId: stop.id, name: name(stop) });
+    }
   };
   const restore = async (stopId: string) => {
     setToast(null);
@@ -97,19 +159,25 @@ export function TripPlanner({
   const moveTo = (stop: TripStopView, dayId: string | null) =>
     run(`${base}/stops/${stop.id}`, "PATCH", { dayId });
   const reorder = (day: TripDayView, from: number, to: number) => {
+    if (to < 0 || to >= day.stops.length) return;
     const order = day.stops.map((s) => s.id);
     const [moved] = order.splice(from, 1);
     order.splice(to, 0, moved);
     return run(`${base}/days/${day.id}`, "PATCH", { order });
   };
   const deleteTrip = async () => {
-    setBusy(true);
+    setDeleting(true);
+    setSave("saving");
+    setNotice("");
     try {
       await api(base, "DELETE");
-      router.push("/trips");
+      onDeleted();
     } catch (e) {
-      setNotice((e as Error).message || t.failed);
-      setBusy(false);
+      setSave("failed");
+      setNotice((e as Error).message || t.saveFailed);
+      retry.current = null;
+      setCanRetry(false);
+      setDeleting(false);
     }
   };
 
@@ -117,6 +185,7 @@ export function TripPlanner({
     .map((day, index) => ({ day, index }))
     .filter(({ day }) => focus === "all" || focus === day.id);
   const totalStops = view.days.reduce((n, d) => n + d.stops.length, 0);
+  const busy = save === "saving";
 
   const stopMenu = (stop: TripStopView, dayId: string | null) =>
     view.canEdit && (
@@ -128,7 +197,6 @@ export function TripPlanner({
           id={`move-${stop.id}`}
           className="trip-move"
           value={dayId ?? ""}
-          disabled={busy}
           onChange={(e) => void moveTo(stop, e.target.value || null)}
         >
           {view.days.map((d, i) => (
@@ -142,7 +210,6 @@ export function TripPlanner({
           type="button"
           className="icon-button"
           aria-label={t.remove(name(stop))}
-          disabled={busy}
           onClick={() => void remove(stop)}
         >
           <X size={16} aria-hidden="true" />
@@ -151,36 +218,57 @@ export function TripPlanner({
     );
 
   return (
-    <div className="container page-bottom trip-planner">
-      <Link className="text-button" href="/trips">
-        {t.backToTrips}
-      </Link>
-      <div className="page-header">
-        <h1>{view.trip.title}</h1>
-        <p className="muted">
-          {view.trip.startsOn === view.trip.endsOn
-            ? dateLabel(view.trip.startsOn, locale)
-            : `${dateLabel(view.trip.startsOn, locale)} – ${dateLabel(view.trip.endsOn, locale)}`}{" "}
-          · {view.trip.cityName} · {t.stops(totalStops)} ·{" "}
-          {view.trip.audience === "group"
-            ? t.groupTrip(view.trip.ownerName)
-            : t.privateTrip}
-        </p>
-        {!view.canEdit && <p className="notice">{t.viewOnly}</p>}
-      </div>
+    <div className="trip-planner">
+      <p className="muted trip-subtitle">
+        {view.trip.startsOn === view.trip.endsOn
+          ? dateLabel(view.trip.startsOn, locale)
+          : `${dateLabel(view.trip.startsOn, locale)} – ${dateLabel(view.trip.endsOn, locale)}`}{" "}
+        · {view.trip.cityName} · {t.stops(totalStops)} ·{" "}
+        {view.trip.audience === "group"
+          ? t.groupTrip(view.trip.ownerName)
+          : t.privateTrip}
+      </p>
+      {!view.canEdit && <p className="notice">{t.viewOnly}</p>}
 
+      <p
+        className="fine-print trip-save"
+        role="status"
+        data-state={save}
+        data-testid="trip-save"
+      >
+        {save === "saving" ? t.saving : save === "saved" ? t.saved : ""}
+      </p>
       {notice && (
         <p className="message error-message" role="alert">
-          {notice}
+          {notice}{" "}
+          {canRetry ? (
+            <button
+              type="button"
+              className="text-button"
+              onClick={() => void retry.current?.()}
+            >
+              {t.tryAgain}
+            </button>
+          ) : (
+            <button
+              type="button"
+              className="text-button"
+              onClick={async () => {
+                setNotice((await reload()) ? "" : t.reloadFailed);
+              }}
+            >
+              {t.reloadTrip}
+            </button>
+          )}
         </p>
       )}
       {toast && (
         <p className="trip-toast" role="status">
           {t.removedToast(toast.name)}{" "}
           <button
+            ref={undoButton}
             type="button"
             className="text-button"
-            disabled={busy}
             onClick={() => void restore(toast.stopId)}
           >
             {t.undo}
@@ -194,7 +282,6 @@ export function TripPlanner({
             <button
               type="button"
               className="text-button"
-              disabled={busy}
               onClick={() => void run(`${base}/remove-unavailable`, "POST")}
             >
               {t.removeUnavailable}
@@ -203,12 +290,12 @@ export function TripPlanner({
         </p>
       )}
 
-      <div className="trip-chips" role="group" aria-label={t.trips}>
+      <div className="trip-chips" role="group" aria-label={t.daysLabel}>
         <button
           type="button"
           aria-pressed={focus === "all"}
           className={focus === "all" ? "chip on" : "chip"}
-          onClick={() => setFocus("all")}
+          onClick={() => onFocus("all")}
         >
           {t.allDays}
         </button>
@@ -218,7 +305,7 @@ export function TripPlanner({
             type="button"
             aria-pressed={focus === day.id}
             className={focus === day.id ? "chip on" : "chip"}
-            onClick={() => setFocus(day.id)}
+            onClick={() => onFocus(day.id)}
           >
             <span
               className="trip-swatch"
@@ -230,20 +317,7 @@ export function TripPlanner({
         ))}
       </div>
 
-      {!mapOff ? (
-        <>
-          <TripMap
-            days={view.days}
-            focus={focus}
-            label={view.trip.title}
-            token={mapToken}
-            onUnavailable={() => setMapOff(true)}
-          />
-          <p className="fine-print">{t.legend}</p>
-        </>
-      ) : (
-        <p className="fine-print">{t.mapUnavailable}</p>
-      )}
+      <p className="fine-print">{mapShown ? t.legend : t.mapUnavailable}</p>
 
       {view.canEdit && (
         <div className="actions">
@@ -279,14 +353,14 @@ export function TripPlanner({
             data-testid="trip-day"
           >
             <div className="trip-day-heading">
-              <h2 id={`day-${day.id}`}>
+              <h3 id={`day-${day.id}`}>
                 <span
                   className="trip-swatch"
                   style={{ background: dayColor(index) }}
                   aria-hidden="true"
                 />
                 {t.dayHeading(index + 1, dateLabel(day.date, locale))}
-              </h2>
+              </h3>
               {day.orderMode === "manual" && (
                 <span className="trip-badge">{t.yourOrder}</span>
               )}
@@ -294,7 +368,6 @@ export function TripPlanner({
                 <button
                   type="button"
                   className="text-button"
-                  disabled={busy}
                   onClick={() =>
                     void run(`${base}/optimize`, "POST", {
                       scope: "day",
@@ -312,7 +385,12 @@ export function TripPlanner({
             ) : (
               <ol className="trip-stops">
                 {day.stops.map((stop, i) => (
-                  <li key={stop.id} data-testid="trip-stop">
+                  <li
+                    key={stop.id}
+                    id={`trip-stop-${stop.id}`}
+                    data-testid="trip-stop"
+                    data-selected={stop.id === selectedStopId}
+                  >
                     <span
                       className="trip-number"
                       style={{ background: dayColor(index) }}
@@ -321,7 +399,23 @@ export function TripPlanner({
                       {i + 1}
                     </span>
                     <span className="trip-stop-text">
-                      <span className="trip-stop-name">{name(stop)}</span>
+                      {stop.location ? (
+                        <button
+                          type="button"
+                          className="trip-stop-name trip-stop-pick"
+                          aria-pressed={stop.id === selectedStopId}
+                          aria-label={t.showOnMap(name(stop))}
+                          onClick={() =>
+                            onSelectStop(
+                              stop.id === selectedStopId ? null : stop.id,
+                            )
+                          }
+                        >
+                          {name(stop)}
+                        </button>
+                      ) : (
+                        <span className="trip-stop-name">{name(stop)}</span>
+                      )}
                       <span className="fine-print">
                         {!stop.location ? (
                           <>
@@ -345,7 +439,7 @@ export function TripPlanner({
                           type="button"
                           className="icon-button"
                           aria-label={t.moveUp(name(stop))}
-                          disabled={busy || i === 0}
+                          aria-disabled={i === 0}
                           onClick={() => void reorder(day, i, i - 1)}
                         >
                           <ArrowUp size={16} aria-hidden="true" />
@@ -354,7 +448,7 @@ export function TripPlanner({
                           type="button"
                           className="icon-button"
                           aria-label={t.moveDown(name(stop))}
-                          disabled={busy || i === day.stops.length - 1}
+                          aria-disabled={i === day.stops.length - 1}
                           onClick={() => void reorder(day, i, i + 1)}
                         >
                           <ArrowDown size={16} aria-hidden="true" />
@@ -395,7 +489,7 @@ export function TripPlanner({
 
       {view.notScheduled.length > 0 && (
         <section className="trip-day" aria-labelledby="not-scheduled">
-          <h2 id="not-scheduled">{t.notScheduled}</h2>
+          <h3 id="not-scheduled">{t.notScheduled}</h3>
           <ul className="trip-stops">
             {view.notScheduled.map((stop) => (
               <li key={stop.id} data-testid="trip-unscheduled">
@@ -414,7 +508,7 @@ export function TripPlanner({
 
       {view.canEdit && view.removed.length > 0 && (
         <section className="trip-day" aria-labelledby="removed-stops">
-          <h2 id="removed-stops">{t.removedHeading}</h2>
+          <h3 id="removed-stops">{t.removedHeading}</h3>
           <ul className="trip-stops">
             {view.removed.map((stop) => (
               <li key={stop.id}>
@@ -425,7 +519,6 @@ export function TripPlanner({
                   type="button"
                   className="button secondary small"
                   aria-label={t.addBack(name(stop))}
-                  disabled={busy}
                   onClick={() => void restore(stop.id)}
                 >
                   {t.addBackShort}
@@ -446,14 +539,15 @@ export function TripPlanner({
               <button
                 type="button"
                 className="button secondary small trip-danger"
-                disabled={busy}
+                disabled={deleting}
                 onClick={() => void deleteTrip()}
               >
-                {t.confirmDeleteYes}
+                {deleting ? t.deleting : t.confirmDeleteYes}
               </button>
               <button
                 type="button"
                 className="button secondary small"
+                disabled={deleting}
                 onClick={() => setConfirmDelete(false)}
               >
                 {t.cancel}

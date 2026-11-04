@@ -1,6 +1,5 @@
 "use client";
 import { useEffect, useState, type FormEvent } from "react";
-import { useRouter } from "next/navigation";
 import {
   defaultStopsPerDay,
   maxStopsPerDay,
@@ -24,22 +23,24 @@ function span(start: string, end: string) {
   );
 }
 
-/** The new-trip sheet: name, dates, pace, optional group, and a preview of what gets planned. */
+/** The new-trip flow in the map panel: name, dates, pace, optional group, and a preview of what gets planned. */
 export function NewTripForm({
   locale,
   source,
   group,
   defaultStart,
   defaultEnd,
+  onCreated,
 }: {
   locale: string;
+  /** Opens the created trip on the map. */
+  onCreated: (tripId: string) => void;
   source: { kind: "layer" | "folder"; id: string; name: string };
   group: { id: string; name: string } | null;
   defaultStart: string;
   defaultEnd: string;
 }) {
   const t = tripCopy(locale);
-  const router = useRouter();
   const [title, setTitle] = useState(source.name.slice(0, 120));
   const [startsOn, setStartsOn] = useState(defaultStart);
   const [endsOn, setEndsOn] = useState(defaultEnd);
@@ -84,7 +85,7 @@ export function NewTripForm({
         stopsPerDay: pace,
         ...(asGroup && group ? { groupId: group.id } : {}),
       });
-      router.push(`/trips/${created.trip.id}`);
+      onCreated(created.trip.id);
     } catch (e) {
       const code = (e as { code?: string }).code;
       setError(
@@ -96,12 +97,9 @@ export function NewTripForm({
 
   const noLocation = preview?.included.filter((p) => !p.located).length ?? 0;
   return (
-    <div className="container page-bottom trip-new">
-      <div className="page-header">
-        <h1>{t.newTrip}</h1>
-        <p className="muted">{t.fromSource(source.name)}</p>
-      </div>
-      <form className="form-panel" onSubmit={submit}>
+    <div className="trip-new">
+      <p className="muted">{t.fromSource(source.name)}</p>
+      <form className="form-panel form-stack" onSubmit={submit}>
         <label>
           {t.titleLabel}
           <input

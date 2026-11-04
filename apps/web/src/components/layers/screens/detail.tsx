@@ -1,7 +1,7 @@
 import type { Metadata } from "next";
-import NextLink from "next/link";
 import { LayerLink as Link } from "../workspace-navigation";
 import { tripCopy } from "@/lib/trip-copy";
+import { TripPlanLink } from "@/components/trips/trip-screen";
 import { Lock, Route } from "lucide-react";
 import { getCopy, getLocale, format, dateLabel } from "@/lib/i18n";
 import { getActiveCity } from "@/lib/city";
@@ -148,17 +148,13 @@ export default async function LayerPage({ params }: Props) {
             t={t}
           />
           {flags.trips &&
-            actor &&
             layer.ownerKind !== "system" &&
             layer.rule?.kind !== "saves" &&
             counts.places > 0 && (
-              <NextLink
-                className="button secondary"
-                href={`/trips/new?layer=${encodeURIComponent(layer.id)}`}
-              >
+              <TripPlanLink layer={layer.id}>
                 <Route size={16} aria-hidden="true" />
                 {tripCopy(locale).planTripFromLayer}
-              </NextLink>
+              </TripPlanLink>
             )}
           {layer.rule?.kind === "daily_pick" && (
             <Link

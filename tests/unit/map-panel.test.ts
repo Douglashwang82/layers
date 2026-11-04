@@ -142,6 +142,25 @@ describe("panel view", () => {
     ).toBe("detail");
   });
 
+  it("puts a trip screen over everything else, keeping the rest for its exit", () => {
+    const all = {
+      ...onMap,
+      tripScreen: true,
+      layerScreen: true,
+      routeOpen: true,
+      detailOpen: true,
+      listView: true,
+    };
+    expect(resolvePanelView(all)).toBe("trip-screen");
+    expect(resolvePanelView({ ...all, tripScreen: false })).toBe(
+      "layer-screen",
+    );
+    // Closing the trip returns to what was open under it.
+    expect(
+      resolvePanelView({ ...all, tripScreen: false, layerScreen: false }),
+    ).toBe("route");
+  });
+
   it("shows details over the list and over Layers", () => {
     expect(
       resolvePanelView({ ...onMap, detailOpen: true, listView: true }),

@@ -6,6 +6,8 @@ import { runMapQuery } from "@/features/map/query";
 import { redirect } from "next/navigation";
 import { LayerWorkspaceScreen } from "@/components/layers/workspace-screen";
 import { layerPanelKeys } from "@/lib/layer-workspace";
+import { readTripPanel, tripPanelKeys } from "@/lib/trip-panel";
+import { loadTripScreen } from "@/features/trips/screen";
 import { getMapItemDetail } from "@/features/map/detail";
 import { listMapLibrary, resolveLayers } from "@/features/layers/repository";
 import { listMapCollections } from "@/features/layers/collections";
@@ -81,11 +83,21 @@ export default async function HomePage({
   const canonical = await mvpCanonicalUrl(params, state, city, actor);
   if (canonical) {
     const url = new URL(canonical, "https://local.invalid");
-    for (const key of layerPanelKeys)
+    for (const key of [...layerPanelKeys, ...tripPanelKeys])
       if (params[key] !== undefined) url.searchParams.set(key, params[key]!);
     redirect(url.pathname + url.search);
   }
-  const [result, detail, library, folders] = await Promise.all([
+  // Trip screens are URL state; with FEATURE_TRIPS off the params are ignored.
+  const tripPanel = flags.trips
+    ? readTripPanel(
+        new URLSearchParams(
+          Object.entries(params).flatMap(([key, value]) =>
+            value === undefined ? [] : [[key, value]],
+          ),
+        ),
+      )
+    : null;
+  const [result, detail, library, folders, tripData] = await Promise.all([
     runMapQuery(state, city, actor),
     state.item
       ? getMapItemDetail(state.item, actor).catch(() => null)
@@ -94,6 +106,7 @@ export default async function HomePage({
     actor ? listMapLibrary(actor, city) : Promise.resolve(null),
     // Folders take map slots like layers do.
     actor ? listMapCollections(actor, city) : Promise.resolve([]),
+    tripPanel ? loadTripScreen(tripPanel, actor, locale) : null,
   ]);
   return (
     <MapWorkspace
@@ -107,6 +120,8 @@ export default async function HomePage({
       token={process.env.NEXT_PUBLIC_MAPBOX_TOKEN || undefined}
       hasDemo={result.items.some((item) => item.isDemo)}
       layerWrites={flags.layerWrites}
+      tripsEnabled={flags.trips}
+      tripData={tripData}
       places={placesClientConfig()}
       folders={folders}
       library={

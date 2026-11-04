@@ -76,7 +76,7 @@ export function mapPadding(input: {
 
 /** The one screen the panel shows at a time. */
 export type PanelView =
-  "layer-screen" | "route" | "detail" | "layers" | "results";
+  "trip-screen" | "layer-screen" | "route" | "detail" | "layers" | "results";
 
 /** Whether the results list exists: no map to show it, or places without pins. */
 export function listAvailable(input: {
@@ -88,11 +88,14 @@ export function listAvailable(input: {
 }
 
 /**
- * Which screen the panel shows, highest priority first. Layer screens are URL
- * state and win; the route planner opens over an open place and returns to it.
- * Otherwise the panel is the Layers list unless there is a results list to show.
+ * Which screen the panel shows, highest priority first. Trip and layer
+ * screens are URL state and win (a trip over a layer screen if both are named);
+ * the route planner opens over an open place and returns to it. Otherwise the
+ * panel is the Layers list unless there is a results list to show.
  */
 export function resolvePanelView(input: {
+  /** A trip screen (list, new trip or one trip) is asked for and trips are enabled. */
+  tripScreen?: boolean;
   layerScreen: boolean;
   routeOpen: boolean;
   detailOpen: boolean;
@@ -102,6 +105,7 @@ export function resolvePanelView(input: {
   /** The Layers screen was asked for over the list. */
   layersRequested: boolean;
 }): PanelView {
+  if (input.tripScreen) return "trip-screen";
   if (input.layerScreen) return "layer-screen";
   if (input.routeOpen) return "route";
   if (input.detailOpen) return "detail";

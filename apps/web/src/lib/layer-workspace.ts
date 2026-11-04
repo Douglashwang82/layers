@@ -1,3 +1,4 @@
+import { tripPanelKeys } from "./trip-panel";
 /** Layer panel state is independent of the map's filters and applied layers. */
 export const layerPanelKeys = [
   "layerPanel",
@@ -35,6 +36,8 @@ export function layerWorkspaceHref(href: string, current = ""): string {
   if (!match) return href;
   const params = new URLSearchParams(current.replace(/^\?/, ""));
   for (const key of layerPanelKeys) params.delete(key);
+  // A layer screen replaces an open trip screen.
+  for (const key of tripPanelKeys) params.delete(key);
   const slug = match[1];
   params.set(
     "layerPanel",
@@ -68,6 +71,7 @@ export function withoutLayerPanel(current: string) {
 export function folderPanelHref(slug: string, current = ""): string {
   const params = new URLSearchParams(current.replace(/^\?/, ""));
   for (const key of layerPanelKeys) params.delete(key);
+  for (const key of tripPanelKeys) params.delete(key);
   params.set("layerPanel", "folder");
   params.set("folder", slug);
   return "/?" + params.toString();

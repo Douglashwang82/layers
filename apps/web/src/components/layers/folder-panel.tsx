@@ -12,6 +12,7 @@ import { maxCollectionDepth } from "@taiwanhub/shared";
 import { api } from "@/components/actions";
 import { LayerLink, LayerWorkspaceContext } from "./workspace-navigation";
 import { FolderLink } from "./folder-link";
+import { TripPlanLink } from "@/components/trips/trip-screen";
 import type {
   CollectionCandidate,
   CollectionChild,
@@ -251,12 +252,7 @@ export function FolderPanel({
           {t.folderShowOnMapButton}
         </button>
         {planTripLabel && folder.children.length > 0 && (
-          <a
-            className="button secondary"
-            href={`/trips/new?folder=${encodeURIComponent(folder.id)}`}
-          >
-            {planTripLabel}
-          </a>
+          <TripPlanLink folder={folder.id}>{planTripLabel}</TripPlanLink>
         )}
       </div>
 

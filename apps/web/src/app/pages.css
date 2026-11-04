@@ -838,7 +838,8 @@ a.settings-row:hover {
   position: relative;
   background: var(--th-surface-soft);
 }
-.map-fallback {
+/* Scoped to the legacy card: the map workspace also carries .map-fallback when it has no map. */
+.map-container.map-fallback {
   display: grid;
   place-content: center;
   justify-items: center;
@@ -848,7 +849,7 @@ a.settings-row:hover {
   height: auto;
   min-height: 200px;
 }
-.map-fallback p {
+.map-container.map-fallback p {
   max-width: 420px;
   color: var(--th-muted);
 }
@@ -1024,7 +1025,8 @@ a.settings-row:hover {
   grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
   gap: var(--th-space-3);
 }
-.trip-checkbox {
+.trip-checkbox,
+.trip-new .trip-checkbox {
   display: flex;
   gap: var(--th-space-2);
   align-items: center;
@@ -1062,14 +1064,6 @@ a.settings-row:hover {
   border-radius: 50%;
   margin-right: var(--th-space-1);
 }
-.trip-map {
-  width: 100%;
-  height: min(52vh, 420px);
-  border-radius: 12px;
-  overflow: hidden;
-  border: 1px solid var(--th-divider);
-}
-.trip-pin,
 .trip-number {
   display: inline-flex;
   align-items: center;
@@ -1093,9 +1087,9 @@ a.settings-row:hover {
   align-items: center;
   gap: var(--th-space-2) var(--th-space-3);
 }
-.trip-day-heading h2 {
+.trip-day-heading h3 {
   margin: 0;
-  font-size: 1.1rem;
+  font-size: 1.05rem;
 }
 .trip-badge {
   font-size: 0.8rem;
@@ -1121,8 +1115,9 @@ a.settings-row:hover {
   border-radius: 10px;
 }
 .trip-stop-text {
-  flex: 1;
-  min-width: 0;
+  /* Wraps the row's controls below the name before the name gets squeezed. */
+  flex: 1 1 9rem;
+  min-width: min(9rem, 100%);
   display: grid;
 }
 .trip-stop-name {
@@ -1143,6 +1138,53 @@ a.settings-row:hover {
 }
 .trip-danger {
   color: var(--th-error);
+}
+/* In the map panel (docs/plans/trip-scheduler-design.md): one column, no page chrome. */
+.trip-screen .form-panel {
+  max-width: none;
+  margin: var(--th-space-3) 0 0;
+  padding: var(--th-space-3);
+  border-radius: 12px;
+}
+.trip-screen .trip-day {
+  margin-top: var(--th-space-4);
+}
+.trip-planner {
+  min-width: 0;
+}
+.trip-planner .trip-stops li {
+  flex-wrap: wrap;
+}
+.trip-subtitle {
+  margin: var(--th-space-2) 0;
+}
+.trip-save {
+  min-height: 1.3em;
+  margin: 0;
+}
+.trip-save[data-state="saving"] {
+  color: var(--th-muted);
+}
+.trip-stops li[data-selected="true"] {
+  border-color: var(--th-focus);
+  box-shadow: 0 0 0 1px var(--th-focus);
+}
+.trip-stop-pick {
+  min-height: 36px;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+.trip-stop-pick:hover {
+  text-decoration: underline;
+}
+.trip-planner .icon-button[aria-disabled="true"] {
+  opacity: 0.35;
+  cursor: default;
 }
 @media (max-width: 480px) {
   .trip-stops li {

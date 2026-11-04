@@ -85,6 +85,22 @@ export const tripEn = {
   groupTrip: (group: string) => `Group trip · ${group}`,
   privateTrip: "Private trip",
   unnamed: "Saved place",
+  // In-map trip panel (feature/trip-map-panel)
+  daysLabel: "Days",
+  saving: "Saving…",
+  saved: "All changes saved.",
+  saveFailed: "Couldn't save that change. Your trip wasn't changed.",
+  tryAgain: "Try again",
+  reloadTrip: "Reload trip",
+  reloadFailed: "Couldn't load the latest version. Check your connection.",
+  closeTrip: "Back to the map",
+  backToTripList: "Trips",
+  tripUnavailable: "This trip isn't available.",
+  openTrip: (title: string) => `Open ${title}`,
+  browseLayers: "Browse your layers",
+  showOnMap: (name: string) => `Show ${name} on the map`,
+  deleting: "Deleting…",
+  backTo: (name: string) => `Back to ${name}`,
 };
 export type TripCopy = typeof tripEn;
 export const tripZh: TripCopy = {
@@ -165,6 +181,21 @@ export const tripZh: TripCopy = {
   groupTrip: (group) => `群組行程 · ${group}`,
   privateTrip: "私人行程",
   unnamed: "已儲存的地點",
+  daysLabel: "天數",
+  saving: "儲存中…",
+  saved: "所有變更都已儲存。",
+  saveFailed: "無法儲存這項變更，行程沒有被修改。",
+  tryAgain: "再試一次",
+  reloadTrip: "重新載入行程",
+  reloadFailed: "無法載入最新版本，請檢查網路連線。",
+  closeTrip: "回到地圖",
+  backToTripList: "行程",
+  tripUnavailable: "這個行程無法使用。",
+  openTrip: (title) => `開啟「${title}」`,
+  browseLayers: "瀏覽我的圖層",
+  showOnMap: (name) => `在地圖上顯示「${name}」`,
+  deleting: "刪除中…",
+  backTo: (name) => `回到「${name}」`,
 };
 export function tripCopy(locale: string): TripCopy {
   return locale === "zh-TW" ? tripZh : tripEn;

@@ -11,6 +11,13 @@ import {
 import { createPortal } from "react-dom";
 import { useRouter, useSearchParams } from "next/navigation";
 import { LayerWorkspaceContext } from "../layers/workspace-navigation";
+import { TripsEntry, useTripScreen } from "../trips/trip-screen";
+import type { TripScreenData } from "@/features/trips/screen";
+import {
+  readTripPanel,
+  tripPanelKeys,
+  withoutTripPanel,
+} from "@/lib/trip-panel";
 import {
   layerPanelKeys,
   readLayerPanel,
@@ -104,6 +111,8 @@ import {
   storedPanelOpen,
   type PanelView,
 } from "@/lib/map-panel";
+const noItems: MapQueryResult["items"] = [];
+const noExtraPoints: ExtraPoint[] = [];
 /** Mobile sheet height; the sheet is closed when the panel is not open. */
 type Sheet = "half" | "expanded";
 /** Camera zoom showing a whole city, at start and after switching cities. */
@@ -176,6 +185,8 @@ export function MapWorkspace({
   library = null,
   folders = [],
   layerScreen,
+  tripsEnabled = false,
+  tripData = null,
 }: {
   initial: MapQueryResult;
   initialDetail: ItemDetail | null;
@@ -192,10 +203,26 @@ export function MapWorkspace({
   /** The signed-in member's top-level folders with their trees. */
   folders?: CollectionNode[];
   layerScreen?: ReactNode;
+  /** FEATURE_TRIPS: without it trip params are ignored and no trip UI shows. */
+  tripsEnabled?: boolean;
+  /** The server-resolved trip screen for the URL (see features/trips/screen.ts). */
+  tripData?: TripScreenData | null;
 }) {
   const searchParams = useSearchParams();
   const router = useRouter();
   const layerPanel = readLayerPanel(new URLSearchParams(searchParams));
+  const tripPanel = tripsEnabled
+    ? readTripPanel(new URLSearchParams(searchParams))
+    : null;
+  /** The URL's query without layer or trip screens: the plain map state. */
+  const bareSearch = () =>
+    withoutTripPanel(
+      withoutLayerPanel(searchParams.toString()).split("?")[1] ?? "",
+    ).split("?")[1] ?? "";
+  const bareHref = () => {
+    const query = bareSearch();
+    return "/" + (query ? "?" + query : "");
+  };
   const layerScreenKey = layerPanelKeys
     .map((key) => searchParams.get(key) ?? "")
     .join("|");
@@ -232,7 +259,7 @@ export function MapWorkspace({
   // Declared early: effects below open the panel when a selection arrives.
   const [panelOpen, setPanelOpen] = useState(() =>
     initialPanelOpen({
-      hasItem: !!state.item || !!layerPanel,
+      hasItem: !!state.item || !!layerPanel || !!tripPanel,
       listView,
       fallback: !token,
     }),
@@ -301,7 +328,7 @@ export function MapWorkspace({
         { includeCity: hasExplicitCity },
       );
       const params = new URLSearchParams(qs);
-      for (const key of layerPanelKeys) {
+      for (const key of [...layerPanelKeys, ...tripPanelKeys]) {
         const value = searchParams.get(key);
         if (value !== null) params.set(key, value);
       }
@@ -506,10 +533,8 @@ export function MapWorkspace({
       return;
     reveal();
     setBusiness(null);
-    if (layerPanel) {
-      const params = new URLSearchParams(
-        withoutLayerPanel(searchParams.toString()).split("?")[1],
-      );
+    if (layerPanel || tripPanel) {
+      const params = new URLSearchParams(bareSearch());
       params.set("item", key);
       router.push("/?" + params, { scroll: false });
     } else commit({ item: key }, "push");
@@ -614,6 +639,7 @@ export function MapWorkspace({
         scroll: false,
       });
     }
+    if (tripPanel && !layerPanel) router.push(bareHref(), { scroll: false });
     reveal();
     setBusiness(next);
     setSheet("half");
@@ -737,7 +763,9 @@ export function MapWorkspace({
   // Without a token or after a provider failure the list is the product and cannot be hidden.
   const fallback = !token || canvasStatus === "failed";
   const visible =
-    !!layerPanel || panelVisible({ open: panelOpen, listView, fallback });
+    !!layerPanel ||
+    !!tripPanel ||
+    panelVisible({ open: panelOpen, listView, fallback });
   const scrollRef = useRef<HTMLDivElement>(null);
   /** Focus lands on the scrolling area, so the keyboard scrolls the panel. */
   const focusPanel = () => scrollRef.current?.focus();
@@ -759,24 +787,40 @@ export function MapWorkspace({
     // Only a breakpoint change re-seeds the panel; later URL changes must not.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [mobile]);
+  const tripScreen = useTripScreen({
+    data: tripData,
+    panel: tripPanel,
+    locale,
+    canvas,
+    canvasReady: canvasStatus === "ready",
+    mapShown: !!token && canvasStatus !== "failed" && !listView,
+  });
+  // An open trip owns the map: layer pins, Google places and the route line
+  // step aside (their state is kept) and return when the trip is left.
+  const tripDrawn = !!tripScreen?.geo;
   const launcher = useRef<HTMLButtonElement>(null);
   const panelRef = useRef<HTMLDivElement>(null);
+  const tripScreenKey = tripScreen?.screenKey;
+  useEffect(() => {
+    if (!tripScreenKey) return;
+    scrollRef.current?.focus();
+    scrollRef.current?.scrollTo(0, 0);
+  }, [tripScreenKey]);
   useEffect(() => {
     if (!layerPanel) return;
     scrollRef.current?.focus();
     scrollRef.current?.scrollTo(0, 0);
   }, [layerScreenKey, layerPanel]);
   const togglePanel = (open: boolean) => {
-    if (!open && layerPanel) {
+    if (!open && (layerPanel || tripPanel)) {
       if (
+        layerPanel &&
         !window.dispatchEvent(
           new Event("layer:before-leave", { cancelable: true }),
         )
       )
         return;
-      router.push(withoutLayerPanel(searchParams.toString()), {
-        scroll: false,
-      });
+      router.push(bareHref(), { scroll: false });
     }
     setPanelOpen(open);
     if (!mobile)
@@ -810,6 +854,7 @@ export function MapWorkspace({
     !layerPanel && (!!selected || !!business) && !detailHidden;
   const view = resolvePanelView({
     ...listInputs,
+    tripScreen: !!tripScreen,
     layerScreen: !!layerPanel,
     routeOpen,
     detailOpen: detailInPanel,
@@ -922,16 +967,15 @@ export function MapWorkspace({
     setActionsTarget(document.getElementById("map-header-actions"));
   }, []);
   const showLayers = () => {
-    if (layerPanel) {
+    if (layerPanel || tripPanel) {
       if (
+        layerPanel &&
         !window.dispatchEvent(
           new Event("layer:before-leave", { cancelable: true }),
         )
       )
         return;
-      router.push(withoutLayerPanel(searchParams.toString()), {
-        scroll: false,
-      });
+      router.push(bareHref(), { scroll: false });
     }
     setTab("layers");
     setDetailHidden(true);
@@ -1399,6 +1443,8 @@ export function MapWorkspace({
     body: ReactNode;
   } = (() => {
     switch (view) {
+      case "trip-screen":
+        return tripScreen!;
       case "layer-screen":
         return {
           back: { label: t.mapEntry, href: "/" },
@@ -1575,17 +1621,22 @@ export function MapWorkspace({
         <div className="map-stage">
           {actionsTarget &&
             createPortal(
-              <button
-                type="button"
-                className="map-float-button"
-                aria-expanded={visible && view === "layers"}
-                aria-controls="map-panel"
-                onClick={showLayers}
-              >
-                <LayersIcon size={20} aria-hidden="true" />
-                <span>{t.layersTab}</span>
-                <span className="count-pill">{layerCount}</span>
-              </button>,
+              <>
+                {tripsEnabled && (
+                  <TripsEntry locale={locale} active={!!tripPanel} />
+                )}
+                <button
+                  type="button"
+                  className="map-float-button"
+                  aria-expanded={visible && view === "layers"}
+                  aria-controls="map-panel"
+                  onClick={showLayers}
+                >
+                  <LayersIcon size={20} aria-hidden="true" />
+                  <span>{t.layersTab}</span>
+                  <span className="count-pill">{layerCount}</span>
+                </button>
+              </>,
               actionsTarget,
             )}
           <div className="map-stage-body" hidden={listView} ref={stageBody}>
@@ -1593,10 +1644,16 @@ export function MapWorkspace({
               <MapCanvas
                 ref={canvas}
                 token={token}
-                items={result.items}
-                selectedKey={business ? null : selectedKey}
-                extraPoints={extraPoints}
-                route={routeLine}
+                items={tripDrawn ? noItems : result.items}
+                selectedKey={business || tripDrawn ? null : selectedKey}
+                extraPoints={tripDrawn ? noExtraPoints : extraPoints}
+                route={tripDrawn ? [] : routeLine}
+                trip={tripScreen?.geo}
+                onTripStop={(stopId) => {
+                  tripScreen?.onStop(stopId);
+                  setPanelOpen(true);
+                  setSheet("half");
+                }}
                 extraSelectedKey={business?.key ?? null}
                 effects={places.mapEffects}
                 onSelectExtra={onSelectExtra}
@@ -1787,14 +1844,18 @@ export function MapWorkspace({
               <button
                 type="button"
                 className="map-float-button map-fit"
-                onClick={() => canvas.current?.fitTo(result.items)}
-                disabled={mapped.length === 0}
+                onClick={() =>
+                  tripDrawn
+                    ? tripScreen?.fit()
+                    : canvas.current?.fitTo(result.items)
+                }
+                disabled={!tripDrawn && mapped.length === 0}
               >
                 <Crosshair size={16} aria-hidden="true" />
                 <span>{t.fitResults}</span>
               </button>
             )}
-            {!listView && canvasStatus === "ready" && routeBar}
+            {!listView && canvasStatus === "ready" && !tripDrawn && routeBar}
             {!routeInPanel && (
               <span className="sr-only" role="status">
                 {routeNotice}
@@ -1862,7 +1923,7 @@ export function MapWorkspace({
             onClose={
               listView || fallback ? undefined : () => togglePanel(false)
             }
-            announce={announce}
+            announce={tripScreen ? tripScreen.announce : announce}
             notice={
               loadError && (
                 <p className="message error-message" role="alert">

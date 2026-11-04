@@ -20,6 +20,7 @@ import type { MapItem } from "@/features/map/query";
 import type { Copy, Locale } from "@/lib/dictionary";
 import "mapbox-gl/dist/mapbox-gl.css";
 import { mapboxTransformRequest } from "@/lib/browser-api-log";
+import type { TripGeoJSON } from "@/lib/trip-map";
 import {
   applyJadeAtlas,
   atlasPalettes,
@@ -79,6 +80,7 @@ export type ExtraPoint = {
   markerImageUrl?: string | null;
 };
 const noPins: ReadonlyMap<string, PinStatus> = new Map();
+const noTrip: TripGeoJSON = { type: "FeatureCollection", features: [] };
 /** Route stops in order: numbered badges joined by a dashed line (order only, not roads). */
 function routeGeoJSON(stops: { lat: number; lng: number }[]) {
   const coordinates = stops.map((s) => [s.lng, s.lat]);
@@ -166,6 +168,8 @@ export function MapCanvas({
   selectedKey,
   extraPoints = noPoints,
   route = noStops,
+  trip = null,
+  onTripStop,
   extraSelectedKey = null,
   effects = false,
   center,
@@ -189,6 +193,9 @@ export function MapCanvas({
   extraPoints?: ExtraPoint[];
   /** Planned route stops, in order. */
   route?: { lat: number; lng: number }[];
+  /** The open trip: day-colored numbered stops and straight day paths, drawn above everything. */
+  trip?: TripGeoJSON | null;
+  onTripStop?: (stopId: string) => void;
   extraSelectedKey?: string | null;
   /** Presentation-only selection effects (FEATURE_MAP_EFFECTS). */
   effects?: boolean;
@@ -228,6 +235,8 @@ export function MapCanvas({
     items: catalogItems,
     extraPoints,
     route,
+    trip,
+    onTripStop,
     extraSelectedKey,
     effects,
     onSelectExtra,
@@ -251,6 +260,8 @@ export function MapCanvas({
       items: catalogItems,
       extraPoints,
       route,
+      trip,
+      onTripStop,
       extraSelectedKey,
       effects,
       onSelectExtra,
@@ -847,6 +858,64 @@ export function MapCanvas({
             },
             paint: { "text-color": palette.surface },
           });
+          // The open trip: straight day paths (order, not roads) under numbered stops.
+          map.addSource("trip", {
+            type: "geojson",
+            data: latest.current.trip ?? noTrip,
+          });
+          for (const dotted of [0, 1])
+            map.addLayer({
+              id: dotted ? "trip-line-dotted" : "trip-line",
+              type: "line",
+              source: "trip",
+              filter: [
+                "all",
+                ["==", ["geometry-type"], "LineString"],
+                ["==", ["get", "dotted"], dotted],
+              ],
+              layout: { "line-join": "round", "line-cap": "round" },
+              paint: {
+                "line-color": ["get", "color"],
+                "line-width": 3,
+                "line-dasharray": dotted ? [0.5, 1.5] : [2, 1.5],
+              },
+            });
+          map.addLayer({
+            id: "trip-stop",
+            type: "circle",
+            source: "trip",
+            filter: ["==", ["geometry-type"], "Point"],
+            paint: {
+              "circle-radius": ["case", ["==", ["get", "selected"], 1], 16, 13],
+              "circle-color": ["get", "color"],
+              "circle-stroke-color": palette.surface,
+              "circle-stroke-width": [
+                "case",
+                ["==", ["get", "selected"], 1],
+                4,
+                2,
+              ],
+            },
+          });
+          map.addLayer({
+            id: "trip-stop-number",
+            type: "symbol",
+            source: "trip",
+            filter: ["==", ["geometry-type"], "Point"],
+            layout: {
+              "text-field": ["get", "label"],
+              "text-size": 11,
+              "text-font": ["DIN Pro Bold", "Arial Unicode MS Bold"],
+              "text-allow-overlap": true,
+              "text-ignore-placement": true,
+            },
+            paint: { "text-color": "#ffffff" },
+          });
+          map.on("click", "trip-stop", (e) => {
+            const id = (e.features?.[0] as Feature | undefined)?.properties
+              ?.stopId;
+            if (id) latest.current.onTripStop?.(String(id));
+          });
           map.on("click", ["extra-points", "extra-pins"], (e) => {
             const key = (e.features?.[0] as Feature | undefined)?.properties
               ?.key;
@@ -885,6 +954,7 @@ export function MapCanvas({
             "clusters",
             "extra-points",
             "extra-pins",
+            "trip-stop",
           ]) {
             map.on(
               "mouseenter",
@@ -1025,6 +1095,13 @@ export function MapCanvas({
       routeGeoJSON(route),
     );
   }, [route, readyMap]);
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!map || !loadedRef.current) return;
+    (map.getSource("trip") as GeoJSONSource | undefined)?.setData(
+      trip ?? noTrip,
+    );
+  }, [trip, readyMap]);
   useEffect(() => {
     const map = mapRef.current;
     if (!map || !loadedRef.current) return;
