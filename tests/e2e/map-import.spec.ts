@@ -17,7 +17,7 @@ test("preview KML, preserve source layers, and reopen the collection", async ({
   await expect(
     page.getByText(/Unsupported or invalid features skipped: 2/),
   ).toBeVisible();
-  await page.getByLabel("Destination").selectOption("collection");
+  await expect(page.getByLabel("Destination")).toHaveValue("collection");
   await expect(
     page.getByRole("button", { name: "Check destination and duplicates" }),
   ).toBeDisabled();

@@ -20,8 +20,13 @@ Destinations:
 
 - Add to an editable private/group layer, with a revision check.
 - Create one private/group layer containing the selected markers.
-- Preserve each selected source folder as a separate layer inside a named
-  **layer collection**. Nested folder names become paths; empty folders are omitted.
+- Create a folder (a named **layer collection**) with a separate layer for each
+  selected source category, meaning each My Maps layer or KML folder. Nested folder
+  names become paths; empty folders are omitted.
+
+A map with two or more categories that have markers defaults to the folder; any
+other map defaults to one new layer. Opening the import from a layer's editor keeps
+that layer as the default.
 
 A collection is an organizer, distinct from a community group. Its owner is a user
 or group; group members may view it. Every child layer is independently checked
