@@ -20,6 +20,7 @@ export * from "./categories";
 export * from "./marker-kind";
 export * from "./google-links";
 export * from "./layer-events";
+export * from "./layer-suggestions";
 export * from "./cities";
 export * from "./trip-plan";
 import { placeCategories } from "./categories";

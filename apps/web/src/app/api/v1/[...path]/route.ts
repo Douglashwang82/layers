@@ -35,6 +35,11 @@ import { listMapReviewPreviews } from "@/features/reviews/map-previews";
 import { getActiveCity } from "@/lib/city";
 import { runMapQuery } from "@/features/map/query";
 import { resolveMapRequest } from "@/features/map/request";
+import {
+  generateLayerSuggestions,
+  getLayerSuggestions,
+} from "@/features/map/suggestions";
+import { getLocale } from "@/lib/i18n";
 import { getMapItemDetail } from "@/features/map/detail";
 import { listExternalReferences } from "@/features/map/external";
 import {
@@ -207,6 +212,13 @@ async function handler(
     if (method === "GET" && resource === "map") {
       if (id === "item")
         return ok(await getMapItemDetail(String(query.key ?? ""), actor));
+      if (id === "suggestions") {
+        suggestionsEnabled();
+        const { city, state } = await resolveMapRequest(query, actor);
+        return privateOk(
+          await getLayerSuggestions(state, city, actor, await getLocale()),
+        );
+      }
       const { city, state } = await resolveMapRequest(query, actor);
       if (id === "external-references")
         return ok(
@@ -483,6 +495,8 @@ async function handler(
         await trackEvent(v.name, v.properties, actor?.id);
         return ok({ recorded: true }, 202);
       }
+      if (resource === "map" && id === "suggestions" && method === "POST")
+        suggestionsEnabled();
       const a = requireActor(actor);
       await contributionLimit(a);
       // Pasted Google Maps URLs are long; every other write stays small.
@@ -628,6 +642,12 @@ async function handler(
         method === "POST"
       )
         return ok(await acceptInvite(a, id));
+      if (resource === "map" && id === "suggestions" && method === "POST") {
+        const { city, state } = await resolveMapRequest(query, a);
+        return privateOk(
+          await generateLayerSuggestions(state, city, a, await getLocale()),
+        );
+      }
       if (resource === "map" && id === "preference" && method === "POST")
         return ok(await setMapPreference(a.id, mapPreferenceInput.parse(body)));
       if (resource === "trips") {
@@ -866,6 +886,17 @@ async function handler(
 }
 function ok(data: unknown, status = 200) {
   return NextResponse.json({ data }, { status });
+}
+/** Per-viewer results are never stored by a shared cache. */
+function privateOk(data: unknown) {
+  return NextResponse.json(
+    { data },
+    { headers: { "Cache-Control": "private, no-store" } },
+  );
+}
+function suggestionsEnabled() {
+  if (!flags.layerSuggestions)
+    throw new AppError(404, "DISABLED", "Feature unavailable.");
 }
 export {
   handler as GET,

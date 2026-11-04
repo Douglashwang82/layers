@@ -21,6 +21,7 @@ export const flags = {
   layerCustomPlaces: process.env.FEATURE_LAYER_CUSTOM_PLACES === "true",
   /** Trip scheduler: multi-day trips over layer places (docs/plans/trip-scheduler-design.md). */
   trips: process.env.FEATURE_TRIPS === "true",
+  layerSuggestions: process.env.FEATURE_LAYER_SUGGESTIONS === "true",
   /** Presentation-only map selection effects. */
   mapEffects: process.env.FEATURE_MAP_EFFECTS === "true",
   /** Send places from chat: LINE/Instagram DMs add Google Maps links to a layer (docs/plans/dm-link-to-layer-design.md). */
