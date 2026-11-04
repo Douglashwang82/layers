@@ -101,6 +101,15 @@ export class SuggestionModelError extends Error {
 
 const length = (text: string) => [...text].length;
 const controlChars = /[\u0000-\u001f\u007f‪-‮⁦-⁩]/;
+/** An address needs a dotted host: "Coffee@Home" and "Meet @ 5pm" are ordinary text. */
+const emailPattern = /[^\s@]+@[a-z0-9-]+(\.[a-z0-9-]+)*\.[a-z]{2,}/i;
+/** Bare hosts only for common TLDs, so "Mr.Brown" and "Node.js" stay readable. */
+const linkTlds =
+  "com|net|org|io|co|tw|jp|app|dev|edu|gov|info|biz|xyz|ai|shop|site|online|cn|kr|uk";
+const domainPattern = new RegExp(
+  String.raw`(?:^|[^a-z0-9-])[a-z0-9][a-z0-9-]*(?:\.[a-z0-9-]+)*\.(?:${linkTlds})(?![a-z0-9])`,
+  "i",
+);
 /** True when the text could carry a link, markup, a domain or an address. */
 export function containsLinkOrMarkup(text: string) {
   const t = text.normalize("NFKC");
@@ -109,10 +118,8 @@ export function containsLinkOrMarkup(text: string) {
     /\bwww\./i.test(t) ||
     /\[[^\]]*\]\([^)]*\)/.test(t) ||
     /<\/?[a-z!]/i.test(t) ||
-    /[^\s@]*@[^\s@]+/.test(t) ||
-    /(?:^|[^a-z0-9-])[a-z0-9][a-z0-9-]*(?:\.[a-z0-9-]+)*\.[a-z]{2,}(?![a-z])/i.test(
-      t,
-    )
+    emailPattern.test(t) ||
+    domainPattern.test(t)
   );
 }
 function cleanText(value: string, max: number): string | null {
@@ -132,29 +139,40 @@ function cleanText(value: string, max: number): string | null {
 export function sanitizeLayerSuggestionsDetailed(
   raw: unknown,
   payload: LayerSuggestionPayload,
-): { suggestions: StoredSuggestion[]; received: number } {
+): { suggestions: StoredSuggestion[]; received: number; dropped: number } {
   const top = z.object({ suggestions: z.array(z.unknown()) }).safeParse(raw);
   if (!top.success) throw new SuggestionOutputError();
   const factsByRef = new Map(
     payload.layers.map((l) => [l.ref, new Set(l.facts.map((f) => f.id))]),
   );
   const out: StoredSuggestion[] = [];
+  let dropped = 0;
   for (const entry of top.data.suggestions) {
     if (out.length >= maxLayerSuggestions) break;
+    const before = out.length;
+    keep(entry);
+    if (out.length === before) dropped++;
+  }
+  return {
+    suggestions: out,
+    received: top.data.suggestions.length,
+    dropped,
+  };
+  function keep(entry: unknown) {
     const parsed = wireSuggestion.safeParse(entry);
-    if (!parsed.success) continue;
+    if (!parsed.success) return;
     const { layerRef, title, body, factIds } = parsed.data;
     const known = factsByRef.get(layerRef);
-    if (!known) continue;
+    if (!known) return;
     if (
       !factIds.length ||
       factIds.length > maxFactIdsPerSuggestion ||
       !factIds.every((id) => known.has(id))
     )
-      continue;
+      return;
     const cleanTitle = cleanText(title, maxSuggestionTitle);
     const cleanBody = cleanText(body, maxSuggestionBody);
-    if (!cleanTitle || !cleanBody) continue;
+    if (!cleanTitle || !cleanBody) return;
     out.push({
       type: "layer_tip",
       layerRef,
@@ -163,7 +181,6 @@ export function sanitizeLayerSuggestionsDetailed(
       factIds: [...new Set(factIds)],
     });
   }
-  return { suggestions: out, received: top.data.suggestions.length };
 }
 export function sanitizeLayerSuggestions(
   raw: unknown,
@@ -262,11 +279,18 @@ export function buildSuggestionPayload(input: {
           visibleKeys.has(e.key) &&
           localDate(new Date(e.endTime), layer.timezone) >= today,
       )
-      .map((e) => ({
-        key: e.key,
-        date: localDate(new Date(e.startTime), layer.timezone),
-        title: promptText((zh && e.titleChinese) || e.title),
-      }))
+      .map((e) => {
+        const start = localDate(new Date(e.startTime), layer.timezone);
+        // A started event is "ongoing", never given its past start date, so
+        // the model cannot call it upcoming.
+        const ongoing = start < today;
+        return {
+          key: e.key,
+          date: ongoing ? today : start,
+          ongoing,
+          title: promptText((zh && e.titleChinese) || e.title),
+        };
+      })
       .sort((a, b) => byCodeUnit(a.date, b.date) || byCodeUnit(a.key, b.key));
     const raw: Omit<SuggestionFact, "id">[] = [];
     if (!input.itemsTruncated) {
@@ -294,7 +318,9 @@ export function buildSuggestionPayload(input: {
     for (const event of events.slice(0, maxUpcomingEventsPerLayer))
       raw.push({
         kind: "upcoming_event",
-        value: `${event.date} ${event.title}`,
+        value: event.ongoing
+          ? `ongoing ${event.title}`
+          : `${event.date} ${event.title}`,
       });
     layers.push({
       ref,

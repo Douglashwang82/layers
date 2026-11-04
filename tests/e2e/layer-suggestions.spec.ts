@@ -56,11 +56,15 @@ async function mockSuggestions(
   page: Page,
   handlers: {
     get?: (n: number, url: string) => { status?: number; json: unknown };
-    post?: (n: number) => { status?: number; json: unknown };
+    post?: (n: number) => {
+      status?: number;
+      json: unknown;
+      delayMs?: number;
+    };
   } = {},
 ) {
   const calls = { get: [] as string[], post: [] as string[] };
-  await page.route(endpoint, (route) => {
+  await page.route(endpoint, async (route) => {
     const request = route.request();
     const method = request.method() === "POST" ? "post" : "get";
     calls[method].push(request.url());
@@ -68,6 +72,8 @@ async function mockSuggestions(
     const reply = handler
       ? handler(calls[method].length, request.url())
       : { json: method === "get" ? none : ready([tip(1)]) };
+    const delayMs = (reply as { delayMs?: number }).delayMs ?? 0;
+    if (delayMs) await new Promise((r) => setTimeout(r, delayMs));
     return route.fulfill({ status: reply.status ?? 200, json: reply.json });
   });
   return calls;
@@ -178,7 +184,7 @@ test.describe("signed in", () => {
       "Suggestions could not be generated. Try again.",
     );
     await section(page).getByRole("button", { name: "Try again" }).click();
-    await expect(status(page)).toHaveText("1 suggestions ready.");
+    await expect(status(page)).toHaveText("1 suggestion ready.");
     await expect(section(page).getByRole("listitem")).toHaveCount(1);
     expect(calls.post).toHaveLength(2);
   });
@@ -221,6 +227,26 @@ test.describe("signed in", () => {
     expect(calls.post).toHaveLength(0);
   });
 
+  test("changing layers mid-generation never leaves Generating stuck, and returning does not show a stale result", async ({
+    page,
+  }) => {
+    await mockSuggestions(page, {
+      post: () => ({ json: ready([tip(1)]), delayMs: 1500 }),
+    });
+    await openMap(page);
+    await generate(page).click();
+    await expect(status(page)).toHaveText("Generating suggestions…");
+    await page.getByRole("button", { name: "Manage layers" }).click();
+    await page.getByRole("checkbox", { name: new RegExp(titleB) }).uncheck();
+    await expect(generate(page)).toBeEnabled();
+    await expect(status(page)).not.toHaveText("Generating suggestions…");
+    await page.getByRole("checkbox", { name: new RegExp(titleB) }).check();
+    await page.waitForTimeout(1800);
+    await expect(status(page)).not.toHaveText("Generating suggestions…");
+    await expect(section(page).getByRole("listitem")).toHaveCount(0);
+    await expect(generate(page)).toBeEnabled();
+  });
+
   test("collapses and expands from the aria-expanded toggle", async ({
     page,
   }) => {
@@ -261,6 +287,10 @@ test.describe("signed in", () => {
     await expect(generate(page)).toBeFocused();
     await page.keyboard.press("Enter");
     await expect(live).toHaveText("2 suggestions ready.");
+    // Focus moves to the results when the pressed button goes away.
+    await expect(
+      section(page).getByRole("list", { name: "Suggestions" }),
+    ).toBeFocused();
     // Space on the toggle collapses it.
     await toggle.focus();
     await page.keyboard.press("Space");
@@ -273,6 +303,34 @@ test.describe("signed in", () => {
       .first();
     await link.focus();
     await expect(link).toBeFocused();
+  });
+
+  test("the button stays, disabled and focused-in-place, while generating", async ({
+    page,
+  }) => {
+    await mockSuggestions(page, {
+      post: () => ({ json: ready([tip(1)]), delayMs: 600 }),
+    });
+    await openMap(page);
+    await generate(page).focus();
+    await page.keyboard.press("Enter");
+    await expect(status(page)).toHaveText("Generating suggestions…");
+    await expect(generate(page)).toBeDisabled();
+    await expect(status(page)).toHaveText("1 suggestion ready.");
+    await expect(
+      section(page).getByRole("list", { name: "Suggestions" }),
+    ).toBeFocused();
+  });
+
+  test("no usable layers hides the section and records no generated event", async ({
+    page,
+  }) => {
+    await mockSuggestions(page, {
+      get: () => ({ json: { data: { status: "none", reason: "no_layers" } } }),
+    });
+    await openMap(page);
+    await page.waitForLoadState("networkidle");
+    await expect(section(page)).toHaveCount(0);
   });
 
   test("320px viewport has no horizontal overflow", async ({ page }) => {

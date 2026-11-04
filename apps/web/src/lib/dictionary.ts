@@ -926,6 +926,7 @@ export const en = {
   suggestionsGenerate: "Suggest next steps",
   suggestionsGenerating: "Generating suggestions…",
   suggestionsReady: "{count} suggestions ready.",
+  suggestionsReadyOne: "1 suggestion ready.",
   suggestionsNone: "No suggestions for these layers right now.",
   suggestionsFailed: "Suggestions could not be generated. Try again.",
   suggestionsRateLimited:
@@ -1929,6 +1930,7 @@ export const zh: Copy = {
   suggestionsGenerate: "產生下一步建議",
   suggestionsGenerating: "正在產生建議…",
   suggestionsReady: "已產生 {count} 則建議。",
+  suggestionsReadyOne: "已產生 1 則建議。",
   suggestionsNone: "目前沒有適合這些圖層的建議。",
   suggestionsFailed: "無法產生建議，請再試一次。",
   suggestionsRateLimited: "你要求建議的次數過多，請稍後再試。",

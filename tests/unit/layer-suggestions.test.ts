@@ -223,6 +223,23 @@ describe("buildSuggestionPayload", () => {
     expect(JSON.stringify(payload)).not.toContain("Demo");
   });
 
+  it("sends a started event as ongoing, with no past start date", () => {
+    const { payload } = build({
+      items: [item("place:a", "Alpha")],
+      events: [
+        event("place:a", "Running", "2026-11-01T18:00:00Z", {
+          endTime: "2026-11-20T18:00:00Z",
+        }),
+        event("place:a", "Soon", "2026-11-10T18:00:00Z"),
+      ],
+    });
+    const values = payload.layers[0].facts
+      .filter((f) => f.kind === "upcoming_event")
+      .map((f) => f.value);
+    expect(values).toEqual(["ongoing Running", "2026-11-10 Soon"]);
+    expect(JSON.stringify(payload)).not.toContain("2026-11-01");
+  });
+
   it("counts catalog and external places and reports missing facts as zero", () => {
     const { payload } = build({
       items: [item("place:a", "Alpha")],
@@ -361,14 +378,14 @@ describe("sanitizeLayerSuggestions", () => {
     ["URL", "Visit https://evil.example/now"],
     ["http", "Go to http://evil.example"],
     ["www", "See www.evil.example for more"],
-    ["bare domain", "Open evil.example today"],
+    ["bare domain", "Open evil.com today"],
+    ["bare domain subdomain", "Try shop.evil.io or evil.tw"],
     ["bare domain path", "Try evil.co/free"],
     ["fullwidth", "See ｗｗｗ．evil．example"],
     ["markdown link", "Click [here](javascript:alert(1))"],
     ["html tag", "Add <b>events</b> now"],
     ["html comment", "Hi <!-- x -->"],
     ["email", "Write to boss@evil.example"],
-    ["email without domain dot", "Write to boss@localhost"],
   ])("drops text with a %s echoed from injected data", (_name, body) => {
     expect(
       sanitizeLayerSuggestions({ suggestions: [tip({ body })] }, payload),
@@ -379,6 +396,45 @@ describe("sanitizeLayerSuggestions", () => {
         payload,
       ),
     ).toEqual([]);
+  });
+
+  it.each([
+    "Coffee@Home",
+    "咖啡@台北",
+    "Mr.Brown Coffee",
+    "Dr.Wu clinic",
+    "St.Regis",
+    "Node.js meetup",
+    "Sat.Sun market",
+    "新竹Big.City購物中心",
+    "Add more.Then visit",
+    "e.g.",
+    "3.5",
+    "No.5",
+    "Meet @ 5pm",
+  ])("accepts ordinary text %s", (text) => {
+    expect(
+      sanitizeLayerSuggestions(
+        { suggestions: [tip({ title: text, body: text })] },
+        payload,
+      ),
+    ).toHaveLength(1);
+  });
+
+  it("counts dropped entries without exposing text", () => {
+    const result = sanitizeLayerSuggestionsDetailed(
+      {
+        suggestions: [
+          tip({ body: "Open evil.com" }),
+          tip({ layerRef: "L9" }),
+          tip({ title: "Good" }),
+        ],
+      },
+      payload,
+    );
+    expect(result.received).toBe(3);
+    expect(result.dropped).toBe(2);
+    expect(result.suggestions).toHaveLength(1);
   });
 
   it("allows ordinary punctuation, numbers and decimals", () => {

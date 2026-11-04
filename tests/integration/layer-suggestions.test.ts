@@ -450,7 +450,7 @@ describe("generate and cache", () => {
         deps,
         now,
       ),
-    ).toEqual({ status: "none" });
+    ).toEqual({ status: "none", reason: "no_layers" });
     expect(
       await generateLayerSuggestions(
         state(priv.slug),
@@ -460,11 +460,52 @@ describe("generate and cache", () => {
         deps,
         now,
       ),
-    ).toEqual({ status: "none" });
+    ).toEqual({ status: "none", reason: "no_layers" });
     expect(generate).not.toHaveBeenCalled();
     await expect(
       generateLayerSuggestions(state(priv.slug), city, null, "en", deps, now),
     ).rejects.toMatchObject({ status: 401 });
+    expect(
+      await getLayerSuggestions(state("none" as never), city, dave, "en", now, {
+        modelId: model,
+      }),
+    ).toEqual({ status: "none", reason: "no_layers" });
+  });
+
+  it("returns the paid result when the expired-row sweep fails", async () => {
+    const { deps } = fake();
+    const real = pool.query.bind(pool) as (...args: unknown[]) => unknown;
+    const spy = vi
+      .spyOn(pool, "query")
+      .mockImplementation(((...args: unknown[]) =>
+        typeof args[0] === "string" &&
+        args[0].startsWith("DELETE FROM layer_sug")
+          ? Promise.reject(new Error("sweep failed"))
+          : real(...args)) as never);
+    try {
+      const result = await generateLayerSuggestions(
+        state(priv.slug),
+        city,
+        alice,
+        "en",
+        deps,
+        now,
+      );
+      expect(result.status).toBe("ready");
+      expect(
+        spy.mock.calls.some(
+          (c) => typeof c[0] === "string" && c[0].startsWith("DELETE FROM"),
+        ),
+      ).toBe(true);
+    } finally {
+      spy.mockRestore();
+      await pool.query("DELETE FROM layer_suggestion_run WHERE user_id=$1", [
+        alice.id,
+      ]);
+      await pool.query(
+        "DELETE FROM rate_limit WHERE key LIKE 'layer-suggestions:%'",
+      );
+    }
   });
 
   it("caches a result; a hit makes no model call and spends no budget", async () => {

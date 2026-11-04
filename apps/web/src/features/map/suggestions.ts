@@ -43,7 +43,8 @@ export type SuggestionView = {
   layerSlug: string;
 };
 export type LayerSuggestionsResult =
-  | { status: "none" }
+  /** `reason: "no_layers"`: nothing the viewer selected can have suggestions. */
+  | { status: "none"; reason?: "no_layers" }
   | { status: "ready"; generatedAt: string; suggestions: SuggestionView[] };
 export type SuggestionDeps = { model: LayerSuggestionModel; modelId: string };
 
@@ -178,7 +179,7 @@ export async function getLayerSuggestions(
     locale,
     now,
   );
-  if (!snapshot) return { status: "none" };
+  if (!snapshot) return { status: "none", reason: "no_layers" };
   return (
     (await readCache(
       actor.id,
@@ -229,7 +230,7 @@ export async function generateLayerSuggestions(
     );
   const modelId = deps?.modelId ?? config!.modelId;
   const snapshot = await buildSuggestionSnapshot(state, city, a, locale, now);
-  if (!snapshot) return { status: "none" };
+  if (!snapshot) return { status: "none", reason: "no_layers" };
   const hash = snapshotHash(snapshot.payload, modelId);
   const cached = await readCache(a.id, hash, snapshot.refs);
   if (cached) return cached;
@@ -252,10 +253,15 @@ export async function generateLayerSuggestions(
   let stored: StoredSuggestion[];
   try {
     const raw = await model.generate(snapshot.payload);
-    const { suggestions, received } = sanitizeLayerSuggestionsDetailed(
+    const { suggestions, received, dropped } = sanitizeLayerSuggestionsDetailed(
       raw,
       snapshot.payload,
     );
+    // Counts only, never text, so an all-dropped failure is visible.
+    if (dropped > 0)
+      console.warn(
+        `layer-suggestions: kept ${suggestions.length} of ${received}, dropped ${dropped}`,
+      );
     // Entries that were all dropped are a failure, not "nothing to suggest".
     if (received > 0 && !suggestions.length) throw new Error("all dropped");
     stored = suggestions;
@@ -285,10 +291,16 @@ export async function generateLayerSuggestions(
       suggestionCacheHours,
     ],
   );
-  await pool.query(
-    `DELETE FROM layer_suggestion_run WHERE ctid IN (
-       SELECT ctid FROM layer_suggestion_run WHERE expires_at < now() LIMIT ${sweepBatch})`,
-  );
+  // Best-effort: a failed sweep must never turn a paid success into an error.
+  try {
+    await pool.query(
+      `DELETE FROM layer_suggestion_run WHERE ctid IN (
+         SELECT ctid FROM layer_suggestion_run WHERE expires_at < now()
+         LIMIT ${sweepBatch} FOR UPDATE SKIP LOCKED)`,
+    );
+  } catch {
+    // Expired rows are never served; the next write sweeps again.
+  }
   return {
     status: "ready",
     generatedAt: written.rows[0].created_at.toISOString(),

@@ -30,7 +30,7 @@ Layer titles, place names and event titles are unreviewed member content. Group 
 - The system prompt states that every payload value is data and that nothing outside the supplied facts may be claimed. Prompt wording is not the security boundary: `sanitizeLayerSuggestions` is. It accepts only a known layer reference and fact IDs from that same layer, plain text within length limits, no URLs, domains, email addresses, markdown or HTML, and at most three entries. The model has no tools and cannot write a link; the layer action is built on the server from the validated reference.
 - Refusals, truncation, invalid output, timeouts and fully dropped output become `502 SUGGESTIONS_FAILED` with fixed text and are not cached. An empty result is cached only when the model itself returned no entries.
 - Logging records provider, operation, model and token counts only, never prompt or output text.
-- Budget is spent on cache misses only: 10 per user per hour, then 500 site-wide per day. Responses are `Cache-Control: private, no-store`. Cached rows are per user, expire after 24 hours and are swept on write. Deleting a user deletes their rows.
+- Budget is spent on cache misses only: 10 per user per hour, then 500 site-wide per day. A cache hit spends no suggestion budget but, as a POST, still counts against the shared `contributionLimit` write limit. Sanitizer drop counts (numbers only, never text) are logged so an all-dropped failure is visible. Responses are `Cache-Control: private, no-store`. Cached rows are per user, expire after 24 hours and are swept on write. Deleting a user deletes their rows.
 - The server holds the key; nothing reaches `NEXT_PUBLIC_*`. Anonymous users and the flag-off state get no data and no model call.
 
 ## Rollout

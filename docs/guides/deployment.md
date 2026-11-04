@@ -54,6 +54,12 @@ See [the implementation plan](google-places-implementation-plan.md) section 13. 
 - **Operators:** moderators curate external places at `GET /api/v1/admin/place-subjects` (city review, status, catalog linking, provider-ID replacement). Review decisions go through the existing admin queue, which now shows review snapshots and their revision.
 - **Live check, 2026-09-25 (localhost, real key):** with the stable `weekly` channel, `gmp-basic-place-autocomplete` (including Traditional Chinese input), `gmp-place-search` text search, `gmp-place-details`, and `gmp-place-details-compact` all load. They show Google attribution, and their `place.location` feeds the Mapbox pins (search pins, the selected halo). The components follow the OS dark mode unless given `color-scheme: light`, and are wider than the panel unless constrained; the CSS handles both. The signed-in save/review flow was verified only with the fake provider. Still unverified: referrer restrictions on the deployed domain, SKU/billing attribution, and quota-exhaustion behavior. The key must be named `NEXT_PUBLIC_GOOGLE_PLACES_UI_KIT_KEY`.
 
+### Layer Suggestions rollout
+
+- `FEATURE_LAYER_SUGGESTIONS=true` turns the feature on (default off; both endpoints return 404 `DISABLED` otherwise). It needs migration 0039 (`layer_suggestion_run`).
+- `LAYER_SUGGESTIONS_LLM_MODEL`: the Anthropic model ID; there is no default. Unset or invalid, generating returns 503.
+- `ANTHROPIC_API_KEY` must also be set in the web runtime (server-only; the extraction worker has its own). Layer titles, place names and event titles of the viewer's selected layers are sent to Anthropic; see [the ADR](../adr/layer-suggestions-llm.md). Run one authorized live call before enabling the flag.
+
 ## Operational assumptions
 
 The pool is limited to ten connections per runtime. Size your provider pool/connection budget for the number of Vercel instances. PostgreSQL backs rate limiting; monitor and periodically purge expired counters and expired auth sessions. Back up the database and object storage, and test restoring them. Set log retention and avoid copying full auth payloads into logs. Migration and admin-grant credentials are release/operator credentials, not browser configuration.
