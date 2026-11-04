@@ -105,9 +105,12 @@ export function useTripScreen({
       withTripDay(window.location.search, day),
     );
 
-  // Frame the focused day (or the whole trip) when a trip opens or the day changes.
+  // Frame the focused day (or the whole trip) when a trip opens, the day
+  // changes or the base moves; a base can sit outside the stops' view.
   const fitKey =
-    panel?.panel === "detail" && tripId ? `${tripId}|${focus}` : null;
+    panel?.panel === "detail" && tripId
+      ? `${tripId}|${focus}|${view?.base?.itemId ?? ""}`
+      : null;
   useEffect(() => {
     if (!fitKey || !canvasReady || !view) return;
     const points = tripPoints(view.days, focus);

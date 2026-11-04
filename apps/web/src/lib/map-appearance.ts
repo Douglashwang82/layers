@@ -93,6 +93,7 @@ export function applyJadeAtlas(
         "selected-item",
         "hover-item",
         "route",
+        "trip",
       ].includes(String(layer.source))
     )
       continue;

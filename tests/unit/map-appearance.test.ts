@@ -33,6 +33,22 @@ describe("Jade Atlas basemap", () => {
     });
   });
 
+  it("leaves the app's own map labels alone, so trip and route numbers survive", () => {
+    const own = (id: string, source: string): LayerSpecification => ({
+      id,
+      type: "symbol",
+      source,
+      layout: { "text-field": ["get", "label"] },
+    });
+    const { map, apply } = fixture([
+      own("trip-stop-number", "trip"),
+      own("route-stop-number", "route"),
+    ]);
+    apply("en");
+    expect(map.setLayoutProperty).not.toHaveBeenCalled();
+    expect(map.setPaintProperty).not.toHaveBeenCalled();
+  });
+
   it("keeps provider geography and road widths while suppressing extrusions and unrelated POIs", () => {
     const layers: LayerSpecification[] = [
       { id: "water", type: "fill", source: "base" },
