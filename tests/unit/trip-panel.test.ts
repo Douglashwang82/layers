@@ -6,7 +6,13 @@ import {
   withTripDay,
   withoutTripPanel,
 } from "@/lib/trip-panel";
-import { dayColor, dayColors, tripGeoJSON, tripPoints } from "@/lib/trip-map";
+import {
+  dayColor,
+  dayColors,
+  endpointLabel,
+  tripGeoJSON,
+  tripPoints,
+} from "@/lib/trip-map";
 
 const q = (s: string) => new URLSearchParams(s);
 
@@ -95,6 +101,56 @@ describe("trip map data", () => {
         (f) => f.geometry.type === "LineString",
       ),
     ).toBe(false);
+  });
+
+  describe("with a base", () => {
+    const base = { itemId: "hotel", location: { lat: 30, lng: -95 } };
+    const away = { itemId: "cafe", location: { lat: 31, lng: -95 } };
+    const planned = [
+      { id: "d1", start: base, end: base, stops: [stop("a", 29.1)] },
+      { id: "d2", start: base, end: away, stops: [stop("e", 29.3)] },
+      { id: "d3", start: base, end: base, stops: [] },
+    ];
+    const houses = (data: ReturnType<typeof tripGeoJSON>) =>
+      data.features.filter(
+        (f) => "label" in f.properties && f.properties.label === endpointLabel,
+      );
+
+    it("runs the line from the start through the stops to the end", () => {
+      const line = tripGeoJSON(planned, "d2", null).features.find(
+        (f) => f.geometry.type === "LineString",
+      );
+      expect(line?.geometry.coordinates).toEqual([
+        [-95, 30],
+        [-95, 29.3],
+        [-95, 31],
+      ]);
+    });
+
+    it("draws a shared base once, as a house that selects no stop", () => {
+      const pins = houses(tripGeoJSON(planned, "all", null));
+      expect(pins).toHaveLength(2);
+      for (const pin of pins)
+        expect("stopId" in pin.properties && pin.properties.stopId).toBe("");
+    });
+
+    it("gives a one-stop day a line, and ignores the base on a free day", () => {
+      expect(
+        tripGeoJSON(planned, "d1", null).features.some(
+          (f) => f.geometry.type === "LineString",
+        ),
+      ).toBe(true);
+      expect(tripGeoJSON(planned, "d3", null).features).toEqual([]);
+      expect(tripPoints(planned, "d3")).toEqual([]);
+    });
+
+    it("frames the base with the stops", () => {
+      expect(tripPoints(planned, "d1")).toEqual([
+        { lat: 29.1, lng: -95 },
+        base.location,
+        base.location,
+      ]);
+    });
   });
 
   it("frames only the focused day's located stops and reuses colors after seven days", () => {

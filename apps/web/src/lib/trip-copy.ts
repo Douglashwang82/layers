@@ -1,7 +1,6 @@
 /** Web copy for the trip scheduler (docs/plans/trip-scheduler-design.md). */
 export const tripEn = {
   trips: "Trips",
-  tripsIntro: "Multi-day plans made from places in your layers and folders.",
   planTrip: "Plan a trip",
   planTripFromLayer: "Plan a trip with this layer",
   planTripFromFolder: "Plan a trip with this folder",
@@ -81,7 +80,6 @@ export const tripEn = {
   limits:
     "Order uses straight-line distance only. It ignores roads, transit, traffic, opening hours and how long you stay.",
   stops: (n: number) => (n === 1 ? "1 place" : `${n} places`),
-  backToTrips: "← Trips",
   groupTrip: (group: string) => `Group trip · ${group}`,
   privateTrip: "Private trip",
   unnamed: "Saved place",
@@ -101,11 +99,30 @@ export const tripEn = {
   showOnMap: (name: string) => `Show ${name} on the map`,
   deleting: "Deleting…",
   backTo: (name: string) => `Back to ${name}`,
+  baseHeading: "Where you stay",
+  baseHint:
+    "Each day starts and ends here unless you choose otherwise. Straight-line distances include the legs to and from it.",
+  baseLabel: "Where you stay (optional)",
+  baseNone: "None — each day is an open path",
+  baseUnavailable:
+    "The place set as where you stay isn't available to you, so days are ordered as open paths.",
+  baseAlreadyStop:
+    "A place that is already in the trip can't also be a base. Remove it from the trip first.",
+  baseNoCandidates:
+    "No other places with a map location in these layers can be used.",
+  dayStart: "Start",
+  dayEnd: "End",
+  startBase: "Where you stay",
+  startFirst: "First stop",
+  endBase: "Where you stay",
+  endLast: "Last stop",
+  from: (name: string) => `From: ${name}`,
+  endsAt: (name: string) => `Back to: ${name}`,
+  endLeg: (distance: string) => `about ${distance} straight-line to the end`,
 };
 export type TripCopy = typeof tripEn;
 export const tripZh: TripCopy = {
   trips: "行程",
-  tripsIntro: "用你圖層與資料夾中的地點安排多日行程。",
   planTrip: "安排行程",
   planTripFromLayer: "用這個圖層安排行程",
   planTripFromFolder: "用這個資料夾安排行程",
@@ -177,7 +194,6 @@ export const tripZh: TripCopy = {
   mapUnavailable: "地圖目前無法使用，行程仍可用清單檢視。",
   limits: "排序只依直線距離，不考慮道路、大眾運輸、交通、營業時間與停留時間。",
   stops: (n) => `${n} 個地點`,
-  backToTrips: "← 行程",
   groupTrip: (group) => `群組行程 · ${group}`,
   privateTrip: "私人行程",
   unnamed: "已儲存的地點",
@@ -196,6 +212,23 @@ export const tripZh: TripCopy = {
   showOnMap: (name) => `在地圖上顯示「${name}」`,
   deleting: "刪除中…",
   backTo: (name) => `回到「${name}」`,
+  baseHeading: "住宿地點",
+  baseHint:
+    "除非另外選擇，每天都從這裡出發並回到這裡。直線距離會包含往返這裡的路段。",
+  baseLabel: "住宿地點（選填）",
+  baseNone: "不設定，每天為開放路線",
+  baseUnavailable: "你無法使用已設定的住宿地點，因此各天以開放路線排序。",
+  baseAlreadyStop: "已在行程中的地點不能同時作為住宿地點，請先從行程移除。",
+  baseNoCandidates: "這些圖層中沒有其他有地圖位置的地點可以使用。",
+  dayStart: "起點",
+  dayEnd: "終點",
+  startBase: "住宿地點",
+  startFirst: "第一個地點",
+  endBase: "住宿地點",
+  endLast: "最後一個地點",
+  from: (name) => `出發：${name}`,
+  endsAt: (name) => `回到：${name}`,
+  endLeg: (distance) => `到終點直線距離約 ${distance}`,
 };
 export function tripCopy(locale: string): TripCopy {
   return locale === "zh-TW" ? tripZh : tripEn;

@@ -1127,6 +1127,40 @@ a.settings-row:hover {
   max-width: 9rem;
   min-height: 36px;
 }
+.trip-base {
+  display: grid;
+  gap: var(--th-space-2);
+  margin: var(--th-space-3) 0;
+}
+.trip-base-row,
+.trip-endpoints {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--th-space-2) var(--th-space-3);
+}
+.trip-base select,
+.trip-endpoints select {
+  min-height: 36px;
+  max-width: 100%;
+  min-width: 0;
+}
+.trip-endpoints label {
+  display: grid;
+  gap: 2px;
+  font-size: 0.85rem;
+  min-width: 0;
+}
+.trip-endpoint {
+  display: flex;
+  align-items: center;
+  gap: var(--th-space-2);
+  margin: var(--th-space-2) 0;
+  font-size: 0.9rem;
+}
+.trip-number.trip-number-base {
+  background: var(--th-text);
+}
 .trip-toast {
   display: flex;
   gap: var(--th-space-2);

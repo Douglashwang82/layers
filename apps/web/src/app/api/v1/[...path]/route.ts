@@ -145,6 +145,7 @@ import {
   patchTripDay,
   patchTripStop,
   previewTrip,
+  setTripBase,
   removeUnavailableStops,
 } from "@/features/trips/service";
 import {
@@ -641,6 +642,8 @@ async function handler(
         if (!id && method === "POST") return ok(await createTrip(a, body), 201);
         if (id && !action && method === "DELETE")
           return ok(await deleteTrip(a, z.uuid().parse(id)));
+        if (id && !action && method === "PATCH")
+          return ok(await setTripBase(a, z.uuid().parse(id), body));
         if (id && action === "stops" && path[3] && method === "PATCH")
           return ok(
             await patchTripStop(

@@ -2298,6 +2298,10 @@ export const trip = pgTable(
     startsOn: date("starts_on").notNull(),
     endsOn: date("ends_on").notNull(),
     stopsPerDay: smallint("stops_per_day").default(6).notNull(),
+    /** Optional "where you stay": the default start and end of every day. */
+    baseItemId: uuid("base_item_id").references(() => layerItem.id, {
+      onDelete: "set null",
+    }),
     optimizerVersion: smallint("optimizer_version").default(1).notNull(),
     revision: integer("revision").default(1).notNull(),
     status: text("status", { enum: ["active", "deleted"] })
@@ -2343,6 +2347,19 @@ export const tripDay = pgTable(
     orderMode: text("order_mode", { enum: ["auto", "manual"] })
       .default("auto")
       .notNull(),
+    /** base = the trip base (open path when none); item = start_item_id. */
+    startKind: text("start_kind", { enum: ["base", "first_stop", "item"] })
+      .default("base")
+      .notNull(),
+    startItemId: uuid("start_item_id").references(() => layerItem.id, {
+      onDelete: "set null",
+    }),
+    endKind: text("end_kind", { enum: ["base", "last_stop", "item"] })
+      .default("base")
+      .notNull(),
+    endItemId: uuid("end_item_id").references(() => layerItem.id, {
+      onDelete: "set null",
+    }),
     ...timestamps(),
   },
   (t) => [
@@ -2350,6 +2367,14 @@ export const tripDay = pgTable(
     check(
       "trip_day_order_mode_check",
       sql`${t.orderMode} IN ('auto', 'manual')`,
+    ),
+    check(
+      "trip_day_start_kind_check",
+      sql`${t.startKind} IN ('base', 'first_stop', 'item')`,
+    ),
+    check(
+      "trip_day_end_kind_check",
+      sql`${t.endKind} IN ('base', 'last_stop', 'item')`,
     ),
   ],
 );

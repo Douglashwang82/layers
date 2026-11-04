@@ -14,17 +14,37 @@ type MapStop = {
   id: string;
   location: { lat: number; lng: number } | null;
 };
-type MapDay = { id: string; stops: MapStop[] };
+type MapEndpoint = {
+  itemId: string;
+  location: { lat: number; lng: number };
+};
+type MapDay = {
+  id: string;
+  stops: MapStop[];
+  start?: MapEndpoint | null;
+  end?: MapEndpoint | null;
+};
+
+/** The base and day endpoints: one color and a house, so they never read as a stop. */
+export const endpointColor = dayColors[dayColors.length - 1];
+export const endpointLabel = "⌂";
 
 /** Whether a day (by index) is drawn dotted: the palette has wrapped. */
 export const dottedDay = (index: number) => index >= dayColors.length;
 
 const shown = (id: string, focus: string) => focus === "all" || focus === id;
 
+/** A day's start and end, which only count when it has a stop to reach. */
+function endpoints(day: MapDay) {
+  if (!day.stops.some((s) => s.location)) return [];
+  return [day.start, day.end].filter((e): e is MapEndpoint => Boolean(e));
+}
+
 /**
  * The open trip as GeoJSON for the main map: one straight LineString per day
- * (visiting order, not roads) and a numbered Point per located stop. Stops
- * without a location are never drawn.
+ * (visiting order, not roads, from the day's start through its stops to its
+ * end) and a numbered Point per located stop. Stops without a location are
+ * never drawn. A place several days start or end at is drawn once.
  */
 export function tripGeoJSON(
   days: MapDay[],
@@ -48,19 +68,43 @@ export function tripGeoJSON(
         geometry: { type: "Point"; coordinates: number[] };
       }
   > = [];
+  const drawn = new Set<string>();
   days.forEach((day, index) => {
     if (!shown(day.id, focus)) return;
     const color = dayColor(index);
     const located = day.stops.filter((s) => s.location);
-    if (located.length > 1)
+    const ends = endpoints(day);
+    const path = [
+      ...(day.start && ends.length ? [day.start.location] : []),
+      ...located.map((s) => s.location!),
+      ...(day.end && ends.length ? [day.end.location] : []),
+    ];
+    if (path.length > 1)
       features.push({
         type: "Feature",
         properties: { color, dotted: dottedDay(index) ? 1 : 0 },
         geometry: {
           type: "LineString",
-          coordinates: located.map((s) => [s.location!.lng, s.location!.lat]),
+          coordinates: path.map((p) => [p.lng, p.lat]),
         },
       });
+    for (const end of ends) {
+      if (drawn.has(end.itemId)) continue;
+      drawn.add(end.itemId);
+      features.push({
+        type: "Feature",
+        properties: {
+          color: endpointColor,
+          label: endpointLabel,
+          stopId: "",
+          selected: 0,
+        },
+        geometry: {
+          type: "Point",
+          coordinates: [end.location.lng, end.location.lat],
+        },
+      });
+    }
     located.forEach((stop, i) =>
       features.push({
         type: "Feature",
@@ -82,10 +126,12 @@ export function tripGeoJSON(
 
 export type TripGeoJSON = ReturnType<typeof tripGeoJSON>;
 
-/** Coordinates the camera frames for the focused days. */
+/** Coordinates the camera frames for the focused days, base included. */
 export function tripPoints(days: MapDay[], focus: string) {
   return days
     .filter((day) => shown(day.id, focus))
-    .flatMap((day) => day.stops)
-    .flatMap((s) => (s.location ? [s.location] : []));
+    .flatMap((day) => [
+      ...day.stops.flatMap((s) => (s.location ? [s.location] : [])),
+      ...endpoints(day).map((e) => e.location),
+    ]);
 }

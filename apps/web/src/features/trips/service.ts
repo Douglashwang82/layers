@@ -9,6 +9,7 @@ import {
   orderDay,
   planTrip,
   requireActor,
+  tripBaseInput,
   tripCreateInput,
   tripDayPatchInput,
   tripOptimizeInput,
@@ -17,6 +18,7 @@ import {
   tripSourceInput,
   tripStopPatchInput,
   type Actor,
+  type DayBounds,
   type PlanInputStop,
 } from "@taiwanhub/shared";
 import { flags } from "@/lib/config";
@@ -32,7 +34,9 @@ import { transaction } from "../layers/service";
 import {
   audienceFits,
   buildTripView,
+  dayEndpoints,
   findTrip,
+  listBaseCandidates,
   listLayerPlaceItemIds,
   listTripRecords,
   loadDaysAndStops,
@@ -104,11 +108,71 @@ async function viewFor(
   db: typeof pool | PoolClient = pool,
 ): Promise<TripView> {
   const { days, stops } = await loadDaysAndStops(db, trip.id);
-  const ids = [
-    ...new Set(stops.flatMap((s) => (s.layerItemId ? [s.layerItemId] : []))),
+  const { places } = await resolveTripPlaces(
+    tripItemIds(trip, days, stops),
+    actor,
+  );
+  const candidates =
+    access.edit && actor
+      ? await listBaseCandidates(
+          trip,
+          new Set(
+            stops.flatMap((s) =>
+              s.status === "active" && s.layerItemId ? [s.layerItemId] : [],
+            ),
+          ),
+          places,
+          actor,
+        )
+      : [];
+  return buildTripView(trip, access, days, stops, places, candidates);
+}
+
+/** Every layer item a trip refers to: its stops, its base and day start/end places. */
+function tripItemIds(trip: TripRecord, days: DayRow[], stops: StopRow[]) {
+  return [
+    ...new Set([
+      ...stops.flatMap((s) => (s.layerItemId ? [s.layerItemId] : [])),
+      ...(trip.baseItemId ? [trip.baseItemId] : []),
+      ...days.flatMap((d) => [
+        ...(d.startItemId ? [d.startItemId] : []),
+        ...(d.endItemId ? [d.endItemId] : []),
+      ]),
+    ]),
   ];
-  const { places } = await resolveTripPlaces(ids, actor);
-  return buildTripView(trip, access, days, stops, places);
+}
+
+/**
+ * A layer item the actor may use as a base or day start/end: visible to them,
+ * a place with a map location, and allowed by the trip's audience rule.
+ */
+async function resolveEndpointPlace(
+  actor: Actor,
+  itemId: string,
+  ownerGroupId: string | null,
+) {
+  const { places, layers } = await resolveTripPlaces([itemId], actor);
+  const place = places.get(itemId);
+  if (!place)
+    throw new AppError(404, "NOT_FOUND", "This place is unavailable.");
+  if (!audienceFits(layers.get(place.layerId)!, ownerGroupId))
+    throw new AppError(
+      400,
+      "AUDIENCE_MISMATCH",
+      "This group can't see that place, so it can't be used here.",
+    );
+  if (!place.point)
+    throw new AppError(
+      400,
+      "NO_LOCATION",
+      "This place has no map location yet.",
+    );
+  return place;
+}
+
+function boundsFor(ctx: PlanContext, day: DayRow): DayBounds {
+  const { start, end } = dayEndpoints(ctx.trip.baseItemId, day, ctx.places);
+  return { start: start?.location ?? null, end: end?.location ?? null };
 }
 
 export async function getTripView(id: string, actor: Actor | null) {
@@ -279,7 +343,7 @@ async function reorderDay(ctx: PlanContext, dayId: string) {
   const ordered =
     day.orderMode === "manual"
       ? [...visible].sort((a, b) => a.position - b.position).map((s) => s.id)
-      : orderDay(visible);
+      : orderDay(visible, boundsFor(ctx, day));
   await writeDay(ctx.tx, dayId, [...ordered, ...hidden.map((s) => s.id)]);
 }
 
@@ -291,6 +355,7 @@ async function planAll(ctx: PlanContext) {
     manualDays: ctx.days.flatMap((d, i) =>
       d.orderMode === "manual" ? [i] : [],
     ),
+    bounds: ctx.days.map((d) => boundsFor(ctx, d)),
   });
   for (let i = 0; i < ctx.days.length; i++)
     await writeDay(ctx.tx, ctx.days[i].id, result.days[i]);
@@ -320,10 +385,10 @@ async function mutate(
         "This trip changed. Reload to see the latest version.",
       );
     const { days, stops } = await loadDaysAndStops(tx, tripId);
-    const ids = [
-      ...new Set(stops.flatMap((s) => (s.layerItemId ? [s.layerItemId] : []))),
-    ];
-    const { places } = await resolveTripPlaces(ids, a);
+    const { places } = await resolveTripPlaces(
+      tripItemIds(found.trip, days, stops),
+      a,
+    );
     await fn({ tx, actor: a, trip: found.trip, days, stops, places });
     const bumped = await tx.query<{ revision: number }>(
       `UPDATE trip SET revision=revision+1, updated_by=$2, updated_at=now() WHERE id=$1 RETURNING revision`,
@@ -356,6 +421,9 @@ export async function createTrip(actor: Actor | null, body: unknown) {
       "NO_PLACES",
       "There are no places you can add to a trip here.",
     );
+  const basePlace = input.baseItemId
+    ? await resolveEndpointPlace(a, input.baseItemId, groupId)
+    : null;
   const tripId = await transaction(async (tx) => {
     const count = await tx.query<{ n: number }>(
       `SELECT count(*)::int AS n FROM trip WHERE status='active' AND ${groupId ? "owner_group_id" : "owner_user_id"}=$1`,
@@ -368,8 +436,8 @@ export async function createTrip(actor: Actor | null, body: unknown) {
         `You can keep up to ${maxActiveTrips} trips.`,
       );
     const inserted = await tx.query<{ id: string }>(
-      `INSERT INTO trip(title,city_id,owner_user_id,owner_group_id,audience,starts_on,ends_on,stops_per_day,optimizer_version,created_by,updated_by)
-       VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$10) RETURNING id`,
+      `INSERT INTO trip(title,city_id,owner_user_id,owner_group_id,audience,starts_on,ends_on,stops_per_day,optimizer_version,base_item_id,created_by,updated_by)
+       VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$11,$10,$10) RETURNING id`,
       [
         input.title,
         source.cityId,
@@ -381,6 +449,7 @@ export async function createTrip(actor: Actor | null, body: unknown) {
         input.stopsPerDay,
         tripOptimizerVersion,
         a.id,
+        basePlace?.itemId ?? null,
       ],
     );
     const id = inserted.rows[0].id;
@@ -399,7 +468,15 @@ export async function createTrip(actor: Actor | null, body: unknown) {
       [id, source.included.map((p) => p.itemId), a.id],
     );
     const dayList: DayRow[] = dayRows.rows
-      .map((d) => ({ id: d.id, onDate: d.on_date, orderMode: "auto" as const }))
+      .map((d): DayRow => ({
+        id: d.id,
+        onDate: d.on_date,
+        orderMode: "auto",
+        startKind: "base",
+        startItemId: null,
+        endKind: "base",
+        endItemId: null,
+      }))
       .sort((x, y) => (x.onDate < y.onDate ? -1 : 1));
     const stops: StopRow[] = stopRows.rows.map((s, i) => ({
       id: s.id,
@@ -412,7 +489,11 @@ export async function createTrip(actor: Actor | null, body: unknown) {
       updatedAt: new Date().toISOString(),
     }));
     const places = new Map(source.included.map((p) => [p.itemId, p]));
-    const trip = { stopsPerDay: input.stopsPerDay } as TripRecord;
+    if (basePlace) places.set(basePlace.itemId, basePlace);
+    const trip = {
+      stopsPerDay: input.stopsPerDay,
+      baseItemId: basePlace?.itemId ?? null,
+    } as TripRecord;
     const result = await planAll({
       tx,
       actor: a,
@@ -538,6 +619,29 @@ export async function patchTripDay(
   return mutate(actor, tripId, input.expectedRevision, async (ctx) => {
     const day = ctx.days.find((d) => d.id === dayId);
     if (!day) throw new AppError(404, "NOT_FOUND", "This day is unavailable.");
+    let endpointsChanged = false;
+    for (const side of ["start", "end"] as const) {
+      const kind = input[`${side}Kind`];
+      if (kind === undefined) continue;
+      const itemId = kind === "item" ? input[`${side}ItemId`]! : null;
+      if (itemId)
+        ctx.places.set(
+          itemId,
+          await resolveEndpointPlace(ctx.actor, itemId, ctx.trip.ownerGroupId),
+        );
+      await ctx.tx.query(
+        `UPDATE trip_day SET ${side}_kind=$2, ${side}_item_id=$3, updated_at=now() WHERE id=$1`,
+        [dayId, kind, itemId],
+      );
+      if (side === "start") {
+        day.startKind = kind as DayRow["startKind"];
+        day.startItemId = itemId;
+      } else {
+        day.endKind = kind as DayRow["endKind"];
+        day.endItemId = itemId;
+      }
+      endpointsChanged = true;
+    }
     if (input.order) {
       const visible = planStops(
         ctx,
@@ -572,7 +676,45 @@ export async function patchTripDay(
       );
       day.orderMode = input.orderMode;
       await reorderDay(ctx, dayId);
+      return;
     }
+    // A new start or end re-orders this day only (and a manual day just keeps its order).
+    if (endpointsChanged) await reorderDay(ctx, dayId);
+  });
+}
+
+/** Set, change or clear the trip base; re-orders only the auto days that use it. */
+export async function setTripBase(
+  actor: Actor | null,
+  tripId: string,
+  body: unknown,
+) {
+  const input = tripBaseInput.parse(body);
+  return mutate(actor, tripId, input.expectedRevision, async (ctx) => {
+    if (input.baseItemId)
+      ctx.places.set(
+        input.baseItemId,
+        await resolveEndpointPlace(
+          ctx.actor,
+          input.baseItemId,
+          ctx.trip.ownerGroupId,
+        ),
+      );
+    await ctx.tx.query(`UPDATE trip SET base_item_id=$2 WHERE id=$1`, [
+      tripId,
+      input.baseItemId,
+    ]);
+    ctx.trip.baseItemId = input.baseItemId;
+    for (const day of ctx.days)
+      if (
+        day.orderMode === "auto" &&
+        (day.startKind === "base" || day.endKind === "base")
+      )
+        await reorderDay(ctx, day.id);
+    await record(ctx.tx, ctx.actor.id, "trip_base_changed", {
+      owner: ctx.trip.ownerGroupId ? "group" : "user",
+      set: input.baseItemId !== null,
+    });
   });
 }
 
