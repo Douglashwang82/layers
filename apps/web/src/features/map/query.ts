@@ -19,6 +19,7 @@ import {
   unionItems,
   withinBounds,
   placeRank,
+  type GoogleMarkerKind,
 } from "@taiwanhub/shared";
 import { type LayerRecord, type LayerWithAccess } from "../layers/repository";
 import { listMapEvents } from "../layers/events";
@@ -28,7 +29,6 @@ import type { CollectionAvailability } from "../layers/collections-types";
 import { flags } from "@/lib/config";
 import { customMapItem } from "@/lib/custom-places";
 import { listActiveCustomPlaces } from "../custom-places/repository";
-import { placeTypes } from "../google-links/locations";
 import {
   type DailyPickView,
   loadDailyPickView,
@@ -80,7 +80,7 @@ export type MapItem = {
   /** Google place matched to a custom place at import: details on request, never its pin. */
   googlePlaceId?: string;
   /** Cached Google types of the matched place; they pick the pin's kind. */
-  googleTypes?: string[];
+  googleKind?: GoogleMarkerKind;
   /** A layer editor's custom pin image for this item (first layer that sets one wins). */
   markerImageUrl?: string | null;
 };
@@ -462,9 +462,6 @@ async function curatedMembers(
   const catalogFor = new Map<string, string>();
   if (customIds.length) {
     const places = await listActiveCustomPlaces(customIds);
-    const googleTypes = await placeTypes(
-      places.flatMap((p) => (p.googlePlaceId ? [p.googlePlaceId] : [])),
-    );
     const firstLayer = new Map<string, string>();
     for (const row of result.rows)
       if (row.custom_place_id && !firstLayer.has(row.custom_place_id))
@@ -481,16 +478,7 @@ async function curatedMembers(
       )
         catalogFor.set(place.id, catalogKey);
       else
-        byKey.set(
-          place.key,
-          customMapItem(
-            place,
-            firstLayer.get(place.id)!,
-            place.googlePlaceId
-              ? googleTypes.get(place.googlePlaceId)
-              : undefined,
-          ),
-        );
+        byKey.set(place.key, customMapItem(place, firstLayer.get(place.id)!));
     }
   }
   const groups = new Map<string, MapItem[]>();

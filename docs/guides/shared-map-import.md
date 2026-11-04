@@ -45,11 +45,14 @@ by the import; arbitrary membership editing and collection deletion are not expo
   selected marker gets one IDs-only Places Text Search (`places.id` field mask)
   for its name, restricted to a box about 200 m around its own coordinates. A hit
   is stored only as `custom_place.google_place_id`; the pin, name and note stay as
-  imported, so the marker keeps its pin without the 30-day coordinate cache. The
-  map detail then opens that place in Google Maps and loads its Google card only
+  imported, so the marker keeps its pin without the 30-day coordinate cache. A
+  match also gets one Place Details call (`location,types`). The raw types stay
+  in the 30-day cache; only LocalLink's marker kind worked out from them is kept
+  permanently, as `custom_place.google_kind`, so the pin keeps its kind. The map
+  detail then opens that place in Google Maps and loads its Google card only
   on request. Misses, provider errors, a missing key, or more than 2,000 markers
   per member per 24 hours leave markers unmatched. Importing the same marker
-  again links an earlier unmatched copy. Matching runs before the transaction,
+  again links an earlier unmatched copy and classifies a linked one with no kind. Matching runs before the transaction,
   with six lookups at a time, and is skipped for a replayed request.
 - Preview estimates may change if another editor changes data before saving.
   Saving rechecks permissions, revisions, capacity and duplicates transactionally.

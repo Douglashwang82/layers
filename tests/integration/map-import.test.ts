@@ -1,6 +1,7 @@
 import { readFileSync } from "node:fs";
 import { beforeAll, afterAll, describe, expect, it } from "vitest";
 import { pool } from "../../packages/database/src";
+import { placeTypes } from "../../apps/web/src/features/google-links/locations";
 import { markerKind, type Actor } from "../../packages/shared/src";
 import { flags } from "../../apps/web/src/lib/config";
 import {
@@ -267,22 +268,37 @@ describe("transactional map imports", () => {
           before.rows[i].longitude,
         ]);
       }
-      // Each marker's pin takes its kind from the matched place's cached types.
+      // Each marker's pin takes its stored kind, which outlives Google's types.
       const found = (await getLayer(plain.layers[0].id, owner))!;
-      const { items } = await getLayerContents(
-        found.layer,
-        {
-          id: found.layer.cityId,
-          slug: "houston",
-          name: "Houston",
-          timezone: "America/Chicago",
-          latitude: 29.7,
-          longitude: -95.3,
-        },
-        owner,
+      const pins = async () =>
+        (
+          await getLayerContents(
+            found.layer,
+            {
+              id: found.layer.cityId,
+              slug: "houston",
+              name: "Houston",
+              timezone: "America/Chicago",
+              latitude: 29.7,
+              longitude: -95.3,
+            },
+            owner,
+          )
+        ).items.map((item) => markerKind(item));
+      const foodPins = Array.from({ length: before.rowCount! }, () => "food");
+      expect(await pins()).toEqual(foodPins);
+      const linked = after.rows.map((r) => r.google_place_id);
+      await pool.query(
+        "UPDATE place_provider_reference SET location_fetched_at=now()-interval '31 days' WHERE provider_place_id=ANY($1::text[])",
+        [linked],
       );
-      expect(items).toHaveLength(before.rowCount!);
-      for (const item of items) expect(markerKind(item)).toBe("food");
+      expect(await placeTypes(linked as string[])).toEqual(new Map());
+      const cached = await pool.query(
+        "SELECT 1 FROM place_provider_reference WHERE provider_place_id=ANY($1::text[]) AND types IS NOT NULL",
+        [linked],
+      );
+      expect(cached.rowCount).toBe(0);
+      expect(await pins()).toEqual(foodPins);
       // A replayed request returns its receipt without new lookups.
       const spent = () =>
         pool.query<{ count: number }>(

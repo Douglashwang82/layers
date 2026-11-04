@@ -60,6 +60,7 @@ export async function placeTypes(placeIds: string[]) {
  * Caches Place Details (`location,types`) for places a member just imported.
  * An explicit provider operation, never run while browsing. Places with fresh
  * types are skipped; one failed lookup leaves that place untyped, nothing more.
+ * Returns the types known for each place, fresh or just fetched.
  */
 export async function cachePlaceDetails(
   placeIds: string[],
@@ -68,6 +69,7 @@ export async function cachePlaceDetails(
 ) {
   const unique = [...new Set(placeIds)];
   const known = await placeTypes(unique);
+  const types = new Map(known);
   const queue = unique.filter((id) => !known.has(id));
   const worker = async () => {
     for (let id = queue.shift(); id; id = queue.shift()) {
@@ -80,6 +82,7 @@ export async function cachePlaceDetails(
            WHERE provider='google' AND provider_place_id=$1`,
           [id, place.lat, place.lng, place.types],
         );
+        types.set(id, place.types);
       } catch {
         // Best effort: the marker keeps the neutral pin.
       }
@@ -88,4 +91,5 @@ export async function cachePlaceDetails(
   await Promise.all(
     Array.from({ length: Math.min(concurrency, queue.length) }, worker),
   );
+  return types;
 }
