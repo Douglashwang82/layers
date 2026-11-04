@@ -188,25 +188,18 @@ export function ResultsSummary({
   );
 }
 
-/** What to do with a map that has nothing on it yet. */
+/** The sign-in prompt or first-run starter for a map with nothing on it. */
 export function MapEmptyState({
-  authenticated,
   firstRun,
   dailyPickSlug,
-  canShowLayers,
   t,
   onSeePick,
-  onShowLayers,
 }: {
-  authenticated: boolean;
   /** A signed-in member with no layers of their own gets a starter. */
   firstRun: boolean;
   dailyPickSlug: string | null;
-  /** The panel is on the list, so the member's layers are one step away. */
-  canShowLayers: boolean;
   t: Copy;
   onSeePick: (slug: string) => void;
-  onShowLayers: () => void;
 }) {
   if (firstRun)
     return (
@@ -233,28 +226,11 @@ export function MapEmptyState({
   return (
     <div className="empty">
       <h3>{t.mvpEmptyTitle}</h3>
-      <p>{authenticated ? t.mvpEmptyBody : t.signInForLayers}</p>
+      <p>{t.signInForLayers}</p>
       <div className="actions">
-        {authenticated ? (
-          <>
-            {canShowLayers && (
-              <button
-                type="button"
-                className="button secondary small"
-                onClick={onShowLayers}
-              >
-                {t.yourLayers}
-              </button>
-            )}
-            <Link className="button small" href="/layers/new">
-              {t.createFromGoogle}
-            </Link>
-          </>
-        ) : (
-          <Link className="button small" href="/sign-in?next=%2F">
-            {t.signIn}
-          </Link>
-        )}
+        <Link className="button small" href="/sign-in?next=%2F">
+          {t.signIn}
+        </Link>
       </div>
     </div>
   );

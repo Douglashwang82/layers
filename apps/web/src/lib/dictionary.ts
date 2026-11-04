@@ -959,8 +959,6 @@ export const en = {
     "Being featured doesn't mean it's open today. Check hours before you go.",
   dailyPickToday: "Today's pick",
   mvpEmptyTitle: "Put your places on the map",
-  mvpEmptyBody:
-    "Load one or more of your layers, or create a layer from Google Maps links.",
   createFromGoogle: "Create a layer from Google Maps",
   starterTitle: "Start your map",
   starterBody: "You don't have any layers yet. Pick one of these to begin.",
@@ -1958,7 +1956,6 @@ export const zh: Copy = {
   dailyPickOpenNote: "被選為精選不代表今天有營業，出發前請先確認營業時間。",
   dailyPickToday: "今天的精選",
   mvpEmptyTitle: "把你的地點放上地圖",
-  mvpEmptyBody: "載入一個或多個你的圖層，或用 Google 地圖連結建立新圖層。",
   createFromGoogle: "用 Google 地圖建立圖層",
   starterTitle: "開始你的地圖",
   starterBody: "你還沒有任何圖層，從下面任選一個開始。",

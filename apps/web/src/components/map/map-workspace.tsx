@@ -1306,15 +1306,13 @@ export function MapWorkspace({
       locale={locale}
     />
   );
-  const emptyState = !hasApplied && (
+  // A member with layers already has the Layers list to act from.
+  const emptyState = !hasApplied && (!authenticated || firstRun) && (
     <MapEmptyState
-      authenticated={authenticated}
       firstRun={firstRun}
       dailyPickSlug={dailyPickSlug}
-      canShowLayers={hasList}
       t={t}
       onSeePick={(slug) => toggleLayer(slug, true)}
-      onShowLayers={() => setTab("layers")}
     />
   );
   const dailyPick = result.dailyPick && (

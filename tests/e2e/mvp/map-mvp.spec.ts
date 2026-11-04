@@ -167,6 +167,15 @@ test("a member builds a layer from Google Maps links and attaches an event", asy
   await openMapList(page);
   await expect(places).toHaveCount(4);
   await expect(places.first()).toContainText("Night market");
+  // With nothing applied, a member with layers gets the list and no prompt.
+  await page.goto("/?layers=none");
+  await openMapList(page);
+  await expect(
+    page.getByRole("heading", { name: "Your layers" }),
+  ).toBeVisible();
+  await expect(
+    page.getByRole("heading", { name: "Put your places on the map" }),
+  ).toHaveCount(0);
 });
 
 test("large layers page through local summaries without loading provider cards", async ({
