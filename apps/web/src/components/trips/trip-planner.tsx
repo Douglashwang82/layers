@@ -19,6 +19,7 @@ import { routeLinks } from "@/lib/route-link";
 import { tripCopy } from "@/lib/trip-copy";
 import type {
   TripDayView,
+  TripEndpointView,
   TripStopView,
   TripView,
 } from "@/features/trips/repository";
@@ -60,7 +61,7 @@ export function TripPlanner({
   const [confirmDelete, setConfirmDelete] = useState(false);
   const unit = distanceUnit(view.trip.citySlug);
   const distance = (m: number) => formatDistance(m, unit);
-  const name = (s: TripStopView) =>
+  const name = (s: Pick<TripStopView, "label" | "labelChinese">) =>
     (locale === "zh-TW" && s.labelChinese) || s.label || t.unnamed;
   const base = `trips/${view.trip.id}`;
 
@@ -102,6 +103,29 @@ export function TripPlanner({
     order.splice(to, 0, moved);
     return run(`${base}/days/${day.id}`, "PATCH", { order });
   };
+  const baseName = view.base ? name(view.base) : "";
+  const setBase = (itemId: string) =>
+    run(base, "PATCH", { baseItemId: itemId || null });
+  const setEndpoint = (day: TripDayView, side: "start" | "end", v: string) => {
+    const open = side === "start" ? "first_stop" : "last_stop";
+    if (v === "base")
+      return run(`${base}/days/${day.id}`, "PATCH", {
+        [`${side}Kind`]: "base",
+      });
+    if (v.startsWith("item:"))
+      return run(`${base}/days/${day.id}`, "PATCH", {
+        [`${side}Kind`]: "item",
+        [`${side}ItemId`]: v.slice(5),
+      });
+    return run(`${base}/days/${day.id}`, "PATCH", { [`${side}Kind`]: open });
+  };
+  /** Candidates, plus the place currently in use when it is not one of them. */
+  const choices = (current: TripEndpointView | null) => [
+    ...(current && !view.baseCandidates.some((c) => c.itemId === current.itemId)
+      ? [current]
+      : []),
+    ...view.baseCandidates,
+  ];
   const deleteTrip = async () => {
     setBusy(true);
     try {
@@ -203,6 +227,51 @@ export function TripPlanner({
         </p>
       )}
 
+      {(view.canEdit || view.base) && (
+        <section className="trip-base" aria-labelledby="trip-base-heading">
+          <h2 id="trip-base-heading" className="sr-only">
+            {t.baseHeading}
+          </h2>
+          {view.canEdit ? (
+            <>
+              <div className="trip-base-row">
+                <label htmlFor="trip-base-select">{t.baseLabel}</label>
+                <select
+                  id="trip-base-select"
+                  data-testid="trip-base-select"
+                  value={view.base?.itemId ?? ""}
+                  disabled={busy}
+                  onChange={(e) => void setBase(e.target.value)}
+                >
+                  <option value="">{t.baseNone}</option>
+                  {choices(view.base).map((c) => (
+                    <option key={c.itemId} value={c.itemId}>
+                      {(locale === "zh-TW" && c.labelChinese) ||
+                        c.label ||
+                        t.unnamed}
+                    </option>
+                  ))}
+                </select>
+              </div>
+              <p className="fine-print">
+                {t.baseHint} {t.baseAlreadyStop}
+              </p>
+              {view.baseUnavailable && (
+                <p className="notice" role="status">
+                  {t.baseUnavailable}
+                </p>
+              )}
+            </>
+          ) : (
+            view.base && (
+              <p>
+                <strong>{t.baseHeading}:</strong> {baseName}
+              </p>
+            )
+          )}
+        </section>
+      )}
+
       <div className="trip-chips" role="group" aria-label={t.trips}>
         <button
           type="button"
@@ -263,12 +332,20 @@ export function TripPlanner({
 
       {shown.map(({ day, index }) => {
         const located = day.stops.filter((s) => s.location);
+        const waypoint = (p: {
+          location: { lat: number; lng: number } | null;
+          providerPlaceId: string | null;
+        }) => ({
+          lat: p.location!.lat,
+          lng: p.location!.lng,
+          placeId: p.providerPlaceId,
+        });
         const links = routeLinks(
-          located.map((s) => ({
-            lat: s.location!.lat,
-            lng: s.location!.lng,
-            placeId: s.providerPlaceId,
-          })),
+          [
+            ...(located.length && day.start ? [waypoint(day.start)] : []),
+            ...located.map(waypoint),
+            ...(located.length && day.end ? [waypoint(day.end)] : []),
+          ],
           "walking",
         );
         return (
@@ -307,64 +384,140 @@ export function TripPlanner({
                 </button>
               )}
             </div>
+            {view.canEdit && (
+              <div className="trip-endpoints">
+                {(["start", "end"] as const).map((side) => {
+                  const current = day[side];
+                  const kind = day[`${side}Kind`];
+                  const value =
+                    kind === "item" && current
+                      ? `item:${current.itemId}`
+                      : kind === "base"
+                        ? "base"
+                        : "open";
+                  const id = `${side}-${day.id}`;
+                  return (
+                    <label key={side} htmlFor={id}>
+                      {side === "start" ? t.dayStart : t.dayEnd}
+                      <select
+                        id={id}
+                        data-testid={`trip-${side}-select`}
+                        value={value}
+                        disabled={busy}
+                        onChange={(e) =>
+                          void setEndpoint(day, side, e.target.value)
+                        }
+                      >
+                        <option value="base">
+                          {side === "start" ? t.startBase : t.endBase}
+                          {view.base ? `: ${baseName}` : ""}
+                        </option>
+                        <option value="open">
+                          {side === "start" ? t.startFirst : t.endLast}
+                        </option>
+                        {choices(kind === "item" ? current : null).map((c) => (
+                          <option key={c.itemId} value={`item:${c.itemId}`}>
+                            {(locale === "zh-TW" && c.labelChinese) ||
+                              c.label ||
+                              t.unnamed}
+                          </option>
+                        ))}
+                      </select>
+                    </label>
+                  );
+                })}
+              </div>
+            )}
             {day.stops.length === 0 ? (
               <p className="muted">{t.freeDay}</p>
             ) : (
-              <ol className="trip-stops">
-                {day.stops.map((stop, i) => (
-                  <li key={stop.id} data-testid="trip-stop">
+              <>
+                {day.start && (
+                  <p className="trip-endpoint" data-testid="trip-day-start">
                     <span
-                      className="trip-number"
-                      style={{ background: dayColor(index) }}
+                      className="trip-number trip-number-base"
                       aria-hidden="true"
                     >
-                      {i + 1}
+                      {"⌂"}
                     </span>
-                    <span className="trip-stop-text">
-                      <span className="trip-stop-name">{name(stop)}</span>
-                      <span className="fine-print">
-                        {!stop.location ? (
-                          <>
-                            <MapPinOff size={12} aria-hidden="true" />{" "}
-                            {t.noLocation}
-                          </>
-                        ) : stop.legMeters !== null ? (
-                          t.about(distance(stop.legMeters))
-                        ) : null}
-                        {stop.pinned && (
-                          <>
-                            {" "}
-                            <Pin size={12} aria-hidden="true" /> {t.pinned}
-                          </>
-                        )}
+                    {t.from(name(day.start))}
+                  </p>
+                )}
+                <ol className="trip-stops">
+                  {day.stops.map((stop, i) => (
+                    <li key={stop.id} data-testid="trip-stop">
+                      <span
+                        className="trip-number"
+                        style={{ background: dayColor(index) }}
+                        aria-hidden="true"
+                      >
+                        {i + 1}
                       </span>
+                      <span className="trip-stop-text">
+                        <span className="trip-stop-name">{name(stop)}</span>
+                        <span className="fine-print">
+                          {!stop.location ? (
+                            <>
+                              <MapPinOff size={12} aria-hidden="true" />{" "}
+                              {t.noLocation}
+                            </>
+                          ) : stop.legMeters !== null ? (
+                            t.about(distance(stop.legMeters))
+                          ) : null}
+                          {stop.pinned && (
+                            <>
+                              {" "}
+                              <Pin size={12} aria-hidden="true" /> {t.pinned}
+                            </>
+                          )}
+                        </span>
+                      </span>
+                      {view.canEdit && (
+                        <>
+                          <button
+                            type="button"
+                            className="icon-button"
+                            aria-label={t.moveUp(name(stop))}
+                            disabled={busy || i === 0}
+                            onClick={() => void reorder(day, i, i - 1)}
+                          >
+                            <ArrowUp size={16} aria-hidden="true" />
+                          </button>
+                          <button
+                            type="button"
+                            className="icon-button"
+                            aria-label={t.moveDown(name(stop))}
+                            disabled={busy || i === day.stops.length - 1}
+                            onClick={() => void reorder(day, i, i + 1)}
+                          >
+                            <ArrowDown size={16} aria-hidden="true" />
+                          </button>
+                        </>
+                      )}
+                      {stopMenu(stop, day.id)}
+                    </li>
+                  ))}
+                </ol>
+                {day.end && (
+                  <p className="trip-endpoint" data-testid="trip-day-end">
+                    <span
+                      className="trip-number trip-number-base"
+                      aria-hidden="true"
+                    >
+                      {"⌂"}
                     </span>
-                    {view.canEdit && (
-                      <>
-                        <button
-                          type="button"
-                          className="icon-button"
-                          aria-label={t.moveUp(name(stop))}
-                          disabled={busy || i === 0}
-                          onClick={() => void reorder(day, i, i - 1)}
-                        >
-                          <ArrowUp size={16} aria-hidden="true" />
-                        </button>
-                        <button
-                          type="button"
-                          className="icon-button"
-                          aria-label={t.moveDown(name(stop))}
-                          disabled={busy || i === day.stops.length - 1}
-                          onClick={() => void reorder(day, i, i + 1)}
-                        >
-                          <ArrowDown size={16} aria-hidden="true" />
-                        </button>
-                      </>
-                    )}
-                    {stopMenu(stop, day.id)}
-                  </li>
-                ))}
-              </ol>
+                    <span>
+                      {t.backTo(name(day.end))}
+                      {day.endLegMeters !== null && (
+                        <span className="fine-print">
+                          {" "}
+                          · {t.endLeg(distance(day.endLegMeters))}
+                        </span>
+                      )}
+                    </span>
+                  </p>
+                )}
+              </>
             )}
             {day.totalMeters > 0 && (
               <p className="fine-print" data-testid="trip-day-total">

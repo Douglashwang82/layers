@@ -99,9 +99,28 @@ export function TripMap({
       const located = day.stops.filter((s) => s.location);
       if (!located.length) return;
       const color = dayColor(index);
-      const coordinates = located.map(
-        (s) => [s.location!.lng, s.location!.lat] as [number, number],
-      );
+      const point = (p: { lat: number; lng: number }) =>
+        [p.lng, p.lat] as [number, number];
+      // The line runs base -> stops -> base; the base is a house badge, not numbered.
+      const coordinates = [
+        ...(day.start ? [point(day.start.location)] : []),
+        ...located.map((s) => point(s.location!)),
+        ...(day.end ? [point(day.end.location)] : []),
+      ];
+      const sameEnds = day.start?.itemId === day.end?.itemId;
+      for (const endpoint of sameEnds ? [day.start] : [day.start, day.end]) {
+        if (!endpoint) continue;
+        const el = document.createElement("div");
+        el.className = "trip-pin trip-pin-base";
+        el.textContent = "⌂";
+        el.setAttribute("aria-hidden", "true");
+        markers.current.push(
+          new mapboxgl.Marker({ element: el })
+            .setLngLat(point(endpoint.location))
+            .addTo(map),
+        );
+        bounds.extend(point(endpoint.location));
+      }
       const id = `trip-day-${day.id}`;
       map.addSource(id, {
         type: "geojson",

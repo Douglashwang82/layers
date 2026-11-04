@@ -140,6 +140,107 @@ describe("planTrip", () => {
   });
 });
 
+describe("start and end points", () => {
+  // Four places on a west-east line, 1 km apart, ids 1..4 from west to east.
+  const lng = (x: number) => -95.4 + x * 0.01;
+  const line = [1, 2, 3, 4].map((x) => ({
+    id: id(x),
+    point: { lat: 29.7, lng: lng(x) },
+  }));
+  const west = { lat: 29.7, lng: lng(0) };
+  const east = { lat: 29.7, lng: lng(5) };
+  const ids = (xs: Array<{ id: string }>) => xs.map((s) => s.id);
+  const forward = [1, 2, 3, 4].map(id);
+
+  it("leaves the open path exactly as before when there is no base", () => {
+    const open = ids(orderStops(line));
+    expect(ids(orderStops(line, {}))).toEqual(open);
+    expect(ids(orderStops(line, { start: null, end: null }))).toEqual(open);
+  });
+
+  it("starts at the start point (start only)", () => {
+    expect(ids(orderStops(line, { start: west }))).toEqual(forward);
+    expect(ids(orderStops(line, { start: east }))).toEqual(
+      [...forward].reverse(),
+    );
+  });
+
+  it("finishes toward the end point (end only)", () => {
+    expect(ids(orderStops(line, { end: east }))).toEqual(forward);
+    expect(ids(orderStops(line, { end: west }))).toEqual(
+      [...forward].reverse(),
+    );
+  });
+
+  it("accounts for both ends, including a round trip", () => {
+    expect(ids(orderStops(line, { start: west, end: east }))).toEqual(forward);
+    expect(ids(orderStops(line, { start: east, end: west }))).toEqual(
+      [...forward].reverse(),
+    );
+    expect(ids(orderStops(line, { start: west, end: west }))).toEqual(forward);
+  });
+
+  it("orders two stops by the base when one is given", () => {
+    const two = line.slice(0, 2);
+    expect(ids(orderStops(two, { start: east }))).toEqual([id(2), id(1)]);
+    expect(ids(orderStops(two, { end: west }))).toEqual([id(2), id(1)]);
+  });
+
+  it("is deterministic under shuffled input", () => {
+    const bounds = { start: west, end: east };
+    expect(ids(orderStops(shuffled(line), bounds))).toEqual(
+      ids(orderStops(line, bounds)),
+    );
+  });
+
+  it("lets planTrip order each day around its own bounds", () => {
+    const stops = line.map((s) => ({
+      ...s,
+      day: 0,
+      pinned: true,
+      position: 0,
+    }));
+    const a = planTrip({
+      dayCount: 1,
+      stopsPerDay: 6,
+      stops,
+      bounds: [{ start: east, end: west }],
+    });
+    expect(a.days[0]).toEqual([...forward].reverse());
+    const b = planTrip({
+      dayCount: 1,
+      stopsPerDay: 6,
+      stops,
+      bounds: [{ start: west, end: east }],
+    });
+    expect(b.days[0]).toEqual(forward);
+  });
+
+  it("never reorders a manual day, and keeps unlocated stops last", () => {
+    const manual = planTrip({
+      dayCount: 1,
+      stopsPerDay: 6,
+      stops: [
+        { ...stop(3, 29.7, lng(3)), day: 0, position: 0 },
+        { ...stop(1, 29.7, lng(1)), day: 0, position: 1 },
+      ],
+      manualDays: [0],
+      bounds: [{ start: west }],
+    });
+    expect(manual.days[0]).toEqual([id(3), id(1)]);
+    const mixed = planTrip({
+      dayCount: 1,
+      stopsPerDay: 6,
+      stops: [
+        { ...stop(9, null), day: 0, pinned: true, position: 0 },
+        ...line.map((s) => ({ ...s, day: 0, pinned: true, position: 1 })),
+      ],
+      bounds: [{ start: east }],
+    });
+    expect(mixed.days[0]).toEqual([id(4), id(3), id(2), id(1), id(9)]);
+  });
+});
+
 describe("tripCreateInput", () => {
   const base = {
     title: "Weekend",

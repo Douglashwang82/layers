@@ -85,6 +85,26 @@ export const tripEn = {
   groupTrip: (group: string) => `Group trip · ${group}`,
   privateTrip: "Private trip",
   unnamed: "Saved place",
+  baseHeading: "Where you stay",
+  baseHint:
+    "Each day starts and ends here unless you choose otherwise. Straight-line distances include the legs to and from it.",
+  baseLabel: "Where you stay (optional)",
+  baseNone: "None — each day is an open path",
+  baseUnavailable:
+    "The place set as where you stay isn't available to you, so days are ordered as open paths.",
+  baseAlreadyStop:
+    "A place that is already in the trip can't also be a base. Remove it from the trip first.",
+  baseNoCandidates:
+    "No other places with a map location in these layers can be used.",
+  dayStart: "Start",
+  dayEnd: "End",
+  startBase: "Where you stay",
+  startFirst: "First stop",
+  endBase: "Where you stay",
+  endLast: "Last stop",
+  from: (name: string) => `From: ${name}`,
+  backTo: (name: string) => `Back to: ${name}`,
+  endLeg: (distance: string) => `about ${distance} straight-line to the end`,
 };
 export type TripCopy = typeof tripEn;
 export const tripZh: TripCopy = {
@@ -165,6 +185,23 @@ export const tripZh: TripCopy = {
   groupTrip: (group) => `群組行程 · ${group}`,
   privateTrip: "私人行程",
   unnamed: "已儲存的地點",
+  baseHeading: "住宿地點",
+  baseHint:
+    "除非另外選擇，每天都從這裡出發並回到這裡。直線距離會包含往返這裡的路段。",
+  baseLabel: "住宿地點（選填）",
+  baseNone: "不設定，每天為開放路線",
+  baseUnavailable: "你無法使用已設定的住宿地點，因此各天以開放路線排序。",
+  baseAlreadyStop: "已在行程中的地點不能同時作為住宿地點，請先從行程移除。",
+  baseNoCandidates: "這些圖層中沒有其他有地圖位置的地點可以使用。",
+  dayStart: "起點",
+  dayEnd: "終點",
+  startBase: "住宿地點",
+  startFirst: "第一個地點",
+  endBase: "住宿地點",
+  endLast: "最後一個地點",
+  from: (name) => `出發：${name}`,
+  backTo: (name) => `回到：${name}`,
+  endLeg: (distance) => `到終點直線距離約 ${distance}`,
 };
 export function tripCopy(locale: string): TripCopy {
   return locale === "zh-TW" ? tripZh : tripEn;

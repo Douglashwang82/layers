@@ -20,6 +20,7 @@ import {
   patchTripStop,
   previewTrip,
   removeUnavailableStops,
+  setTripBase,
 } from "../../apps/web/src/features/trips/service";
 import { flags } from "../../apps/web/src/lib/config";
 import type { Actor } from "../../packages/shared/src";
@@ -363,6 +364,230 @@ describe("trips from a layer and group trips", () => {
     await deleteTrip(editor, trip.trip.id);
     await expect(getTripView(trip.trip.id, editor)).rejects.toMatchObject({
       status: 404,
+    });
+  });
+});
+
+describe("trip base and per-day start and end", () => {
+  let tripId: string;
+  let hotelSouth: string;
+  let hotelNorth: string;
+  const rev = async (id = tripId, actor = alice) =>
+    (await getTripView(id, actor)).revision;
+
+  beforeAll(async () => {
+    hotelSouth = await addPlace(alice, westLayer, "Hotel South", {
+      latitude: 29.7,
+      longitude: -95.6,
+    });
+    hotelNorth = await addPlace(alice, westLayer, "Hotel North", {
+      latitude: 29.8,
+      longitude: -95.6,
+    });
+    // Three stops on a north-south line between the two hotels.
+    for (let i = 1; i <= 3; i++)
+      await addPlace(alice, westLayer, `Base ${i}`, {
+        latitude: 29.72 + i * 0.003,
+        longitude: -95.6,
+      });
+    const trip = await createTrip(alice, {
+      title: "Base trip",
+      startsOn: "2026-11-20",
+      endsOn: "2026-11-20",
+      layerItemIds: ["Base 1", "Base 2", "Base 3"].map((n) => itemOf.get(n)!),
+    });
+    tripId = trip.trip.id;
+  });
+
+  it("starts with no base, as existing trips do", async () => {
+    const view = await getTripView(tripId, alice);
+    expect(view.base).toBeNull();
+    expect(view.baseUnavailable).toBe(false);
+    const [day] = view.days;
+    expect(day.start).toBeNull();
+    expect(day.end).toBeNull();
+    expect(day.startKind).toBe("base");
+    expect(day.stops[0].legMeters).toBeNull();
+    expect(day.endLegMeters).toBeNull();
+    // The hotels are offered; places already in the trip are not.
+    const offered = view.baseCandidates.map((c) => c.label);
+    expect(offered).toEqual(
+      expect.arrayContaining(["Hotel South", "Hotel North"]),
+    );
+    expect(offered).not.toContain("Base 1");
+  });
+
+  it("orders each day from and back to the base, and counts both legs", async () => {
+    const view = await setTripBase(alice, tripId, {
+      expectedRevision: await rev(),
+      baseItemId: hotelSouth,
+    });
+    expect(view.base).toMatchObject({ label: "Hotel South", kind: "base" });
+    const [day] = view.days;
+    expect(day.start?.label).toBe("Hotel South");
+    expect(day.end?.label).toBe("Hotel South");
+    expect(labels(day.stops)).toEqual(["Base 1", "Base 2", "Base 3"]);
+    expect(day.stops[0].legMeters).toBeGreaterThan(0);
+    expect(day.endLegMeters).toBeGreaterThan(0);
+    const legs = day.stops.reduce((n, s) => n + (s.legMeters ?? 0), 0);
+    expect(day.totalMeters).toBe(legs + day.endLegMeters!);
+
+    const north = await setTripBase(alice, tripId, {
+      expectedRevision: view.revision,
+      baseItemId: hotelNorth,
+    });
+    expect(labels(north.days[0].stops)).toEqual(["Base 3", "Base 2", "Base 1"]);
+  });
+
+  it("lets a day override its start and end, then fall back", async () => {
+    const view = await getTripView(tripId, alice);
+    const dayId = view.days[0].id;
+    const open = await patchTripDay(alice, tripId, dayId, {
+      expectedRevision: view.revision,
+      startKind: "first_stop",
+      endKind: "item",
+      endItemId: hotelSouth,
+    });
+    const [day] = open.days;
+    expect(day.start).toBeNull();
+    expect(day.end).toMatchObject({ label: "Hotel South", kind: "item" });
+    expect(day.stops[day.stops.length - 1].label).toBe("Base 1");
+    await expect(
+      patchTripDay(alice, tripId, dayId, {
+        expectedRevision: open.revision,
+        startKind: "item",
+      }),
+    ).rejects.toThrow();
+    const back = await patchTripDay(alice, tripId, dayId, {
+      expectedRevision: open.revision,
+      startKind: "base",
+      endKind: "base",
+    });
+    expect(back.days[0].start?.label).toBe("Hotel North");
+    expect(back.days[0].end?.label).toBe("Hotel North");
+  });
+
+  it("rejects stale revisions and unusable places", async () => {
+    const current = await rev();
+    await expect(
+      setTripBase(alice, tripId, {
+        expectedRevision: current - 1,
+        baseItemId: hotelSouth,
+      }),
+    ).rejects.toMatchObject({ status: 409 });
+    await expect(
+      setTripBase(alice, tripId, {
+        expectedRevision: current,
+        baseItemId: itemOf.get("Pop-up (no pin)")!,
+      }),
+    ).rejects.toMatchObject({ status: 400, code: "NO_LOCATION" });
+    // Not the owner: the trip itself looks missing.
+    await expect(
+      setTripBase(bob, tripId, {
+        expectedRevision: current,
+        baseItemId: hotelSouth,
+      }),
+    ).rejects.toMatchObject({ status: 404 });
+    expect(await rev()).toBe(current);
+  });
+
+  it("clears the base and returns to an open path", async () => {
+    const cleared = await setTripBase(alice, tripId, {
+      expectedRevision: await rev(),
+      baseItemId: null,
+    });
+    expect(cleared.base).toBeNull();
+    const [day] = cleared.days;
+    expect(day.start).toBeNull();
+    expect(day.end).toBeNull();
+    expect(day.endLegMeters).toBeNull();
+    expect(day.stops[0].legMeters).toBeNull();
+    const legs = day.stops.reduce((n, s) => n + (s.legMeters ?? 0), 0);
+    expect(day.totalMeters).toBe(legs);
+    const stored = await pool.query(
+      "SELECT base_item_id FROM trip WHERE id=$1",
+      [tripId],
+    );
+    expect(stored.rows[0].base_item_id).toBeNull();
+  });
+
+  describe("group trips", () => {
+    let groupTrip: string;
+    let circleHotel: string;
+    beforeAll(async () => {
+      circleHotel = await addPlace(alice, groupLayer, "Circle Hotel", {
+        latitude: 29.74,
+        longitude: -95.38,
+      });
+      const trip = await createTrip(editor, {
+        title: "Circle base trip",
+        startsOn: "2026-11-21",
+        endsOn: "2026-11-21",
+        groupId,
+        layerItemIds: [itemOf.get("Circle A")!, itemOf.get("Circle B")!],
+      });
+      groupTrip = trip.trip.id;
+    });
+
+    it("lets editors set it and viewers see it but not change it", async () => {
+      const set = await setTripBase(editor, groupTrip, {
+        expectedRevision: await rev(groupTrip, editor),
+        baseItemId: circleHotel,
+      });
+      expect(set.base?.label).toBe("Circle Hotel");
+      const seen = await getTripView(groupTrip, viewer);
+      expect(seen.canEdit).toBe(false);
+      expect(seen.base?.label).toBe("Circle Hotel");
+      expect(seen.baseCandidates).toEqual([]);
+      await expect(
+        setTripBase(viewer, groupTrip, {
+          expectedRevision: seen.revision,
+          baseItemId: null,
+        }),
+      ).rejects.toMatchObject({ status: 403 });
+      await expect(
+        patchTripDay(viewer, groupTrip, seen.days[0].id, {
+          expectedRevision: seen.revision,
+          startKind: "first_stop",
+        }),
+      ).rejects.toMatchObject({ status: 403 });
+      await expect(getTripView(groupTrip, bob)).rejects.toMatchObject({
+        status: 404,
+      });
+      await expect(
+        setTripBase(bob, groupTrip, {
+          expectedRevision: seen.revision,
+          baseItemId: null,
+        }),
+      ).rejects.toMatchObject({ status: 404 });
+    });
+
+    it("refuses a base from a layer the group cannot use", async () => {
+      // Invisible to the editor: looks missing.
+      await expect(
+        setTripBase(editor, groupTrip, {
+          expectedRevision: await rev(groupTrip, editor),
+          baseItemId: hotelSouth,
+        }),
+      ).rejects.toMatchObject({ status: 404 });
+      // Alice can see her private layer, but a group trip may not use it.
+      await expect(
+        setTripBase(alice, groupTrip, {
+          expectedRevision: await rev(groupTrip, alice),
+          baseItemId: hotelSouth,
+        }),
+      ).rejects.toMatchObject({ status: 400, code: "AUDIENCE_MISMATCH" });
+    });
+
+    it("falls back to an open path when the base place is deleted, telling only editors", async () => {
+      await pool.query("DELETE FROM layer_item WHERE id=$1", [circleHotel]);
+      const asViewer = await getTripView(groupTrip, viewer);
+      const asEditor = await getTripView(groupTrip, editor);
+      expect(asViewer.base).toBeNull();
+      expect(asViewer.days[0].start).toBeNull();
+      expect(asEditor.base).toBeNull();
+      // The deleted item cleared the reference, so there is nothing to warn about.
+      expect(asEditor.baseUnavailable).toBe(false);
     });
   });
 });

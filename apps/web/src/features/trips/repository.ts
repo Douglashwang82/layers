@@ -27,6 +27,8 @@ export type TripRecord = {
   startsOn: string;
   endsOn: string;
   stopsPerDay: number;
+  /** Layer item used as "where you stay"; null when none. */
+  baseItemId: string | null;
   revision: number;
   createdBy: string | null;
   updatedAt: string;
@@ -35,7 +37,7 @@ export type TripAccess = { view: boolean; edit: boolean; delete: boolean };
 
 const tripColumns = `t.id,t.title,t.city_id,c.slug AS city_slug,c.name AS city_name,c.timezone,
   t.owner_user_id,t.owner_group_id,COALESCE(g.name,'') AS owner_name,t.audience,
-  t.starts_on::text AS starts_on,t.ends_on::text AS ends_on,t.stops_per_day,t.revision,t.created_by,t.updated_at`;
+  t.starts_on::text AS starts_on,t.ends_on::text AS ends_on,t.stops_per_day,t.base_item_id,t.revision,t.created_by,t.updated_at`;
 const tripFrom = `FROM trip t JOIN city c ON c.id=t.city_id LEFT JOIN "group" g ON g.id=t.owner_group_id`;
 
 function toTrip(r: Record<string, unknown>): TripRecord {
@@ -53,6 +55,7 @@ function toTrip(r: Record<string, unknown>): TripRecord {
     startsOn: String(r.starts_on),
     endsOn: String(r.ends_on),
     stopsPerDay: Number(r.stops_per_day),
+    baseItemId: (r.base_item_id as string) ?? null,
     revision: Number(r.revision),
     createdBy: (r.created_by as string) ?? null,
     updatedAt: new Date(String(r.updated_at)).toISOString(),
@@ -297,6 +300,38 @@ export function audienceFits(
   );
 }
 
+/**
+ * Places an editor may choose as the base or a day's start/end: located places
+ * in the layers of the trip's visible places that are not active stops and
+ * that fit the trip's audience. Resolved for this actor only.
+ */
+export async function listBaseCandidates(
+  trip: Pick<TripRecord, "ownerGroupId">,
+  activeItemIds: Set<string>,
+  visible: Map<string, TripPlace>,
+  actor: Actor,
+) {
+  const layerIds = [...new Set([...visible.values()].map((p) => p.layerId))];
+  const ids = (await listLayerPlaceItemIds(layerIds))
+    .filter((id) => !activeItemIds.has(id))
+    .slice(0, 300);
+  const { places, layers } = await resolveTripPlaces(ids, actor);
+  const out: Array<{ itemId: string; label: string; labelChinese: string }> =
+    [];
+  for (const id of ids) {
+    const place = places.get(id);
+    const layer = place && layers.get(place.layerId);
+    if (!place?.point || !layer || !audienceFits(layer, trip.ownerGroupId))
+      continue;
+    out.push({
+      itemId: id,
+      label: place.label,
+      labelChinese: place.labelChinese,
+    });
+  }
+  return out;
+}
+
 /* ---------------------------------------------------------------------------
    Days and stops
    --------------------------------------------------------------------------- */
@@ -304,6 +339,10 @@ export type DayRow = {
   id: string;
   onDate: string;
   orderMode: "auto" | "manual";
+  startKind: "base" | "first_stop" | "item";
+  startItemId: string | null;
+  endKind: "base" | "last_stop" | "item";
+  endItemId: string | null;
 };
 export type StopRow = {
   id: string;
@@ -318,8 +357,17 @@ export type StopRow = {
 
 export async function loadDaysAndStops(db: Pool | PoolClient, tripId: string) {
   const [days, stops] = await Promise.all([
-    db.query<{ id: string; on_date: string; order_mode: DayRow["orderMode"] }>(
-      `SELECT id,on_date::text AS on_date,order_mode FROM trip_day WHERE trip_id=$1 ORDER BY on_date`,
+    db.query<{
+      id: string;
+      on_date: string;
+      order_mode: DayRow["orderMode"];
+      start_kind: DayRow["startKind"];
+      start_item_id: string | null;
+      end_kind: DayRow["endKind"];
+      end_item_id: string | null;
+    }>(
+      `SELECT id,on_date::text AS on_date,order_mode,start_kind,start_item_id,end_kind,end_item_id
+       FROM trip_day WHERE trip_id=$1 ORDER BY on_date`,
       [tripId],
     ),
     db.query<{
@@ -342,6 +390,10 @@ export async function loadDaysAndStops(db: Pool | PoolClient, tripId: string) {
       id: d.id,
       onDate: d.on_date,
       orderMode: d.order_mode,
+      startKind: d.start_kind,
+      startItemId: d.start_item_id,
+      endKind: d.end_kind,
+      endItemId: d.end_item_id,
     })),
     stops: stops.rows.map((s): StopRow => ({
       id: s.id,
@@ -372,19 +424,45 @@ export type TripStopView = {
   legMeters: number | null;
   pinned: boolean;
 };
+/** A day's start or end place (the trip base or a per-day override), located. */
+export type TripEndpointView = {
+  itemId: string;
+  kind: "base" | "item";
+  label: string;
+  labelChinese: string;
+  location: LatLng;
+  providerPlaceId: string | null;
+};
 export type TripDayView = {
   id: string;
   date: string;
   orderMode: "auto" | "manual";
+  /** The setting; `start` is what applies for this viewer (null = open path). */
+  startKind: DayRow["startKind"];
+  endKind: DayRow["endKind"];
+  start: TripEndpointView | null;
+  end: TripEndpointView | null;
   stops: TripStopView[];
-  /** Straight-line meters through the day's located stops, in order. */
+  /** Straight-line meters from the last located stop to `end`. */
+  endLegMeters: number | null;
+  /** Straight-line meters through start, the day's located stops and end, in order. */
   totalMeters: number;
 };
 export type TripView = {
-  trip: Omit<TripRecord, "createdBy" | "ownerUserId" | "cityId">;
+  trip: Omit<TripRecord, "createdBy" | "ownerUserId" | "cityId" | "baseItemId">;
   revision: number;
   canEdit: boolean;
   canDelete: boolean;
+  /** The trip base as this viewer can see it; null when none or not visible. */
+  base: TripEndpointView | null;
+  /** Editors only: a base is set but this editor cannot see or locate it. */
+  baseUnavailable: boolean;
+  /** Editors only: located places that can be a base or day start/end. */
+  baseCandidates: Array<{
+    itemId: string;
+    label: string;
+    labelChinese: string;
+  }>;
   days: TripDayView[];
   notScheduled: Array<TripStopView & { reason: string }>;
   removed: TripStopView[];
@@ -392,12 +470,54 @@ export type TripView = {
   unavailableCount: number;
 };
 
+/**
+ * The start and end that apply to a day for whoever resolved `places`: the
+ * trip base or a per-day item, but only when it is visible and located.
+ * Otherwise the day falls back to an open path (first / last stop).
+ */
+export function dayEndpoints(
+  baseItemId: string | null,
+  day: DayRow,
+  places: Map<string, TripPlace>,
+) {
+  const pick = (
+    id: string | null,
+    kind: TripEndpointView["kind"],
+  ): TripEndpointView | null => {
+    const place = id ? places.get(id) : undefined;
+    if (!place?.point) return null;
+    return {
+      itemId: place.itemId,
+      kind,
+      label: place.label,
+      labelChinese: place.labelChinese,
+      location: place.point,
+      providerPlaceId: place.providerPlaceId,
+    };
+  };
+  return {
+    start:
+      day.startKind === "item"
+        ? pick(day.startItemId, "item")
+        : day.startKind === "base"
+          ? pick(baseItemId, "base")
+          : null,
+    end:
+      day.endKind === "item"
+        ? pick(day.endItemId, "item")
+        : day.endKind === "base"
+          ? pick(baseItemId, "base")
+          : null,
+  };
+}
+
 export function buildTripView(
   trip: TripRecord,
   access: TripAccess,
   days: DayRow[],
   stops: StopRow[],
   places: Map<string, TripPlace>,
+  baseCandidates: TripView["baseCandidates"] = [],
 ): TripView {
   const view = (s: StopRow): TripStopView | null => {
     const place = s.layerItemId ? places.get(s.layerItemId) : undefined;
@@ -417,6 +537,11 @@ export function buildTripView(
   };
   const active = stops.filter((s) => s.status === "active");
   let unavailableCount = 0;
+  const baseView = dayEndpoints(
+    trip.baseItemId,
+    { startKind: "base", endKind: "base" } as DayRow,
+    places,
+  ).start;
   const dayViews = days.map((d): TripDayView => {
     const list: TripStopView[] = [];
     for (const s of active.filter((x) => x.dayId === d.id)) {
@@ -424,8 +549,9 @@ export function buildTripView(
       if (v) list.push(v);
       else unavailableCount++;
     }
+    const { start, end } = dayEndpoints(trip.baseItemId, d, places);
     let total = 0;
-    let previous: LatLng | null = null;
+    let previous: LatLng | null = start?.location ?? null;
     for (const v of list) {
       if (!v.location) continue;
       if (previous) {
@@ -434,11 +560,22 @@ export function buildTripView(
       }
       previous = v.location;
     }
+    let endLegMeters: number | null = null;
+    // A day with no located stop has no route, so no base-to-base leg either.
+    if (end && previous && list.some((v) => v.location)) {
+      endLegMeters = Math.round(haversineMeters(previous, end.location));
+      total += endLegMeters;
+    }
     return {
       id: d.id,
       date: d.onDate,
       orderMode: d.orderMode,
+      startKind: d.startKind,
+      endKind: d.endKind,
+      start,
+      end,
       stops: list,
+      endLegMeters,
       totalMeters: total,
     };
   });
@@ -473,6 +610,9 @@ export function buildTripView(
     revision: trip.revision,
     canEdit: access.edit,
     canDelete: access.delete,
+    base: baseView,
+    baseUnavailable: access.edit && trip.baseItemId !== null && !baseView,
+    baseCandidates: access.edit ? baseCandidates : [],
     days: dayViews,
     notScheduled,
     removed,

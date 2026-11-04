@@ -5,7 +5,7 @@ import { z } from "zod";
  * Distances are estimates of visiting order, never travel times.
  * See docs/plans/trip-scheduler-design.md (section 5).
  */
-export const tripOptimizerVersion = 1;
+export const tripOptimizerVersion = 2;
 export const maxTripDays = 14;
 export const maxTripStops = 80;
 export const minStopsPerDay = 2;
@@ -39,11 +39,34 @@ export function pathMeters(stops: LocatedStop[]) {
   return total;
 }
 
-function nearestNeighbor(stops: LocatedStop[], start: number) {
-  const rest = stops.filter((_, i) => i !== start);
-  const path = [stops[start]];
+/** Fixed ends of a day's path: where it starts and where it must end. Either may be absent (open). */
+export type DayBounds = { start?: LatLng | null; end?: LatLng | null };
+
+/** Path length including the legs from the start point and to the end point, when present. */
+export function boundedPathMeters(
+  stops: LocatedStop[],
+  bounds: DayBounds = {},
+) {
+  let total = pathMeters(stops);
+  if (stops.length) {
+    if (bounds.start) total += haversineMeters(bounds.start, stops[0].point);
+    if (bounds.end)
+      total += haversineMeters(stops[stops.length - 1].point, bounds.end);
+  }
+  return total;
+}
+
+/** Nearest-neighbor from a first stop (by index) or from a fixed start point. */
+function nearestNeighbor(stops: LocatedStop[], start: number | LatLng) {
+  const path: LocatedStop[] = [];
+  let rest = [...stops];
+  let here: LatLng | null = null;
+  if (typeof start === "number") {
+    path.push(stops[start]);
+    rest = stops.filter((_, i) => i !== start);
+    here = stops[start].point;
+  } else here = start;
   while (rest.length) {
-    const here = path[path.length - 1].point;
     let next = 0;
     for (let i = 1; i < rest.length; i++)
       if (
@@ -52,15 +75,25 @@ function nearestNeighbor(stops: LocatedStop[], start: number) {
       )
         next = i;
     path.push(...rest.splice(next, 1));
+    here = path[path.length - 1].point;
   }
   return path;
 }
 
-/** 2-opt on an open path: reverse segments while that shortens the path. */
-function twoOpt(path: LocatedStop[]) {
+/** 2-opt: reverse segments while that shortens the path (ends stay fixed). */
+function twoOpt(path: LocatedStop[], bounds: DayBounds) {
   const p = [...path];
-  const d = (a: number, b: number) =>
-    a < 0 || b >= p.length ? 0 : haversineMeters(p[a].point, p[b].point);
+  const at = (i: number) =>
+    i < 0
+      ? (bounds.start ?? null)
+      : i >= p.length
+        ? (bounds.end ?? null)
+        : p[i].point;
+  const d = (a: number, b: number) => {
+    const x = at(a);
+    const y = at(b);
+    return x && y ? haversineMeters(x, y) : 0;
+  };
   for (let pass = 0; pass < 100; pass++) {
     let improved = false;
     for (let i = 0; i < p.length - 1; i++)
@@ -77,17 +110,26 @@ function twoOpt(path: LocatedStop[]) {
 }
 
 /**
- * A short open path through the stops: nearest-neighbor from every possible
- * first stop, the shortest kept, then improved with 2-opt.
+ * A short path through the stops. Without a start point: nearest-neighbor
+ * from every possible first stop, the shortest kept. With one: nearest-neighbor
+ * from it. Then 2-opt, counting the legs to the start and end points when
+ * given. With neither, this is the open-path heuristic exactly as before.
  */
-export function orderStops<T extends LocatedStop>(stops: T[]): T[] {
+export function orderStops<T extends LocatedStop>(
+  stops: T[],
+  bounds: DayBounds = {},
+): T[] {
   const sorted = [...stops].sort(byId);
-  if (sorted.length <= 2) return sorted;
+  if (sorted.length <= 1) return sorted;
+  if (sorted.length === 2 && !bounds.start && !bounds.end) return sorted;
+  const starts: Array<number | LatLng> = bounds.start
+    ? [bounds.start]
+    : sorted.map((_, i) => i);
   let best = sorted as LocatedStop[];
   let bestLength = Infinity;
-  for (let start = 0; start < sorted.length; start++) {
-    const path = twoOpt(nearestNeighbor(sorted, start));
-    const length = pathMeters(path);
+  for (const start of starts) {
+    const path = twoOpt(nearestNeighbor(sorted, start), bounds);
+    const length = boundedPathMeters(path, bounds);
     if (length + epsilonMeters < bestLength) {
       best = path;
       bestLength = length;
@@ -125,12 +167,15 @@ const byPosition = (a: PlanInputStop, b: PlanInputStop) =>
   a.position - b.position || byId(a, b);
 
 /** Order one day's stops: located stops by the heuristic, unlocated ones after, in their order. */
-export function orderDay(stops: PlanInputStop[]): string[] {
+export function orderDay(
+  stops: PlanInputStop[],
+  bounds: DayBounds = {},
+): string[] {
   const located = stops.filter((s): s is PlanInputStop & LocatedStop =>
     Boolean(s.point),
   );
   const unlocated = stops.filter((s) => !s.point).sort(byPosition);
-  return [...orderStops(located), ...unlocated].map((s) => s.id);
+  return [...orderStops(located, bounds), ...unlocated].map((s) => s.id);
 }
 
 /**
@@ -145,6 +190,8 @@ export function planTrip(input: {
   stops: PlanInputStop[];
   /** Day indexes whose order the user set by hand. */
   manualDays?: number[];
+  /** Start and end points per day index (trip base or per-day override). */
+  bounds?: DayBounds[];
 }): PlanResult {
   const { dayCount, stopsPerDay } = input;
   const manual = new Set(input.manualDays ?? []);
@@ -248,10 +295,10 @@ export function planTrip(input: {
       unscheduled.push({ id: s.id, reason: "overflow" });
   const days = fixed.map((dayStops, d) => {
     if (manual.has(d)) return [...dayStops].sort(byPosition).map((s) => s.id);
-    return orderDay([
-      ...dayStops,
-      ...free.filter((s) => assignment.get(s.id) === d),
-    ]);
+    return orderDay(
+      [...dayStops, ...free.filter((s) => assignment.get(s.id) === d)],
+      input.bounds?.[d] ?? {},
+    );
   });
   return { days, unscheduled };
 }
@@ -281,6 +328,8 @@ export const tripCreateInput = z
     startsOn: isoDay,
     endsOn: isoDay,
     groupId: z.uuid().nullish(),
+    /** Optional "where you stay": a layer item with a map location. */
+    baseItemId: z.uuid().optional(),
     stopsPerDay: z
       .number()
       .int()
@@ -307,15 +356,33 @@ export const tripCreateInput = z
 export const tripRevisionInput = z.object({
   expectedRevision: z.number().int().min(1),
 });
+export const tripBaseInput = tripRevisionInput.extend({
+  /** A layer item with a map location, or null to clear the base. */
+  baseItemId: z.uuid().nullable(),
+});
 export const tripStopPatchInput = tripRevisionInput.extend({
   status: z.enum(["active", "removed"]).optional(),
   /** Day id, or null to move the stop to Not scheduled. */
   dayId: z.uuid().nullable().optional(),
 });
-export const tripDayPatchInput = tripRevisionInput.extend({
-  orderMode: z.enum(["auto", "manual"]).optional(),
-  order: z.array(z.uuid()).max(maxTripStops).optional(),
-});
+export const tripDayPatchInput = tripRevisionInput
+  .extend({
+    orderMode: z.enum(["auto", "manual"]).optional(),
+    order: z.array(z.uuid()).max(maxTripStops).optional(),
+    /** base = the trip base (open path when none); item needs startItemId. */
+    startKind: z.enum(["base", "first_stop", "item"]).optional(),
+    startItemId: z.uuid().optional(),
+    endKind: z.enum(["base", "last_stop", "item"]).optional(),
+    endItemId: z.uuid().optional(),
+  })
+  .refine((v) => (v.startKind === "item") === (v.startItemId !== undefined), {
+    message: 'A start place is needed with startKind "item", and only then.',
+    path: ["startItemId"],
+  })
+  .refine((v) => (v.endKind === "item") === (v.endItemId !== undefined), {
+    message: 'An end place is needed with endKind "item", and only then.',
+    path: ["endItemId"],
+  });
 export const tripOptimizeInput = tripRevisionInput.extend({
   scope: z.enum(["day", "all"]),
   dayId: z.uuid().optional(),

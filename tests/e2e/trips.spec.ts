@@ -148,3 +148,70 @@ test("plan a trip from a folder, remove a stop, undo; plan from a layer", async 
   await expect(page.getByTestId("trip-day")).toHaveCount(1);
   await expect(page.getByTestId("trip-stop")).toHaveCount(3);
 });
+
+test("set where you stay, see the day start and end there, override, then clear", async ({
+  page,
+}) => {
+  await page.route(/mapbox\.com\//, (route) => route.abort());
+  const stamp = Date.now();
+  await createAndSignIn(page, "Trip Base", `trips-base-${stamp}@example.test`);
+  const layer = await createLayer(page, `Stay ${stamp}`);
+  for (let i = 1; i <= 3; i++)
+    await addPlace(page, layer.id, `Sight ${i}`, {
+      latitude: 29.72 + i * 0.003,
+      longitude: -95.6,
+    });
+  // The hotel is north of every sight, so a round trip from it reverses the order.
+  await addPlace(page, layer.id, "Hotel Nord", {
+    latitude: 29.8,
+    longitude: -95.6,
+  });
+  await page.goto(`/trips/new?layer=${layer.slug}`);
+  await page.getByLabel("First day", { exact: true }).fill("2026-12-10");
+  await page.getByLabel("Last day", { exact: true }).fill("2026-12-10");
+  await page.getByRole("button", { name: "Create trip", exact: true }).click();
+  await expect(page).toHaveURL(/\/trips\/[0-9a-f-]{36}$/);
+  const day = page.getByTestId("trip-day");
+  await expect(day.getByTestId("trip-stop")).toHaveCount(4);
+
+  // A place that is already a stop cannot be the base; take it out first.
+  await page
+    .getByRole("button", { name: "Remove Hotel Nord from trip", exact: true })
+    .click();
+  await expect(day.getByTestId("trip-stop")).toHaveCount(3);
+  await expect(page.getByTestId("trip-day-start")).toHaveCount(0);
+
+  // Set the base: the day starts and ends there and the order follows.
+  await page
+    .getByLabel("Where you stay (optional)", { exact: true })
+    .selectOption({ label: "Hotel Nord" });
+  await expect(page.getByTestId("trip-day-start")).toContainText(
+    "From: Hotel Nord",
+  );
+  await expect(page.getByTestId("trip-day-end")).toContainText(
+    "Back to: Hotel Nord",
+  );
+  await expect(page.getByTestId("trip-day-end")).toContainText(
+    "straight-line to the end",
+  );
+  expect(await stopNames(day)).toEqual(["Sight 3", "Sight 2", "Sight 1"]);
+  await expect(page.getByTestId("trip-day-total")).toContainText(
+    "Straight-line total",
+  );
+
+  // This day starts at its first stop instead; the end still returns to the base.
+  await day.getByTestId("trip-start-select").selectOption("open");
+  await expect(page.getByTestId("trip-day-start")).toHaveCount(0);
+  await expect(page.getByTestId("trip-day-end")).toContainText(
+    "Back to: Hotel Nord",
+  );
+
+  // Clear it: back to an open path with nothing about the base left.
+  await page
+    .getByLabel("Where you stay (optional)", { exact: true })
+    .selectOption({ label: "None — each day is an open path" });
+  await expect(page.getByTestId("trip-day-end")).toHaveCount(0);
+  await expect(page.getByTestId("trip-day-start")).toHaveCount(0);
+  await expect(day.getByTestId("trip-stop")).toHaveCount(3);
+  await expect(page.getByTestId("trip-day-total")).toBeVisible();
+});
