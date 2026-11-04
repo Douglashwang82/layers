@@ -2420,3 +2420,29 @@ export const tripStop = pgTable(
     ),
   ],
 );
+// Disposable per-user cache of model-derived text; cascading with the user is deliberate.
+export const layerSuggestionRun = pgTable(
+  "layer_suggestion_run",
+  {
+    userId: uuid("user_id")
+      .notNull()
+      .references(() => user.id, { onDelete: "cascade" }),
+    snapshotHash: text("snapshot_hash").notNull(),
+    locale: text("locale").notNull(),
+    suggestions: jsonb("suggestions").notNull(),
+    model: text("model").notNull(),
+    promptVersion: text("prompt_version").notNull(),
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .defaultNow()
+      .notNull(),
+    expiresAt: timestamp("expires_at", { withTimezone: true }).notNull(),
+  },
+  (t) => [
+    primaryKey({ columns: [t.userId, t.snapshotHash] }),
+    check(
+      "layer_suggestion_run_hash_check",
+      sql`char_length(${t.snapshotHash}) = 64`,
+    ),
+    index("layer_suggestion_run_expires_idx").on(t.expiresAt),
+  ],
+);
