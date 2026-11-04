@@ -1580,6 +1580,87 @@ summary.map-float-button::-webkit-details-marker {
   align-items: center;
   gap: 4px;
 }
+/* Layer suggestions: AI tips for the selected layers, in the layers and results screens. */
+.layer-suggestions {
+  display: grid;
+  gap: 8px;
+  padding: 12px 14px;
+  margin-bottom: 12px;
+  border: 1px solid var(--th-divider);
+  border-radius: var(--th-radius-card);
+  background: var(--th-surface);
+}
+.layer-suggestions p,
+.layer-suggestions h3,
+.layer-suggestions h4 {
+  margin: 0;
+}
+.layer-suggestions-toggle {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  min-height: 44px;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: inherit;
+  font: inherit;
+  font-size: 16px;
+  font-weight: 600;
+  text-align: start;
+  cursor: pointer;
+}
+.layer-suggestions-toggle span {
+  flex: 1;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+.layer-suggestions-toggle:focus-visible {
+  outline: 2px solid var(--th-focus);
+  outline-offset: 2px;
+}
+#layer-suggestions-body {
+  display: grid;
+  gap: 8px;
+}
+#layer-suggestions-body[hidden] {
+  display: none;
+}
+.layer-suggestions-disclosure {
+  font-size: 13px;
+  overflow-wrap: anywhere;
+}
+.layer-suggestions-action {
+  justify-self: start;
+  min-height: 44px;
+  max-width: 100%;
+}
+.layer-suggestions-status:empty {
+  display: none;
+}
+.layer-suggestions-status.error {
+  color: var(--th-error);
+}
+.layer-suggestions-list {
+  display: grid;
+  gap: 12px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.layer-suggestions-list li {
+  display: grid;
+  gap: 6px;
+  padding-top: 12px;
+  border-top: 1px solid var(--th-divider);
+  overflow-wrap: anywhere;
+}
+.layer-suggestions-list .button {
+  justify-self: start;
+  min-height: 44px;
+  max-width: 100%;
+}
 .daily-pick-page {
   display: grid;
   gap: 24px;
