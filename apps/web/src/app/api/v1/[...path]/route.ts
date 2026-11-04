@@ -289,7 +289,6 @@ async function handler(
       );
     }
     if (method === "GET" && resource === "layers") {
-      const { city } = await getActiveCity(query.city);
       if (id && action === "share-link")
         return ok(await getShareLinkStatus(actor, id));
       if (id) {
@@ -336,12 +335,7 @@ async function handler(
         .catch("discover")
         .parse(query.scope);
       return ok(
-        await listLibrary(
-          scope,
-          actor,
-          city,
-          String(query.q ?? "").slice(0, 100),
-        ),
+        await listLibrary(scope, actor, String(query.q ?? "").slice(0, 100)),
       );
     }
     if (method === "GET" && resource === "content") {

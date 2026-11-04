@@ -1,7 +1,7 @@
 import { readFileSync } from "node:fs";
 import { beforeAll, afterAll, describe, expect, it } from "vitest";
 import { pool } from "../../packages/database/src";
-import type { Actor } from "../../packages/shared/src";
+import { markerKind, type Actor } from "../../packages/shared/src";
 import { flags } from "../../apps/web/src/lib/config";
 import {
   commitMapImport,
@@ -267,6 +267,22 @@ describe("transactional map imports", () => {
           before.rows[i].longitude,
         ]);
       }
+      // Each marker's pin takes its kind from the matched place's cached types.
+      const found = (await getLayer(plain.layers[0].id, owner))!;
+      const { items } = await getLayerContents(
+        found.layer,
+        {
+          id: found.layer.cityId,
+          slug: "houston",
+          name: "Houston",
+          timezone: "America/Chicago",
+          latitude: 29.7,
+          longitude: -95.3,
+        },
+        owner,
+      );
+      expect(items).toHaveLength(before.rowCount!);
+      for (const item of items) expect(markerKind(item)).toBe("food");
       // A replayed request returns its receipt without new lookups.
       const spent = () =>
         pool.query<{ count: number }>(

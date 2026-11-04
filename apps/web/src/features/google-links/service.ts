@@ -147,7 +147,7 @@ async function attachAll(
     }
     let target;
     try {
-      target = await subjectPlacement(tx, layer, row, { anyCity: true });
+      target = await subjectPlacement(tx, layer, row);
     } catch (error) {
       if (!(error instanceof AppError)) throw error;
       outcome.skipped.push({ providerPlaceId, reason: error.code });
@@ -243,7 +243,7 @@ export async function createLayerFromGoogle(
       tx,
       a,
       {
-        layer: { id: layer.id, cityId: layer.cityId, audience: layer.audience },
+        layer: { id: layer.id, audience: layer.audience },
       },
       subjects,
       input.linkNames,

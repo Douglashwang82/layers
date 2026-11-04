@@ -28,6 +28,7 @@ import type { CollectionAvailability } from "../layers/collections-types";
 import { flags } from "@/lib/config";
 import { customMapItem } from "@/lib/custom-places";
 import { listActiveCustomPlaces } from "../custom-places/repository";
+import { placeTypes } from "../google-links/locations";
 import {
   type DailyPickView,
   loadDailyPickView,
@@ -78,6 +79,8 @@ export type MapItem = {
   customScope?: "user" | "group";
   /** Google place matched to a custom place at import: details on request, never its pin. */
   googlePlaceId?: string;
+  /** Cached Google types of the matched place; they pick the pin's kind. */
+  googleTypes?: string[];
   /** A layer editor's custom pin image for this item (first layer that sets one wins). */
   markerImageUrl?: string | null;
 };
@@ -240,20 +243,22 @@ const communityCategories = [
   "Family",
   "Professional",
 ];
+const placeSelect = `SELECT p.*, (SELECT count(*)::int FROM place_recommendation r WHERE r.place_id=p.id AND r.status='approved') AS responses, (SELECT count(*)::int FROM place_recommendation r WHERE r.place_id=p.id AND r.status='approved' AND positive) AS positive FROM place p WHERE p.status='approved' AND`;
+const eventSelect = `SELECT p.*, (SELECT count(*)::int FROM event_rsvp r WHERE r.event_id=p.id) AS attending, (SELECT name FROM organization o WHERE o.id=p.organizer_id) AS organizer_name FROM event p WHERE p.status='approved' AND`;
+const contentSelect = `SELECT c.*, u.name AS author_name, pl.name AS place_name, COALESCE(pl.latitude,c.latitude) AS latitude, COALESCE(pl.longitude,c.longitude) AS longitude, COALESCE(NULLIF(c.neighborhood,''),pl.neighborhood,'') AS neighborhood FROM content_post c JOIN "user" u ON u.id=c.author_id LEFT JOIN place pl ON pl.id=c.place_id AND pl.status='approved' WHERE c.status='approved' AND`;
 /** Candidate entities for a city: approved catalog rows plus approved content, bounded. */
 async function loadCandidates(city: MapCity, since: Date) {
   const [places, events, content] = await Promise.all([
+    pool.query<Row>(`${placeSelect} p.city_id=$1 LIMIT ${maxMapPoints + 1}`, [
+      city.id,
+    ]),
     pool.query<Row>(
-      `SELECT p.*, (SELECT count(*)::int FROM place_recommendation r WHERE r.place_id=p.id AND r.status='approved') AS responses, (SELECT count(*)::int FROM place_recommendation r WHERE r.place_id=p.id AND r.status='approved' AND positive) AS positive FROM place p WHERE p.status='approved' AND p.city_id=$1 LIMIT ${maxMapPoints + 1}`,
-      [city.id],
-    ),
-    pool.query<Row>(
-      `SELECT p.*, (SELECT count(*)::int FROM event_rsvp r WHERE r.event_id=p.id) AS attending, (SELECT name FROM organization o WHERE o.id=p.organizer_id) AS organizer_name FROM event p WHERE p.status='approved' AND p.city_id=$1 AND p.end_time > $2 ORDER BY p.start_time LIMIT ${maxMapPoints + 1}`,
+      `${eventSelect} p.city_id=$1 AND p.end_time > $2 ORDER BY p.start_time LIMIT ${maxMapPoints + 1}`,
       [city.id, since],
     ),
     flags.content
       ? pool.query<Row>(
-          `SELECT c.*, u.name AS author_name, pl.name AS place_name, COALESCE(pl.latitude,c.latitude) AS latitude, COALESCE(pl.longitude,c.longitude) AS longitude, COALESCE(NULLIF(c.neighborhood,''),pl.neighborhood,'') AS neighborhood FROM content_post c JOIN "user" u ON u.id=c.author_id LEFT JOIN place pl ON pl.id=c.place_id AND pl.status='approved' WHERE c.status='approved' AND c.city_id=$1 ORDER BY c.created_at DESC LIMIT ${maxMapPoints + 1}`,
+          `${contentSelect} c.city_id=$1 ORDER BY c.created_at DESC LIMIT ${maxMapPoints + 1}`,
           [city.id],
         )
       : Promise.resolve({ rows: [] as Row[] }),
@@ -267,6 +272,33 @@ async function loadCandidates(city: MapCity, since: Date) {
       events.rows.length > maxMapPoints ||
       content.rows.length > maxMapPoints,
   };
+}
+/** Catalog items a layer holds from outside the active city, by the same visibility rules. */
+async function loadItemsById(
+  ids: { places: string[]; events: string[]; content: string[] },
+  since: Date,
+) {
+  const read = (sql: string, list: string[], values: unknown[] = []) =>
+    list.length
+      ? pool.query<Row>(sql, [[...new Set(list)], ...values])
+      : Promise.resolve({ rows: [] as Row[] });
+  const [places, events, content] = await Promise.all([
+    read(`${placeSelect} p.id=ANY($1::uuid[])`, ids.places),
+    read(
+      `${eventSelect} p.id=ANY($1::uuid[]) AND p.end_time > $2`,
+      ids.events,
+      [since],
+    ),
+    read(
+      `${contentSelect} c.id=ANY($1::uuid[])`,
+      flags.content ? ids.content : [],
+    ),
+  ]);
+  return [
+    ...places.rows.map(placeItem),
+    ...events.rows.map(eventItem),
+    ...content.rows.map(contentItem),
+  ];
 }
 type Candidates = Awaited<ReturnType<typeof loadCandidates>>;
 const tagged = (items: MapItem[], slug: string) =>
@@ -379,6 +411,7 @@ async function curatedMembers(
   layers: LayerRecord[],
   candidates: Candidates,
   now: Date,
+  since: Date,
 ) {
   if (!layers.length) return [] as MapItem[][];
   const result = await pool.query<{
@@ -403,6 +436,18 @@ async function curatedMembers(
     ...candidates.content,
   ])
     byKey.set(item.key, item);
+  // Candidates are the active city's; a layer can hold items from anywhere.
+  const absent = (prefix: string, id: string | null) =>
+    id && !byKey.has(`${prefix}:${id}`) ? [id] : [];
+  for (const item of await loadItemsById(
+    {
+      places: result.rows.flatMap((r) => absent("place", r.place_id)),
+      events: result.rows.flatMap((r) => absent("event", r.event_id)),
+      content: result.rows.flatMap((r) => absent("content", r.content_id)),
+    },
+    since,
+  ))
+    byKey.set(item.key, item);
   const slugById = new Map(layers.map((l) => [l.id, l.slug]));
   // Custom places come only from these already-authorized layers, never city-wide.
   const customIds = flags.layerCustomPlaces
@@ -417,6 +462,9 @@ async function curatedMembers(
   const catalogFor = new Map<string, string>();
   if (customIds.length) {
     const places = await listActiveCustomPlaces(customIds);
+    const googleTypes = await placeTypes(
+      places.flatMap((p) => (p.googlePlaceId ? [p.googlePlaceId] : [])),
+    );
     const firstLayer = new Map<string, string>();
     for (const row of result.rows)
       if (row.custom_place_id && !firstLayer.has(row.custom_place_id))
@@ -433,7 +481,16 @@ async function curatedMembers(
       )
         catalogFor.set(place.id, catalogKey);
       else
-        byKey.set(place.key, customMapItem(place, firstLayer.get(place.id)!));
+        byKey.set(
+          place.key,
+          customMapItem(
+            place,
+            firstLayer.get(place.id)!,
+            place.googlePlaceId
+              ? googleTypes.get(place.googlePlaceId)
+              : undefined,
+          ),
+        );
     }
   }
   const groups = new Map<string, MapItem[]>();
@@ -559,6 +616,7 @@ export async function runMapQuery(
           .map((r) => r.layer),
         candidates,
         now,
+        window.start,
       )),
     );
   }

@@ -260,8 +260,6 @@ export const en = {
   locationMatched: "Found: {address}",
   locationNoMatch:
     "We couldn't find that address. The place will be saved without a map pin.",
-  locationOutsideCity:
-    "That address doesn't seem to be in {city}. The place will be saved without a map pin.",
   locationUnavailable:
     "Address lookup is unavailable right now. You can still save the place.",
   locationPinned: "Pinned to your current location (approximate).",
@@ -419,8 +417,7 @@ export const en = {
   folderShowOnMap: "Show {title} on map",
   folderHideFromMap: "Hide {title} from map",
   folderCycleError: "A folder cannot move into itself or its sub-folders.",
-  folderMismatchError: "A folder can only move within the same owner and city.",
-  folderCityMismatchError: "That layer or folder is in a different city.",
+  folderMismatchError: "A folder can only move within the same owner.",
   folderLayerNotAllowed: "You cannot add that layer to this folder.",
   folderOrderMismatch: "The order is out of date. It was reloaded; try again.",
   folderSlugConflict:
@@ -547,7 +544,6 @@ export const en = {
   addedToLayer: "Added",
   alreadyInLayer: "Already in this layer",
   chooseLayerPicker: "Choose a layer",
-  otherCityLayer: "In another city",
   saveVsAdd:
     "Save keeps a private bookmark. Add to layer puts this item in a collection.",
   createFromSaves: "Create a layer from saves",
@@ -1294,7 +1290,6 @@ export const zh: Copy = {
   useMyLocation: "使用我目前的位置",
   locationMatched: "找到：{address}",
   locationNoMatch: "找不到這個地址，地點會儲存但不會顯示在地圖上。",
-  locationOutsideCity: "這個地址似乎不在{city}，地點會儲存但不會顯示在地圖上。",
   locationUnavailable: "目前無法查詢地址，你仍然可以儲存這個地點。",
   locationPinned: "已使用你目前的位置（大約位置）。",
   currentLocationDenied: "無法取得你目前的位置。",
@@ -1444,8 +1439,7 @@ export const zh: Copy = {
   folderShowOnMap: "在地圖上顯示「{title}」",
   folderHideFromMap: "從地圖隱藏「{title}」",
   folderCycleError: "資料夾不能移入自己或其子資料夾。",
-  folderMismatchError: "資料夾只能在相同擁有者與城市內移動。",
-  folderCityMismatchError: "該圖層或資料夾屬於不同城市。",
+  folderMismatchError: "資料夾只能在相同擁有者內移動。",
   folderLayerNotAllowed: "你無法將該圖層加入此資料夾。",
   folderOrderMismatch: "排序已過期，已重新載入，請再試一次。",
   folderSlugConflict: "已有同名資料夾，請改用其他名稱。",
@@ -1566,7 +1560,6 @@ export const zh: Copy = {
   addedToLayer: "已加入",
   alreadyInLayer: "已在此圖層中",
   chooseLayerPicker: "選擇圖層",
-  otherCityLayer: "位於其他城市",
   saveVsAdd: "「收藏」是私人書籤；「加入圖層」則會把項目放進收藏集。",
   createFromSaves: "用收藏建立圖層",
   showOnMap: "在地圖上顯示",

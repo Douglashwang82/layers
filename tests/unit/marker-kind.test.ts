@@ -37,6 +37,22 @@ describe("marker kinds", () => {
     expect(markerKind({ type: "place" })).toBe("info");
   });
 });
+describe("imported marker kinds", () => {
+  it("reads a category-less marker's kind from its Google types", () => {
+    const place = { type: "place" as const, category: "" };
+    expect(markerKind({ ...place, googleTypes: ["restaurant", "food"] })).toBe(
+      "food",
+    );
+    expect(markerKind({ ...place, googleTypes: ["park"] })).toBe("park");
+    expect(markerKind({ ...place, googleTypes: [] })).toBe("info");
+    expect(markerKind(place)).toBe("info");
+  });
+  it("keeps a place's own category over Google types", () => {
+    expect(
+      markerKind({ type: "place", category: "Shop", googleTypes: ["park"] }),
+    ).toBe("retail");
+  });
+});
 describe("Google place marker kinds", () => {
   it("uses at most five kinds, all with colors", () => {
     expect(googleMarkerKinds.length).toBeLessThanOrEqual(5);

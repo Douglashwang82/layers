@@ -9,20 +9,20 @@ import { api } from "@/components/actions";
 import type { ImportResult } from "@/features/map-import/service";
 import type { mapImportEn } from "@/lib/map-import-copy";
 import styles from "./map-import.module.css";
-type City = { id: string; slug: string; name: string };
 type Layer = { id: string; title: string; citySlug: string; revision: number };
 export function MapImportForm({
   t,
-  cities,
+  city,
   layers,
   groups,
   initialLayer,
   initialUrl,
 }: {
   t: typeof mapImportEn;
-  cities: City[];
+  /** The active city; only anchors the new layer's time zone. */
+  city: string;
   layers: Layer[];
-  groups: { id: string; name: string; cityId: string }[];
+  groups: { id: string; name: string }[];
   initialLayer?: string;
   initialUrl?: string;
 }) {
@@ -34,7 +34,6 @@ export function MapImportForm({
     initialLayer ? "existing" : "new",
   );
   const [layerId, setLayerId] = useState(initialLayer ?? layers[0]?.id ?? "");
-  const [city, setCity] = useState(cities[0]?.slug ?? "");
   const [groupId, setGroupId] = useState("");
   const [title, setTitle] = useState("");
   const [permission, setPermission] = useState(false);
@@ -337,38 +336,17 @@ export function MapImportForm({
                 />
               </label>
               <label>
-                {t.city}
-                <select
-                  value={city}
-                  onChange={(e) => {
-                    setCity(e.target.value);
-                    setGroupId("");
-                  }}
-                >
-                  {cities.map((c) => (
-                    <option key={c.id} value={c.slug}>
-                      {c.name}
-                    </option>
-                  ))}
-                </select>
-              </label>
-              <label>
                 {t.owner}
                 <select
                   value={groupId}
                   onChange={(e) => setGroupId(e.target.value)}
                 >
                   <option value="">{t.personal}</option>
-                  {groups
-                    .filter(
-                      (g) =>
-                        g.cityId === cities.find((c) => c.slug === city)?.id,
-                    )
-                    .map((g) => (
-                      <option key={g.id} value={g.id}>
-                        {g.name}
-                      </option>
-                    ))}
+                  {groups.map((g) => (
+                    <option key={g.id} value={g.id}>
+                      {g.name}
+                    </option>
+                  ))}
                 </select>
               </label>
             </>

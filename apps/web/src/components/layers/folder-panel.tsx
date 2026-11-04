@@ -128,7 +128,6 @@ export function FolderPanel({
         const known: Record<string, string> = {
           FOLDER_CYCLE: t.folderCycleError,
           FOLDER_MISMATCH: t.folderMismatchError,
-          CITY_MISMATCH: t.folderCityMismatchError,
           LAYER_NOT_ALLOWED: t.folderLayerNotAllowed,
           ORDER_MISMATCH: t.folderOrderMismatch,
           SLUG_CONFLICT: t.folderSlugConflict,

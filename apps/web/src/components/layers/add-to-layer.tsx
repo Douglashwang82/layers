@@ -14,7 +14,6 @@ import { layerTitle } from "@/lib/layer-labels";
  */
 export function AddToLayer({
   itemKey,
-  itemCity,
   layers,
   authenticated,
   t,
@@ -23,7 +22,6 @@ export function AddToLayer({
   compact = false,
 }: {
   itemKey: string;
-  itemCity: string;
   layers: EditableLayer[];
   authenticated: boolean;
   t: Copy;
@@ -100,13 +98,12 @@ export function AddToLayer({
             <ul className="picker-list">
               {layers.map((layer) => {
                 const contains = layer.contains || added[layer.id];
-                const otherCity = layer.citySlug !== itemCity;
                 return (
                   <li key={layer.id}>
                     <button
                       type="button"
                       className="picker-row"
-                      disabled={contains || otherCity || pending !== null}
+                      disabled={contains || pending !== null}
                       aria-busy={pending === layer.id || undefined}
                       onClick={() => add(layer)}
                     >
@@ -118,7 +115,6 @@ export function AddToLayer({
                             : layer.audience === "group"
                               ? t.audienceGroup
                               : t.audiencePublic}
-                          {otherCity && ` · ${t.otherCityLayer}`}
                         </small>
                       </span>
                       {contains ? (

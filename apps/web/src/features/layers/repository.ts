@@ -337,15 +337,13 @@ export type LibraryScope = "discover" | "following" | "mine" | "groups";
 export async function listLibrary(
   scope: LibraryScope,
   actor: Actor | null,
-  city: { id: string; slug: string; name: string; timezone: string },
   q = "",
 ): Promise<LayerWithAccess[]> {
   const values: unknown[] = [];
   const where: string[] = [];
   if (scope === "discover") {
-    values.push(city.id);
     where.push(
-      `l.city_id=$1 AND l.lifecycle='active' AND l.audience='public' AND l.review_status='approved'`,
+      `l.lifecycle='active' AND l.audience='public' AND l.review_status='approved'`,
     );
   } else if (!actor) return [];
   else if (scope === "following") {
@@ -388,8 +386,8 @@ export async function listLibrary(
 }
 /**
  * The map MVP's layer picker: the actor's own layers, their
- * groups' layers and the layers they follow, in this city, without archived
- * ones and without duplicates.
+ * groups' layers and the layers they follow, from anywhere, plus this city's
+ * Daily Pick, without archived ones and without duplicates.
  */
 export async function listMapLibrary(
   actor: Actor,
@@ -398,7 +396,7 @@ export async function listMapLibrary(
   const [scopes, dailyPick] = await Promise.all([
     Promise.all(
       (["mine", "groups", "following"] as const).map((scope) =>
-        listLibrary(scope, actor, city),
+        listLibrary(scope, actor),
       ),
     ),
     cityDailyPickLayer(actor, city),
@@ -407,7 +405,6 @@ export async function listMapLibrary(
   return [...scopes.flat(), ...dailyPick].filter(
     ({ layer }) =>
       layer.lifecycle !== "archived" &&
-      layer.cityId === city.id &&
       !seen.has(layer.slug) &&
       !!seen.add(layer.slug),
   );

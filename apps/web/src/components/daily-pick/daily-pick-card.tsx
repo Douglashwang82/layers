@@ -67,7 +67,6 @@ function PickAddToLayer({
   return (
     <AddToLayer
       itemKey={pick.key}
-      itemCity={citySlug}
       layers={layers}
       authenticated={authenticated}
       t={t}

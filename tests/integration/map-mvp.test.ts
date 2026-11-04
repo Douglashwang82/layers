@@ -395,7 +395,7 @@ describe("the MVP map", () => {
     expect(result.layers.map((l) => [l.slug, l.status])).toEqual([
       [mine, "ok"],
     ]);
-    const library = await listLibrary("discover", alice, city);
+    const library = await listLibrary("discover", alice);
     expect(library.some((l) => l.layer.ownerKind === "system")).toBe(false);
     const picker = await listMapLibrary(alice, city);
     expect(picker.map((l) => l.layer.slug)).toContain(mine);

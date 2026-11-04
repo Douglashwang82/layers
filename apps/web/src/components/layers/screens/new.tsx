@@ -40,9 +40,7 @@ export default async function NewLayerPage({
     query.next && query.next.startsWith("/") && !query.next.startsWith("//")
       ? query.next
       : undefined;
-  const cityGroups = groups
-    .filter((g) => g.cityId === city.id)
-    .map((g) => ({ id: g.id, name: g.name }));
+  const groupOptions = groups.map((g) => ({ id: g.id, name: g.name }));
   // Layers are built from Google Maps links; adding a known item or asking
   // for a blank layer keeps the plain editor.
   if (!query.add && !query.blank)
@@ -53,7 +51,7 @@ export default async function NewLayerPage({
           <GoogleLinksForm
             mode="create"
             city={{ slug: city.slug, name: city.name }}
-            groups={cityGroups}
+            groups={groupOptions}
             providerKey={placesClientConfig().providerKey}
             t={t}
             locale={locale}
@@ -74,7 +72,7 @@ export default async function NewLayerPage({
       <LayerEditor
         mode="create"
         city={city}
-        groups={cityGroups}
+        groups={groupOptions}
         t={t}
         locale={locale}
         addKey={query.add}

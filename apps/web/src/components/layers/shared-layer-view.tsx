@@ -2,7 +2,6 @@ import Link from "next/link";
 import { Lock } from "lucide-react";
 import { type Copy, type Locale, dateLabel, format } from "@/lib/dictionary";
 import type { SharedLayerView } from "@/features/layers/share-links";
-import { localizedCityName } from "@taiwanhub/shared";
 
 /**
  * Read-only view of a link-shared layer. Server-rendered and token-blind: it
@@ -25,16 +24,12 @@ export function SharedLayerScreen({
   const zh = locale === "zh-TW";
   const title = (zh && view.titleChinese) || view.title;
   const description = (zh && view.descriptionChinese) || view.description;
-  const city = localizedCityName(
-    { slug: view.citySlug, name: view.cityName },
-    locale,
-  );
   return (
     <div className="container page-bottom">
       <header className="layer-detail-header">
         <h1>{title}</h1>
         <p className="muted">
-          {format(t.sharedViewBy, { name: view.ownerName })} · {city}
+          {format(t.sharedViewBy, { name: view.ownerName })}
         </p>
         {description && <p>{description}</p>}
         <p className="notice">{t.sharedViewReadOnly}</p>

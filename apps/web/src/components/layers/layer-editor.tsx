@@ -626,7 +626,6 @@ export function LayerEditor({
               key={editingPlace.id}
               layerId={layer.id}
               layerSlug={layer.slug}
-              cityName={city.name}
               mapToken={mapToken}
               cityCenter={cityCenter}
               editing={editingPlace}
@@ -694,7 +693,6 @@ export function LayerEditor({
             <NewPlaceForm
               layerId={layer.id}
               layerSlug={layer.slug}
-              cityName={city.name}
               mapToken={mapToken}
               cityCenter={cityCenter}
               initialName={newPlaceName}

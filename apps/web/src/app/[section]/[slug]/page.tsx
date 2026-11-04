@@ -228,7 +228,6 @@ export default async function DetailPage({ params }: Props) {
             {flags.layerWrites && (
               <AddToLayer
                 itemKey={key}
-                itemCity={itemCity?.slug ?? ""}
                 layers={editableLayers}
                 authenticated={!!actor}
                 t={t}

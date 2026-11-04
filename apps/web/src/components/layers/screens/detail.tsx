@@ -109,8 +109,7 @@ export default async function LayerPage({ params }: Props) {
               <Link href={`/groups/${layer.ownerSlug}`}>{layer.ownerName}</Link>
             </>
           )}{" "}
-          · {audienceLabel(layer, t)} · {scheduleLabel(layer, t, locale)} ·{" "}
-          {layer.cityName}
+          · {audienceLabel(layer, t)} · {scheduleLabel(layer, t, locale)}
         </p>
         {description && <p>{description}</p>}
         <p className="fine-print">

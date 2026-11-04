@@ -324,17 +324,9 @@ describe("address geocoding (stubbed; no live geocoder call)", () => {
       longitude: bellaire.longitude,
     });
   });
-  it("keeps the place list-only on no match, a far-away match, or an outage", async () => {
+  it("keeps the place list-only on no match or an outage", async () => {
     const cases: [string, () => Promise<unknown>][] = [
       ["no_match", async () => null],
-      [
-        "outside_city",
-        async () => ({
-          latitude: 40.7128,
-          longitude: -74.006,
-          matchedAddress: "",
-        }),
-      ],
       [
         "unavailable",
         async () => {

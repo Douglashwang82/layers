@@ -57,7 +57,7 @@ export default async function LayersPage({
     : "discover";
   const q = (query.q ?? "").slice(0, 100);
   const [entries, myGroups, folders] = await Promise.all([
-    listLibrary(tab, actor, city, q),
+    listLibrary(tab, actor, q),
     tab === "groups" && actor ? listMyGroups(actor.id) : Promise.resolve([]),
     tab === "mine" && actor
       ? listMapCollections(actor, city)

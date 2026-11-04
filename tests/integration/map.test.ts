@@ -110,7 +110,7 @@ describe("map query", () => {
       expect(result.layers[0].status).toBe("unavailable");
       expect(result.total).toBe(0);
     }
-    const library = await listLibrary("mine", member, city);
+    const library = await listLibrary("mine", member);
     expect(library.some((l) => l.layer.slug === "my-saves")).toBe(false);
     expect(await getLayer("my-saves", member)).toBeNull();
   });

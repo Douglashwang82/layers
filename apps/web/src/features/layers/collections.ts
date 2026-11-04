@@ -283,16 +283,6 @@ export async function createCollection(actor: Actor | null, body: unknown) {
             "FORBIDDEN",
             "You need an editor role in this group.",
           );
-        const group = await tx.query<{ city_id: string }>(
-          'SELECT city_id FROM "group" WHERE id=$1',
-          [input.groupId],
-        );
-        if (group.rows[0]?.city_id !== cityId)
-          throw new AppError(
-            400,
-            "CITY_MISMATCH",
-            "The group belongs to a different city.",
-          );
         ownerUser = null;
         ownerGroup = input.groupId!;
         audience = "group";
@@ -384,13 +374,12 @@ export async function updateCollection(
           );
         if (
           target.ownerUserId !== cur.ownerUserId ||
-          target.ownerGroupId !== cur.ownerGroupId ||
-          target.cityId !== cur.cityId
+          target.ownerGroupId !== cur.ownerGroupId
         )
           throw new AppError(
             400,
             "FOLDER_MISMATCH",
-            "A folder can only move within the same owner and city.",
+            "A folder can only move within the same owner.",
           );
         if (subtree.some((s) => s.id === target.id))
           throw new AppError(

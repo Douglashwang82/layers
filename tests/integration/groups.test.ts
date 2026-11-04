@@ -150,7 +150,7 @@ describe("group membership, roles and restricted layers", () => {
   it("reveals no restricted titles, counts or items to non-members", async () => {
     expect(await getLayer(layerId, stranger)).toBeNull();
     expect(await getLayer(layerId, null)).toBeNull();
-    expect(await listLibrary("groups", stranger, city)).toEqual([]);
+    expect(await listLibrary("groups", stranger)).toEqual([]);
     const result = await runMapQuery(
       {
         city: "houston",
@@ -185,7 +185,7 @@ describe("group membership, roles and restricted layers", () => {
     );
     expect(member.layers[0].status).toBe("ok");
     expect(member.items.map((i) => i.key)).toContain(placeKey);
-    const library = await listLibrary("groups", viewer, city);
+    const library = await listLibrary("groups", viewer);
     expect(library.map((l) => l.layer.id)).toContain(layerId);
   });
   it("recovers from conflicting edits with a version check and audits the editor", async () => {

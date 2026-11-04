@@ -11,16 +11,14 @@ export function CollectionList({
   collections: {
     id: string;
     title: string;
-    layers: { id: string; slug: string; title: string; citySlug: string }[];
+    layers: { id: string; slug: string; title: string }[];
   }[];
   t: typeof mapImportEn;
 }) {
   const [selected, setSelected] = useState<string[]>([]);
   const all = collections.flatMap((c) => c.layers);
   const chosen = all.filter((l) => selected.includes(l.id));
-  const city = chosen[0]?.citySlug;
   const query = new URLSearchParams({
-    city: city ?? "",
     layers: chosen.map((l) => l.slug).join(","),
     scope: "layers",
     view: "map",
@@ -39,9 +37,8 @@ export function CollectionList({
                 checked={c.layers.every((l) => selected.includes(l.id))}
                 disabled={
                   !c.layers.every((l) => selected.includes(l.id)) &&
-                  (new Set([...selected, ...c.layers.map((l) => l.id)]).size >
-                    maxAppliedLayers ||
-                    (!!city && c.layers.some((l) => l.citySlug !== city)))
+                  new Set([...selected, ...c.layers.map((l) => l.id)]).size >
+                    maxAppliedLayers
                 }
                 onChange={(e) =>
                   setSelected((old) =>
@@ -63,8 +60,7 @@ export function CollectionList({
                     checked={selected.includes(l.id)}
                     disabled={
                       !selected.includes(l.id) &&
-                      (selected.length >= maxAppliedLayers ||
-                        (!!city && city !== l.citySlug))
+                      selected.length >= maxAppliedLayers
                     }
                     onChange={(e) =>
                       setSelected((old) =>

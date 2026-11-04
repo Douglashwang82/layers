@@ -45,7 +45,6 @@ export default async function CollectionsPage() {
             id: l.id,
             slug: l.slug,
             title: l.title,
-            citySlug: c.citySlug,
           })),
         }))}
       />

@@ -45,7 +45,6 @@ export function ItemPreview({
   t,
   locale,
   timeZone,
-  citySlug,
   onRefresh,
   layerWrites,
   provider = null,
@@ -58,7 +57,6 @@ export function ItemPreview({
   t: Copy;
   locale: Locale;
   timeZone: string;
-  citySlug: string;
   onRefresh: () => void;
   layerWrites: boolean;
   /** Renders a custom place's matched Google card, only when asked for. */
@@ -317,7 +315,6 @@ export function ItemPreview({
         {layerWrites && (
           <AddToLayer
             itemKey={item.key}
-            itemCity={citySlug}
             layers={detail?.editableLayers ?? []}
             authenticated={authenticated}
             t={t}

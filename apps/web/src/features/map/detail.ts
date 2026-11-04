@@ -136,12 +136,10 @@ async function customDetail(
   let editableLayers: EditableLayer[] = [];
   if (actor && flags.layerWrites && access === "edit") {
     const { pool } = await import("@taiwanhub/database");
-    const layers = (await listEditableLayers(actor)).filter(
-      (l) =>
-        l.cityId === row.city_id &&
-        (row.owner_user_id
-          ? l.ownerKind === "user" && l.ownerUserId === row.owner_user_id
-          : l.ownerKind === "group" && l.ownerGroupId === row.owner_group_id),
+    const layers = (await listEditableLayers(actor)).filter((l) =>
+      row.owner_user_id
+        ? l.ownerKind === "user" && l.ownerUserId === row.owner_user_id
+        : l.ownerKind === "group" && l.ownerGroupId === row.owner_group_id,
     );
     const contains = await pool.query<{ layer_id: string }>(
       "SELECT layer_id FROM layer_item WHERE custom_place_id=$1 AND layer_id=ANY($2::uuid[])",

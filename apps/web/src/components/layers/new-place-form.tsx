@@ -11,8 +11,7 @@ import { PinPicker } from "./pin-picker";
 import { useLayerDraft } from "./workspace-navigation";
 import { type Copy, format } from "@/lib/dictionary";
 type Feedback = { tone: "success" | "error"; text: string } | null;
-type Outcome =
-  "matched" | "no_match" | "outside_city" | "unavailable" | "skipped";
+type Outcome = "matched" | "no_match" | "unavailable" | "skipped";
 type Pin = { latitude: number; longitude: number };
 /**
  * Creates a member-owned place in the current layer, or edits one (`editing`).
@@ -23,7 +22,6 @@ type Pin = { latitude: number; longitude: number };
 export function NewPlaceForm({
   layerId,
   layerSlug,
-  cityName,
   initialName = "",
   editing,
   t,
@@ -36,7 +34,6 @@ export function NewPlaceForm({
 }: {
   layerId: string;
   layerSlug: string;
-  cityName: string;
   initialName?: string;
   editing?: CustomPlace;
   t: Copy;
@@ -98,11 +95,9 @@ export function NewPlaceForm({
       ? format(t.locationMatched, { address: matched || address })
       : outcome === "no_match"
         ? t.locationNoMatch
-        : outcome === "outside_city"
-          ? format(t.locationOutsideCity, { city: cityName })
-          : outcome === "unavailable"
-            ? t.locationUnavailable
-            : "";
+        : outcome === "unavailable"
+          ? t.locationUnavailable
+          : "";
   async function findOnMap() {
     if (!address.trim()) return;
     setLooking(true);

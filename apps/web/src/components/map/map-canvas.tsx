@@ -35,6 +35,7 @@ import {
   markerImageId,
   markerKind,
   markerPalettes,
+  markerSizes,
 } from "@/lib/marker-presentation";
 import {
   customPinId,
@@ -508,12 +509,8 @@ export function MapCanvas({
               latest.current.locale,
               pinStatus.current,
             ),
-            cluster: true,
-            clusterRadius: 48,
-            clusterMaxZoom: 16,
             promoteId: "key",
           });
-          // A selected point remains visible even inside a cluster.
           map.addSource("selected-item", {
             type: "geojson",
             data: toGeoJSON(
@@ -523,38 +520,6 @@ export function MapCanvas({
               latest.current.locale,
               pinStatus.current,
             ),
-          });
-          map.addLayer({
-            id: "clusters",
-            type: "circle",
-            source: "items",
-            filter: ["has", "point_count"],
-            paint: {
-              "circle-color": palette.surface,
-              "circle-stroke-color": palette.primary,
-              "circle-stroke-width": 1.5,
-              "circle-radius": [
-                "step",
-                ["get", "point_count"],
-                18,
-                10,
-                22,
-                50,
-                28,
-              ],
-            },
-          });
-          map.addLayer({
-            id: "cluster-count",
-            type: "symbol",
-            source: "items",
-            filter: ["has", "point_count"],
-            layout: {
-              "text-field": ["get", "point_count_abbreviated"],
-              "text-size": 14,
-              "text-font": ["DIN Pro Bold", "Arial Unicode MS Bold"],
-            },
-            paint: { "text-color": text },
           });
           map.addLayer({
             id: "selected-halo",
@@ -585,19 +550,16 @@ export function MapCanvas({
             15,
             big,
           ];
+          const { dot, hoverDot, sticker } = markerSizes;
           map.addLayer({
             id: "points-edge",
             type: "circle",
             source: "items",
-            filter: [
-              "all",
-              ["!", ["has", "point_count"]],
-              ["!", ["has", "pin"]],
-            ],
+            filter: ["!", ["has", "pin"]],
             paint: {
               "circle-radius": radius(
-                5.5 + chrome.edgeGrow,
-                9.5 + chrome.edgeGrow,
+                dot.far + chrome.edgeGrow,
+                dot.near + chrome.edgeGrow,
               ) as never,
               "circle-color": chrome.edge ?? markerColorExpression,
               "circle-opacity": chrome.edgeOpacity,
@@ -608,13 +570,9 @@ export function MapCanvas({
             id: "points",
             type: "circle",
             source: "items",
-            filter: [
-              "all",
-              ["!", ["has", "point_count"]],
-              ["!", ["has", "pin"]],
-            ],
+            filter: ["!", ["has", "pin"]],
             paint: {
-              "circle-radius": radius(5.5, 9.5) as never,
+              "circle-radius": radius(dot.far, dot.near) as never,
               "circle-color": markerColorExpression,
               "circle-stroke-color": chrome.stroke,
               "circle-stroke-width": 1.5,
@@ -631,7 +589,7 @@ export function MapCanvas({
             source: "hover-item",
             filter: ["!", ["has", "pin"]],
             paint: {
-              "circle-radius": radius(6.5, 11) as never,
+              "circle-radius": radius(hoverDot.far, hoverDot.near) as never,
               "circle-color": markerColorExpression,
               "circle-stroke-color": chrome.outline,
               "circle-stroke-width": 2,
@@ -648,11 +606,7 @@ export function MapCanvas({
             type: "symbol",
             source: "items",
             minzoom: 14,
-            filter: [
-              "all",
-              ["!", ["has", "point_count"]],
-              ["!", ["has", "pin"]],
-            ],
+            filter: ["!", ["has", "pin"]],
             layout: {
               "icon-image": ["concat", "marker-", ["get", "kind"]],
               "icon-size": 0.55,
@@ -660,21 +614,21 @@ export function MapCanvas({
               "icon-ignore-placement": true,
             },
           });
-          // Custom sticker pins (128px images at pixelRatio 2, ~26-44px on screen).
+          // Custom sticker pins: 128px images at pixelRatio 2, ~40-46px on screen.
           const pinSize = (grow: number) => [
             "interpolate",
             ["linear"],
             ["zoom"],
             10,
-            0.4 * grow,
+            sticker.far * grow,
             15,
-            0.68 * grow,
+            sticker.near * grow,
           ];
           map.addLayer({
             id: "custom-pins",
             type: "symbol",
             source: "items",
-            filter: ["all", ["!", ["has", "point_count"]], ["has", "pin"]],
+            filter: ["has", "pin"],
             layout: {
               "icon-image": ["get", "pin"],
               "icon-size": pinSize(1) as never,
@@ -698,7 +652,6 @@ export function MapCanvas({
             id: "points-hit",
             type: "circle",
             source: "items",
-            filter: ["!", ["has", "point_count"]],
             paint: {
               "circle-radius": 22,
               "circle-opacity": 0,
@@ -927,31 +880,8 @@ export function MapCanvas({
             const key = feature?.properties?.key;
             if (key) latest.current.onSelect(String(key));
           });
-          map.on("click", "clusters", (e) => {
-            const feature = e.features?.[0] as Feature | undefined;
-            const clusterId = feature?.properties?.cluster_id;
-            const source = map.getSource("items") as GeoJSONSource | undefined;
-            if (
-              clusterId == null ||
-              !source ||
-              feature?.geometry.type !== "Point"
-            )
-              return;
-            source.getClusterExpansionZoom(
-              Number(clusterId),
-              (err, expansion) => {
-                if (err || expansion == null) return;
-                map.easeTo({
-                  center: feature.geometry.coordinates as [number, number],
-                  zoom: expansion,
-                  duration: prefersReducedMotion() ? 0 : 240,
-                });
-              },
-            );
-          });
           for (const layer of [
             "points-hit",
-            "clusters",
             "extra-points",
             "extra-pins",
             "trip-stop",

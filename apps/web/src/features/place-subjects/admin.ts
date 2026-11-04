@@ -108,23 +108,6 @@ async function lockSubject(
     );
   return row;
 }
-/** Layers holding the subject must match the city it is being given. */
-async function assertLayerCities(
-  tx: PoolClient,
-  subjectId: string,
-  cityId: string,
-) {
-  const mismatch = await tx.query(
-    "SELECT 1 FROM layer_item i JOIN layer l ON l.id=i.layer_id WHERE i.subject_id=$1 AND l.city_id<>$2 LIMIT 1",
-    [subjectId, cityId],
-  );
-  if (mismatch.rowCount)
-    throw new AppError(
-      400,
-      "CITY_MISMATCH",
-      "Layers containing this place belong to a different city.",
-    );
-}
 /**
  * Link an external subject to a catalog place and canonicalize its saves and
  * layer memberships onto the catalog identity. A catalog place that already
@@ -161,7 +144,6 @@ async function linkCatalogPlace(
       "SUBJECT_MERGE_REQUIRED",
       "This catalog place already has its own contributions; merging needs a separate reviewed operation.",
     );
-  await assertLayerCities(tx, subjectId, p.city_id);
   const items = await tx.query<{ id: string; layer_id: string; note: string }>(
     "SELECT id,layer_id,note FROM layer_item WHERE subject_id=$1 ORDER BY id FOR UPDATE",
     [subjectId],
@@ -251,7 +233,6 @@ export async function patchSubject(
       ]);
       if (!city.rowCount)
         throw new AppError(400, "INVALID_CITY", "Choose a supported city.");
-      await assertLayerCities(tx, id, input.cityId);
       await tx.query(
         "UPDATE place_subject SET city_id=$2,city_review_status='approved',city_reviewed_by=$3,city_reviewed_at=now() WHERE id=$1",
         [id, input.cityId, a.id],

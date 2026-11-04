@@ -135,7 +135,7 @@ export async function listActiveCustomPlaces(ids: string[]) {
   );
   return result.rows.map(toCustomPlace);
 }
-/** The layer owner's active places in the layer's city, for the editor's "Your places" search. */
+/** The layer owner's active places, for the editor's "Your places" search. */
 export async function listScopePlaces(layer: LayerRecord, q: string) {
   const owner =
     layer.ownerKind === "user"
@@ -147,10 +147,10 @@ export async function listScopePlaces(layer: LayerRecord, q: string) {
   const pattern = `%${q.replace(/[\\%_]/g, (c) => "\\" + c)}%`;
   const result = await pool.query<CustomPlaceRow>(
     `SELECT ${columns} FROM custom_place
-     WHERE ${owner.column}=$1 AND city_id=$2 AND status='active'
-       AND ($3 = '%%' OR name ILIKE $3 OR name_chinese ILIKE $3 OR address ILIKE $3)
+     WHERE ${owner.column}=$1 AND status='active'
+       AND ($2 = '%%' OR name ILIKE $2 OR name_chinese ILIKE $2 OR address ILIKE $2)
      ORDER BY updated_at DESC LIMIT 30`,
-    [owner.id, layer.cityId, pattern],
+    [owner.id, pattern],
   );
   return result.rows.map(toCustomPlace);
 }

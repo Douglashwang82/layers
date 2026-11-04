@@ -10,7 +10,11 @@ import {
   createLayer,
   removeLayerItem,
 } from "../../apps/web/src/features/layers/service";
-import { listLayerItemRefs } from "../../apps/web/src/features/layers/repository";
+import {
+  listLayerItemRefs,
+  listMapLibrary,
+} from "../../apps/web/src/features/layers/repository";
+import { runMapQuery } from "../../apps/web/src/features/map/query";
 import {
   listExternalReferences,
   listSavedExternalPlaces,
@@ -151,14 +155,43 @@ describe("external places in layers", () => {
       }),
     ).rejects.toMatchObject({ status: 409, code: "CITY_REVIEW_REQUIRED" });
   });
-  it("keeps a reviewed external place in its own city", async () => {
-    await approveCity(subjectId, otherCity);
+  it("shows a layer and its catalog places outside the layer's city", async () => {
+    const placeId = crypto.randomUUID();
+    await pool.query(
+      `INSERT INTO place(id,slug,name,image,category,city_id,neighborhood,address,latitude,longitude,status)
+       VALUES($1,$2,'Other city cafe','','Cafe',$3,'','',35.7,139.7,'approved')`,
+      [placeId, `other-city-${placeId}`, otherCity],
+    );
+    const elsewhere = await createLayer(alice, {
+      title: "Elsewhere",
+      city: "houston",
+    });
+    await pool.query("UPDATE layer SET city_id=$2 WHERE id=$1", [
+      elsewhere.layer.id,
+      otherCity,
+    ]);
+    try {
+      await addLayerItem(alice, layerId, { key: `place:${placeId}` });
+      const result = await runMapQuery(state({}), city, alice);
+      expect(result.items.map((i) => i.key)).toContain(`place:${placeId}`);
+      const picker = await listMapLibrary(alice, city);
+      expect(picker.map((l) => l.layer.id)).toContain(elsewhere.layer.id);
+    } finally {
+      await pool.query("DELETE FROM layer_item WHERE place_id=$1", [placeId]);
+      await pool.query("DELETE FROM layer WHERE id=$1", [elsewhere.layer.id]);
+      await pool.query("DELETE FROM place WHERE id=$1", [placeId]);
+    }
+  });
+  it("takes a reviewed external place from any city", async () => {
+    const elsewhere = await external();
+    await approveCity(elsewhere.subjectId, otherCity);
     await expect(
       addLayerItem(alice, layerId, {
-        key: `subject:${subjectId}`,
-        selectionGrant: grant,
+        key: `subject:${elsewhere.subjectId}`,
+        selectionGrant: elsewhere.selectionGrant,
       }),
-    ).rejects.toMatchObject({ code: "CITY_MISMATCH" });
+    ).resolves.toMatchObject({ added: true });
+    await removeLayerItem(alice, layerId, `subject:${elsewhere.subjectId}`);
   });
   it("adds an approved external place once, with the grant bridging first access", async () => {
     const fresh = await external();

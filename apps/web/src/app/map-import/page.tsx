@@ -4,7 +4,7 @@ import { currentActor } from "@/lib/session";
 import { getLocale } from "@/lib/i18n";
 import { mapImportEn, mapImportZh } from "@/lib/map-import-copy";
 import { flags } from "@/lib/config";
-import { getCities } from "@/features/catalog/repository";
+import { getActiveCity } from "@/lib/city";
 import { listEditableLayers } from "@/features/layers/repository";
 import { listEditableGroups } from "@/features/groups/repository";
 import { MapImportForm } from "@/components/layers/map-import-form";
@@ -21,9 +21,9 @@ export default async function MapImportPage({
   if (!flags.layerWrites || !flags.layerCustomPlaces) notFound();
   const actor = await currentActor();
   if (!actor) redirect("/sign-in?next=/map-import");
-  const [locale, cities, editable, groups, query] = await Promise.all([
+  const [locale, { city }, editable, groups, query] = await Promise.all([
     getLocale(),
-    getCities(),
+    getActiveCity(),
     listEditableLayers(actor),
     listEditableGroups(actor.id),
     searchParams,
@@ -44,7 +44,7 @@ export default async function MapImportPage({
       <h1>{t.title}</h1>
       <MapImportForm
         t={t}
-        cities={cities}
+        city={city.slug}
         layers={layers.map((l) => ({
           id: l.id,
           title: l.title,
@@ -54,7 +54,6 @@ export default async function MapImportPage({
         groups={groups.map((g) => ({
           id: g.id,
           name: g.name,
-          cityId: g.cityId,
         }))}
         initialUrl={initialUrl}
         initialLayer={

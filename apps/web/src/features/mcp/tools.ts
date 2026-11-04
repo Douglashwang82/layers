@@ -215,7 +215,7 @@ export const toolHandlers: {
 } = {
   async list_layers(actor, input) {
     const city = pickCity(await getCities(), input.city);
-    const layers = await listLibrary(input.scope, actor, city, input.query);
+    const layers = await listLibrary(input.scope, actor, input.query);
     return { city: city.slug, layers: layers.map(layerSummary) };
   },
 

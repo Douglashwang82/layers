@@ -18,9 +18,6 @@ test("preview KML, preserve source layers, and reopen the collection", async ({
     page.getByText(/Unsupported or invalid features skipped: 2/),
   ).toBeVisible();
   await page.getByLabel("Destination").selectOption("collection");
-  await page
-    .getByRole("combobox", { name: "Organizing city", exact: true })
-    .selectOption("tokyo");
   await expect(
     page.getByRole("button", { name: "Check destination and duplicates" }),
   ).toBeDisabled();
@@ -53,7 +50,7 @@ test("preview KML, preserve source layers, and reopen the collection", async ({
   await page.getByLabel("Parks", { exact: true }).check();
   await expect(
     page.getByRole("link", { name: "Show selected layers on map" }),
-  ).toHaveAttribute("href", /city=tokyo/);
+  ).toHaveAttribute("href", /layers=/);
   await page.reload();
   await expect(
     page.getByRole("heading", { name: "Tokyo weekend" }),

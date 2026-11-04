@@ -1250,7 +1250,6 @@ export function MapWorkspace({
       t={t}
       locale={locale}
       timeZone={city.timezone}
-      citySlug={city.slug}
       onRefresh={() => {
         loadDetail(selected.key);
         // The Daily Pick card shows the same place's save state; re-query it too.

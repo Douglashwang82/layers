@@ -1,5 +1,4 @@
 import {
-  distanceKm,
   geocodeAddress,
   GeocoderError,
   pool,
@@ -70,10 +69,7 @@ function unavailable() {
 }
 /** Replaceable in tests so no live geocoder call is made. */
 export const geocoding = { geocode: geocodeAddress };
-/** A geocoded match farther than this from the city centre is treated as no match. */
-export const maxCityDistanceKm = 150;
-export type GeocodeOutcome =
-  "matched" | "no_match" | "outside_city" | "unavailable" | "skipped";
+export type GeocodeOutcome = "matched" | "no_match" | "unavailable" | "skipped";
 type Location = {
   status: "exact" | "approximate" | "unspecified";
   latitude: number | null;
@@ -104,21 +100,16 @@ async function geocodeLimit(actor: Actor) {
     );
 }
 /**
- * Geocodes an address for a city. The geocoder is untrusted and optional: a
- * failure never blocks saving, the place just stays list-only.
+ * Geocodes an address. The geocoder is untrusted and optional: a failure never
+ * blocks saving, the place just stays list-only.
  */
-async function geocodeForCity(
+async function geocodeForLayer(
   actor: Actor,
   address: string,
-  cityId: string,
 ): Promise<{ outcome: GeocodeOutcome; location: Location; matched: string }> {
   if (!address.trim())
     return { outcome: "skipped", location: unmapped, matched: "" };
   await geocodeLimit(actor);
-  const city = await pool.query<{ latitude: number; longitude: number }>(
-    "SELECT latitude,longitude FROM city WHERE id=$1",
-    [cityId],
-  );
   let match;
   try {
     match = await geocoding.geocode(address);
@@ -128,8 +119,6 @@ async function geocodeForCity(
     throw error;
   }
   if (!match) return { outcome: "no_match", location: unmapped, matched: "" };
-  if (city.rows[0] && distanceKm(match, city.rows[0]) > maxCityDistanceKm)
-    return { outcome: "outside_city", location: unmapped, matched: "" };
   return {
     outcome: "matched",
     location: {
@@ -149,8 +138,8 @@ export async function previewGeocode(
   enabled();
   const a = requireActor(actor);
   const value = z.string().trim().min(1).max(300).parse(address);
-  const found = await requireEditableLayer(layerId, a);
-  const result = await geocodeForCity(a, value, found.layer.cityId);
+  await requireEditableLayer(layerId, a);
+  const result = await geocodeForLayer(a, value);
   return {
     outcome: result.outcome,
     latitude: result.location.latitude,
@@ -182,7 +171,7 @@ export async function createCustomPlaceInLayer(
   let location = pinLocation(input.pin ?? null);
   let geocode: GeocodeOutcome = "skipped";
   if (!input.pin && input.address) {
-    const result = await geocodeForCity(a, input.address, layer.cityId);
+    const result = await geocodeForLayer(a, input.address);
     location = result.location;
     geocode = result.outcome;
   }
@@ -283,7 +272,7 @@ export async function updateCustomPlace(
     input.address !== current.address &&
     current.location_status !== "approximate"
   )
-    geocoded = await geocodeForCity(a, input.address, current.city_id);
+    geocoded = await geocodeForLayer(a, input.address);
   return transaction(async (tx) => {
     const row = await requireEditablePlace(tx, a, id);
     const location: Location =

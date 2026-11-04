@@ -145,7 +145,6 @@ export default async function ContentPage({ params }: Props) {
           {post.status === "approved" && flags.layerWrites && (
             <AddToLayer
               itemKey={key}
-              itemCity={post.citySlug}
               layers={editableLayers}
               authenticated={!!actor}
               t={t}

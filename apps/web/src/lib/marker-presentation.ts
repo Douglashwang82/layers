@@ -53,6 +53,16 @@ export const markerChrome = {
   },
 } as const;
 
+/**
+ * On-screen marker sizes, far (the minimum, held at every lower zoom) to near.
+ * Dots are radii in px; sticker pins scale a 64px image.
+ */
+export const markerSizes = {
+  dot: { far: 8, near: 11 },
+  hoverDot: { far: 9, near: 12.5 },
+  sticker: { far: 0.62, near: 0.72 },
+} as const;
+
 /** CSS custom properties (`--marker-food`, ...) so swatches follow the map theme. */
 export function markerCssVars(theme: AtlasTheme) {
   return Object.fromEntries(

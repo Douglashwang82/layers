@@ -101,16 +101,6 @@ export async function insertLayer(
         "FORBIDDEN",
         "You need an editor role in this group.",
       );
-    const group = await tx.query<{ city_id: string }>(
-      'SELECT city_id FROM "group" WHERE id=$1',
-      [input.groupId],
-    );
-    if (group.rows[0]?.city_id !== city.rows[0].id)
-      throw new AppError(
-        400,
-        "CITY_MISMATCH",
-        "The group belongs to a different city.",
-      );
     groupId = input.groupId!;
   }
   const id = crypto.randomUUID();
@@ -227,7 +217,7 @@ export async function deleteLayer(actor: Actor | null, id: string) {
 }
 /**
  * Adding an item creates a reference to the canonical entity, never a copy.
- * v1 layers are city-scoped; adding is idempotent and returns whether it was new.
+ * Layers have no geographic limit; adding is idempotent and returns whether it was new.
  */
 export async function addLayerItem(
   actor: Actor | null,
@@ -255,18 +245,12 @@ export async function addLayerItem(
             : "content_post";
       if (ref.type === "content" && !flags.content)
         throw new AppError(404, "NOT_FOUND", "This item is unavailable.");
-      const entity = await tx.query<{ city_id: string }>(
-        `SELECT city_id FROM ${table} WHERE id=$1 AND status='approved'`,
+      const entity = await tx.query(
+        `SELECT 1 FROM ${table} WHERE id=$1 AND status='approved'`,
         [ref.id],
       );
       if (!entity.rows[0])
         throw new AppError(404, "NOT_FOUND", "This item is unavailable.");
-      if (entity.rows[0].city_id !== found.layer.cityId)
-        throw new AppError(
-          400,
-          "CITY_MISMATCH",
-          "This layer belongs to a different city.",
-        );
       target = { column: itemColumns[ref.type], id: ref.id, external: false };
     }
     const added = await attachLayerItem(tx, a.id, found, target, input.note);
@@ -301,7 +285,7 @@ export type LayerItemTarget = {
 };
 /** The layer fields placement needs; a layer inserted in the same transaction qualifies. */
 export type PlacementLayer = {
-  layer: Pick<LayerWithAccess["layer"], "id" | "cityId" | "audience">;
+  layer: Pick<LayerWithAccess["layer"], "id" | "audience">;
 };
 /**
  * Appends an already-authorized target to the layer inside the caller's
@@ -331,8 +315,8 @@ export async function attachLayerItem(
   return added;
 }
 /**
- * Custom places join only layers owned by the same user or group, in the same
- * city, while active. This keeps a private place out of every other scope.
+ * Custom places join only layers owned by the same user or group, while
+ * active. This keeps a private place out of every other scope.
  */
 async function customPlaceTarget(
   tx: PoolClient,
@@ -344,9 +328,8 @@ async function customPlaceTarget(
   const row = await tx.query<{
     owner_user_id: string | null;
     owner_group_id: string | null;
-    city_id: string;
   }>(
-    "SELECT owner_user_id,owner_group_id,city_id FROM custom_place WHERE id=$1 AND status='active' FOR SHARE",
+    "SELECT owner_user_id,owner_group_id FROM custom_place WHERE id=$1 AND status='active' FOR SHARE",
     [placeId],
   );
   const place = row.rows[0];
@@ -358,18 +341,12 @@ async function customPlaceTarget(
         place.owner_group_id === found.layer.ownerGroupId);
   if (!sameScope)
     throw new AppError(404, "NOT_FOUND", "This item is unavailable.");
-  if (place.city_id !== found.layer.cityId)
-    throw new AppError(
-      400,
-      "CITY_MISMATCH",
-      "This layer belongs to a different city.",
-    );
   return { column: "custom_place_id", id: placeId, external: true };
 }
 /**
- * External places join a layer only when active, visible to the actor (or just
- * resolved under a selection grant) and curated into the layer's city. A
- * subject linked to a catalog place is stored as that place, deduplicating it.
+ * External places join a layer only when active and visible to the actor (or
+ * just resolved under a selection grant). A subject linked to a catalog place
+ * is stored as that place, deduplicating it.
  */
 async function subjectTarget(
   tx: PoolClient,
@@ -392,59 +369,38 @@ async function subjectTarget(
  * Where an actionable subject goes in a layer: as its catalog place when
  * linked (deduplicating it), otherwise as the external subject, which a
  * public layer accepts only once a moderator has city-reviewed it.
- * `anyCity` lifts the city match for a private or group layer's external
- * places (Google-link imports, which have no geographic limit).
  */
 export async function subjectPlacement(
   tx: PoolClient,
   found: PlacementLayer,
   subject: { id: string; catalog_place_id: string | null },
-  { anyCity = false }: { anyCity?: boolean } = {},
 ): Promise<LayerItemTarget> {
   if (subject.catalog_place_id) {
-    const place = await tx.query<{ city_id: string }>(
-      "SELECT city_id FROM place WHERE id=$1 AND status='approved'",
+    const place = await tx.query(
+      "SELECT 1 FROM place WHERE id=$1 AND status='approved'",
       [subject.catalog_place_id],
     );
-    if (place.rows[0]?.city_id !== found.layer.cityId)
-      throw new AppError(
-        400,
-        "CITY_MISMATCH",
-        "This layer belongs to a different city.",
-      );
+    if (!place.rows[0])
+      throw new AppError(404, "NOT_FOUND", "This item is unavailable.");
     return {
       column: "place_id",
       id: subject.catalog_place_id,
       external: false,
     };
   }
-  const city = await tx.query<{
-    city_id: string | null;
-    city_review_status: string;
-  }>("SELECT city_id,city_review_status FROM place_subject WHERE id=$1", [
-    subject.id,
-  ]);
-  const reviewed = city.rows[0]?.city_review_status === "approved";
+  const review = await tx.query<{ city_review_status: string }>(
+    "SELECT city_review_status FROM place_subject WHERE id=$1",
+    [subject.id],
+  );
+  const reviewed = review.rows[0]?.city_review_status === "approved";
   // Moderation guards what is public: private and group layers take an
   // unreviewed place as-is (public viewers never see unreviewed subjects);
   // a public layer still needs a moderator's city review first.
-  if (!reviewed) {
-    if (found.layer.audience === "public")
-      throw new AppError(
-        409,
-        "CITY_REVIEW_REQUIRED",
-        "Saved — city review needed before adding to a layer.",
-      );
-    return { column: "subject_id", id: subject.id, external: true };
-  }
-  if (
-    city.rows[0].city_id !== found.layer.cityId &&
-    !(anyCity && found.layer.audience !== "public")
-  )
+  if (!reviewed && found.layer.audience === "public")
     throw new AppError(
-      400,
-      "CITY_MISMATCH",
-      "This layer belongs to a different city.",
+      409,
+      "CITY_REVIEW_REQUIRED",
+      "Saved — city review needed before adding to a layer.",
     );
   return { column: "subject_id", id: subject.id, external: true };
 }

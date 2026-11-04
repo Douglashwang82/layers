@@ -20,6 +20,7 @@ import {
 } from "@/features/layers/service";
 import { maxCustomPlacesPerScope } from "@/features/custom-places/service";
 import { resolverDeps } from "@/features/google-links/deps";
+import { cachePlaceDetails } from "@/features/google-links/locations";
 import { myMapsUrl } from "./download";
 import { matchPoints } from "./match";
 
@@ -42,7 +43,8 @@ export const matchBudget = { markers: 2000, hours: 24 };
 /**
  * Google place IDs for the selected markers, keyed by marker id. Matching is
  * best effort: without a configured key, over the daily budget, or on any
- * provider failure, markers import as plain custom places, as before.
+ * provider failure, markers import as plain custom places, as before. Each
+ * match's Google types are cached so its pin takes the place's kind.
  */
 async function importMatches(
   actor: Actor,
@@ -65,7 +67,9 @@ async function importMatches(
   );
   if (spent.rows[0].count > matchBudget.markers)
     return new Map<string, string>();
-  return matchPoints(points, deps);
+  const matches = await matchPoints(points, deps);
+  await cachePlaceDetails([...matches.values()], deps);
+  return matches;
 }
 /** Advisory preview; the transaction repeats all authorization and dedupe checks. */
 export async function reviewMapImport(actor: Actor | null, body: unknown) {
@@ -108,23 +112,13 @@ export async function reviewMapImport(actor: Actor | null, body: unknown) {
         "FORBIDDEN",
         "You need an editor role in this group.",
       );
-    const group = await pool.query<{ city_id: string }>(
-      'SELECT city_id FROM "group" WHERE id=$1',
-      [groupId],
-    );
-    if (group.rows[0]?.city_id !== city.rows[0].id)
-      throw new AppError(
-        400,
-        "CITY_MISMATCH",
-        "The group belongs to a different city.",
-      );
   }
   const points = input.document.layers
     .flatMap((l) => l.points)
     .filter((p) => input.selected.includes(p.id));
   const matches = await pool.query<{ id: string }>(
-    `SELECT DISTINCT p.id FROM jsonb_to_recordset($1::jsonb) AS p(id text,name text,latitude float8,longitude float8) JOIN custom_place c ON lower(c.name)=lower(p.name) AND c.latitude=p.latitude AND c.longitude=p.longitude WHERE (c.owner_user_id=$2 OR c.owner_group_id=$3) AND c.city_id=$4 AND c.status='active'`,
-    [JSON.stringify(points), userId, groupId, city.rows[0].id],
+    `SELECT DISTINCT p.id FROM jsonb_to_recordset($1::jsonb) AS p(id text,name text,latitude float8,longitude float8) JOIN custom_place c ON lower(c.name)=lower(p.name) AND c.latitude=p.latitude AND c.longitude=p.longitude WHERE (c.owner_user_id=$2 OR c.owner_group_id=$3) AND c.status='active'`,
+    [JSON.stringify(points), userId, groupId],
   );
   const reused = new Set(matches.rows.map((p) => p.id));
   const seen = new Set<string>();
@@ -280,8 +274,8 @@ export async function commitMapImport(
       result.layers.push(meta.rows[0]);
       for (const p of folder.points) {
         const match = await tx.query<{ id: string }>(
-          `SELECT id FROM custom_place WHERE (owner_user_id=$1 OR owner_group_id=$2) AND city_id=$3 AND status='active' AND lower(name)=lower($4) AND latitude=$5 AND longitude=$6 ORDER BY created_at LIMIT 1`,
-          [userId, groupId, layer.cityId, p.name, p.latitude, p.longitude],
+          `SELECT id FROM custom_place WHERE (owner_user_id=$1 OR owner_group_id=$2) AND status='active' AND lower(name)=lower($3) AND latitude=$4 AND longitude=$5 ORDER BY created_at LIMIT 1`,
+          [userId, groupId, p.name, p.latitude, p.longitude],
         );
         const googlePlaceId = matches.get(p.id) ?? null;
         if (googlePlaceId) result.matched!++;

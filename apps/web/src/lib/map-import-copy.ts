@@ -13,9 +13,8 @@ export const mapImportEn = {
   newLayer: "Create one new layer",
   collection: "Preserve source layers in a collection",
   name: "Layer or collection name",
-  city: "Organizing city",
   cityHelp:
-    "This city organizes your layers. Imported coordinates stay where they are, including outside this city. Pins are source-provided, not verified places.",
+    "Imported coordinates stay where they are. Pins are source-provided, not verified places.",
   owner: "Owner",
   personal: "Personal (private)",
   layer: "Existing layer",
@@ -62,9 +61,7 @@ export const mapImportZh: typeof mapImportEn = {
   newLayer: "建立一個新圖層",
   collection: "保留來源圖層並建立集合",
   name: "圖層或集合名稱",
-  city: "整理用城市",
-  cityHelp:
-    "此城市用於整理圖層。匯入座標會保留原位，包括此城市以外的地點。標記來自來源資料，未經驗證。",
+  cityHelp: "匯入座標會保留原位。標記來自來源資料，未經驗證。",
   owner: "擁有者",
   personal: "個人（私人）",
   layer: "現有圖層",
