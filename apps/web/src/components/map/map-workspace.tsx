@@ -85,6 +85,7 @@ import {
   SidebarFooter,
 } from "./map-sidebar-sections";
 import { PlaceAttachments } from "./place-attachments";
+import { LayerSuggestions } from "./layer-suggestions";
 import {
   TipReviews,
   tipReviewsHeight,
@@ -186,6 +187,7 @@ export function MapWorkspace({
   folders = [],
   layerScreen,
   tripsEnabled = false,
+  layerSuggestionsEnabled = false,
   tripData = null,
 }: {
   initial: MapQueryResult;
@@ -205,6 +207,8 @@ export function MapWorkspace({
   layerScreen?: ReactNode;
   /** FEATURE_TRIPS: without it trip params are ignored and no trip UI shows. */
   tripsEnabled?: boolean;
+  /** FEATURE_LAYER_SUGGESTIONS: without it the suggestions section never renders or fetches. */
+  layerSuggestionsEnabled?: boolean;
   /** The server-resolved trip screen for the URL (see features/trips/screen.ts). */
   tripData?: TripScreenData | null;
 }) {
@@ -1288,6 +1292,20 @@ export function MapWorkspace({
     authenticated &&
     library != null &&
     !library.some((l) => l.ownerKind !== "system");
+  const suggestions = (
+    <LayerSuggestions
+      queryKey={queryKey}
+      enabled={
+        layerSuggestionsEnabled &&
+        authenticated &&
+        hasApplied &&
+        !firstRun &&
+        visible
+      }
+      t={t}
+      locale={locale}
+    />
+  );
   const emptyState = !hasApplied && (
     <MapEmptyState
       authenticated={authenticated}
@@ -1378,6 +1396,7 @@ export function MapWorkspace({
         onManage={() => setTab("layers")}
       />
       {dailyPick}
+      {suggestions}
       {emptyState || (
         <>
           <ResultsSummary
@@ -1504,6 +1523,7 @@ export function MapWorkspace({
           body: (
             <div className="panel-body">
               {!hasList && emptyState}
+              {suggestions}
               {layersPanel}
             </div>
           ),

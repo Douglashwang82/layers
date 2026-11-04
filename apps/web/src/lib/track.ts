@@ -23,6 +23,10 @@ export const clientEventNames = [
   "daily_pick_added_to_layer",
   // Map MVP route links (stop and link counts and travel mode only).
   "route_opened",
+  // Layer suggestions (outcome and suggestion type only; never layer IDs or generated text).
+  "layer_suggestions_generated",
+  "layer_suggestions_failed",
+  "layer_suggestion_acted",
 ] as const;
 export type ClientEventName = (typeof clientEventNames)[number];
 export function track(

@@ -121,6 +121,7 @@ export default async function HomePage({
       hasDemo={result.items.some((item) => item.isDemo)}
       layerWrites={flags.layerWrites}
       tripsEnabled={flags.trips}
+      layerSuggestionsEnabled={flags.layerSuggestions}
       tripData={tripData}
       places={placesClientConfig()}
       folders={folders}
