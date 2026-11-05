@@ -118,6 +118,26 @@ test("a folder of layers is added to the map, toggled and restored", async ({
   await checkbox.uncheck();
   await expect(page).not.toHaveURL(/collections=/);
   await expect(checkbox).not.toBeChecked();
+  // One tree: no section headings, and a filed layer is only in its folder.
+  const manage = page.locator(".active-layers");
+  await expect(manage.getByRole("heading", { level: 3 })).toHaveCount(0);
+  const filed = page.getByRole("checkbox", {
+    name: `Show on map: Folder layer A ${stamp}`,
+  });
+  await expect(filed).toHaveCount(0);
+  await page.getByRole("button", { name: `Expand ${folderTitle}` }).click();
+  await expect(filed).toHaveCount(1);
+  // A filed layer can go on the map alone, and its folder opens to show that.
+  await filed.check();
+  await expect(filed).toBeChecked();
+  await expect(page).toHaveURL(new RegExp(`layers=${layerA.slug}`));
+  await page.reload();
+  await page
+    .getByRole("button", { name: "Manage layers", exact: true })
+    .click();
+  await expect(filed).toBeChecked();
+  await filed.uncheck();
+  await expect(page).not.toHaveURL(new RegExp(`layers=${layerA.slug}`));
   await page.getByRole("button", { name: "Back to results" }).click();
   await expect(rowA).toHaveCount(0);
   await expect(rowB).toHaveCount(0);
@@ -129,6 +149,10 @@ test("a folder of layers is added to the map, toggled and restored", async ({
   await checkbox.check();
   await expect(page).toHaveURL(new RegExp(`collections=${slug}`));
   expect((await again).data!.collections[0].status).toBe("ok");
+  // The folder's layers come with it, so they cannot be unticked one by one.
+  await page.getByRole("button", { name: `Expand ${folderTitle}` }).click();
+  await expect(filed).toBeChecked();
+  await expect(filed).toBeDisabled();
   await page.getByRole("button", { name: "Back to results" }).click();
   await expect(chip).toHaveAttribute("aria-pressed", "true");
   await expect(rowA).toBeVisible();

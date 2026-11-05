@@ -1283,6 +1283,7 @@ export function MapWorkspace({
   const layersPanel = (
     <ActiveLayersPanel
       layers={panelLayers}
+      shownSlugs={shownSlugs}
       library={library ?? []}
       folders={folders}
       appliedFolders={shownFolders}

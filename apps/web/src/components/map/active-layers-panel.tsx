@@ -8,6 +8,7 @@ import type { CollectionNode } from "@/features/layers/collections-types";
 import { type Copy, type Locale, format } from "@/lib/dictionary";
 import { maxAppliedCollections, maxAppliedLayers } from "@taiwanhub/shared";
 import { layerColor } from "@/components/map/layer-section";
+import { folderLayers } from "@/lib/folder-tree";
 import {
   layerTitle,
   orderLayers,
@@ -22,51 +23,47 @@ function folderName(folder: CollectionNode, locale: Locale) {
     : folder.title;
 }
 
-/** Distinct layer ids anywhere in the folder's subtree. */
-function subtreeLayerCount(folder: CollectionNode) {
-  const ids = new Set<string>();
-  const walk = (node: CollectionNode) => {
-    for (const child of node.children) {
-      if (child.kind === "layer") ids.add(child.layer.id);
-      else walk(child.folder);
-    }
-  };
-  walk(folder);
-  return ids.size;
-}
-
 /**
  * One folder in the tree. A folder goes on the map as a unit; when it is
  * applied its descendants are already included, so their own checkboxes show
- * as included and disabled.
+ * as included and disabled. Otherwise its layers can be ticked one by one, and
+ * a folder holding a ticked layer starts open so that tick stays in view.
  */
 function FolderItem({
   folder,
   included,
   appliedFolders,
+  shown,
   slotsFull,
   t,
   locale,
   onToggleFolder,
+  onToggle,
   onOnly,
 }: {
   folder: CollectionNode;
   included: boolean;
   appliedFolders: string[];
+  /** Slugs of the layers ticked on their own. */
+  shown: Set<string>;
   slotsFull: boolean;
   t: Copy;
   locale: Locale;
   onToggleFolder: (slug: string, applied: boolean) => void;
+  onToggle: (slug: string, applied: boolean) => void;
   onOnly: (slug: string) => void;
 }) {
-  const [open, setOpen] = useState(false);
+  const filed = folderLayers(folder);
+  const [open, setOpen] = useState(() =>
+    filed.some((layer) => shown.has(layer.slug)),
+  );
   const groupId = useId();
   const title = folderName(folder, locale);
   const own = appliedFolders.includes(folder.slug);
   const inherited = included && !own;
   const checked = own || included;
   const hasChildren = folder.children.length > 0;
-  const layerCount = subtreeLayerCount(folder);
+  const layerCount = new Set(filed.map((layer) => layer.id)).size;
   const full =
     !checked && (slotsFull || appliedFolders.length >= maxAppliedCollections);
   return (
@@ -123,28 +120,47 @@ function FolderItem({
                 folder={child.folder}
                 included={checked}
                 appliedFolders={appliedFolders}
+                shown={shown}
                 slotsFull={slotsFull}
                 t={t}
                 locale={locale}
                 onToggleFolder={onToggleFolder}
+                onToggle={onToggle}
                 onOnly={onOnly}
               />
             ) : (
               <li key={`l:${child.layer.id}`} className="folder-layer">
-                <span className="layer-title">
-                  <Link href={`/layers/${child.layer.slug}`}>
-                    {locale === "zh-TW" && child.layer.titleChinese
-                      ? child.layer.titleChinese
-                      : child.layer.title}
-                  </Link>
-                </span>
-                <button
-                  type="button"
-                  className="text-button"
-                  onClick={() => onOnly(child.layer.slug)}
-                >
-                  {t.showOnlyThis}
-                </button>
+                <div className="layer-toggle">
+                  <input
+                    type="checkbox"
+                    checked={checked || shown.has(child.layer.slug)}
+                    aria-label={`${t.showOnMap}: ${layerTitle(child.layer, locale)}`}
+                    title={checked ? t.folderIncludedInParent : undefined}
+                    disabled={
+                      checked || (!shown.has(child.layer.slug) && slotsFull)
+                    }
+                    onChange={(e) =>
+                      onToggle(child.layer.slug, e.target.checked)
+                    }
+                  />
+                  <span className="layer-title">
+                    <span
+                      className="layer-swatch"
+                      style={{ background: layerColor(child.layer.slug) }}
+                      aria-hidden="true"
+                    />
+                    <Link href={`/layers/${child.layer.slug}`}>
+                      {layerTitle(child.layer, locale)}
+                    </Link>
+                  </span>
+                  <button
+                    type="button"
+                    className="text-button"
+                    onClick={() => onOnly(child.layer.slug)}
+                  >
+                    {t.showOnlyThis}
+                  </button>
+                </div>
               </li>
             ),
           )}
@@ -157,11 +173,13 @@ function FolderItem({
 /**
  * Applied layers with their checkbox, owner, schedule, availability and the
  * count they contribute to the current query. Hidden layers stay listed for
- * the session so hiding is reversible without a trip to the library. The
- * member's folders sit above them and share the same map slots.
+ * the session so hiding is reversible without a trip to the library. It is
+ * one tree: the member's folders come first and share the same map slots, and
+ * a layer filed in a folder is listed there rather than among the loose ones.
  */
 export function ActiveLayersPanel({
   layers,
+  shownSlugs,
   hidden,
   library,
   folders,
@@ -174,6 +192,8 @@ export function ActiveLayersPanel({
   onOnly,
 }: {
   layers: LayerAvailability[];
+  /** Ticked layers, ahead of the results that describe them. */
+  shownSlugs: string[];
   hidden: LayerAvailability[];
   /** The member's own, group and followed layers, loadable from here. */
   library: LayerAvailability[];
@@ -188,14 +208,20 @@ export function ActiveLayersPanel({
   onToggle: (slug: string, applied: boolean) => void;
   onOnly: (slug: string) => void;
 }) {
-  const applied = layers.length;
-  const used = applied + appliedFolders.length;
+  const used = shownSlugs.length + appliedFolders.length;
   const slotsFull = used >= maxAppliedLayers;
-  const shown = new Set(layers.map((l) => l.slug));
+  const shown = new Set(shownSlugs);
+  const filed = new Set(
+    folders.flatMap(folderLayers).map((layer) => layer.slug),
+  );
   const listed = new Set([...layers, ...hidden].map((l) => l.slug));
   // Rows stay where they are when ticked; the checkbox carries the state.
   const rows = orderLayers(
-    [...layers, ...hidden, ...library.filter((l) => !listed.has(l.slug))],
+    [
+      ...layers,
+      ...hidden,
+      ...library.filter((l) => !listed.has(l.slug)),
+    ].filter((l) => !filed.has(l.slug)),
     library,
   ).map((l) => ({ layer: l, applied: shown.has(l.slug) }));
   const showFolders = folders.length > 0;
@@ -211,40 +237,25 @@ export function ActiveLayersPanel({
           {format(t.layerLimit, { max: maxAppliedLayers })}
         </p>
       )}
-      {showFolders && (
-        <>
-          <h3 id="folder-tree-heading" className="folder-heading">
-            {t.folders}
-          </h3>
-          <ul aria-labelledby="folder-tree-heading" className="folder-tree">
-            {folders.map((folder) => (
-              <FolderItem
-                key={folder.id}
-                folder={folder}
-                included={false}
-                appliedFolders={appliedFolders}
-                slotsFull={slotsFull}
-                t={t}
-                locale={locale}
-                onToggleFolder={onToggleFolder}
-                onOnly={onOnly}
-              />
-            ))}
-          </ul>
-        </>
-      )}
       {rows.length === 0 && !showFolders && (
         <p className="muted">{t.noLayersYet}</p>
       )}
-      {showFolders && rows.length > 0 && (
-        <h3 id="layer-list-heading" className="folder-heading">
-          {t.layersTab}
-        </h3>
-      )}
-      <ul
-        className="layer-rows"
-        aria-labelledby={showFolders ? "layer-list-heading" : panelTitleId}
-      >
+      <ul className="layer-rows" aria-labelledby={panelTitleId}>
+        {folders.map((folder) => (
+          <FolderItem
+            key={folder.id}
+            folder={folder}
+            included={false}
+            appliedFolders={appliedFolders}
+            shown={shown}
+            slotsFull={slotsFull}
+            t={t}
+            locale={locale}
+            onToggleFolder={onToggleFolder}
+            onToggle={onToggle}
+            onOnly={onOnly}
+          />
+        ))}
         {rows.map(({ layer, applied: isApplied }) => (
           <li key={layer.slug} className={`layer-row status-${layer.status}`}>
             <div className="layer-toggle">
