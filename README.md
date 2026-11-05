@@ -74,6 +74,7 @@ See `.env.example` for the complete list.
 | `IMAGE_STORAGE_PROVIDER`                                           | `local` for dev or `s3` for AWS S3/R2/S3-compatible storage                                |
 | `IMAGE_STORAGE_*`                                                  | Bucket, public base URL, endpoint, region and server-only credentials                      |
 | `ANALYTICS_CONSOLE`                                                | Log event names/properties locally; DB events always persisted                             |
+| `FEATURE_EXTERNAL_API_LOG`                                         | `false` turns off external API logging (console and DB); `true` turns on both              |
 | `FEATURE_PRODUCTS`, `FEATURE_ORGANIZATIONS`, `FEATURE_SUBMISSIONS` | Set `false` to disable optional feature entry points                                       |
 | `FEATURE_MAP_HOME`, `FEATURE_LAYER_WRITES`, `FEATURE_CONTENT`      | Map-first home (false restores the legacy entry screen), layer/group writes, local content |
 | `MEMBERSHIP_MODE`                                                  | `closed` (default; no new accounts) or `invite_only` to enable the invitation flow         |

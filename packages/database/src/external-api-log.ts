@@ -52,9 +52,14 @@ export function formatExternalApiCall(call: ExternalApiCall) {
   const detail = call.error ? ` - ${call.error}` : "";
   return ` ${call.method.toUpperCase()} ${call.host}${call.path} ${result} in ${Math.round(call.durationMs)}ms (${call.provider}: ${call.operation})${detail}`;
 }
+/*
+ * FEATURE_EXTERNAL_API_LOG: "false" turns off all logging (console and
+ * database); "true" turns on both, including production console lines. Unset
+ * keeps the default: always stored, printed outside production.
+ */
+const logFlag = () => process.env.FEATURE_EXTERNAL_API_LOG;
 const consoleEnabled = () =>
-  process.env.NODE_ENV !== "production" ||
-  process.env.EXTERNAL_API_LOG_CONSOLE === "true";
+  logFlag() === "true" || process.env.NODE_ENV !== "production";
 const colorEnabled = () =>
   !process.env.NO_COLOR &&
   (!!process.env.FORCE_COLOR || !!process.stdout?.isTTY);
@@ -70,6 +75,7 @@ export function colorizeExternalApiCall(call: ExternalApiCall, line: string) {
   return paint(providerColors[hash % providerColors.length], line);
 }
 export async function recordExternalApiCall(call: ExternalApiCall) {
+  if (logFlag() === "false") return;
   if (consoleEnabled()) {
     const line = "[external-api]" + formatExternalApiCall(call);
     console.info(colorEnabled() ? colorizeExternalApiCall(call, line) : line);

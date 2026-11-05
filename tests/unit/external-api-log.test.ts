@@ -1,11 +1,17 @@
-import { describe, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   describeError,
   describeUrl,
   loggedFetch,
+  recordExternalApiCall,
   withExternalApiLog,
   type ExternalApiCall,
 } from "../../packages/database/src/external-api-log";
+
+const { query } = vi.hoisted(() => ({
+  query: vi.fn().mockResolvedValue({ rows: [] }),
+}));
+vi.mock("../../packages/database/src/index", () => ({ pool: { query } }));
 
 describe("external API log", () => {
   it("keeps host and path but drops query strings and keys", () => {
@@ -110,5 +116,53 @@ describe("external API console colors", () => {
     expect(colorizeExternalApiCall({ ...base, ok: false }, "x")).toContain(
       "\x1b[31m",
     );
+  });
+});
+
+describe("FEATURE_EXTERNAL_API_LOG", () => {
+  const call: ExternalApiCall = {
+    provider: "p",
+    operation: "o",
+    method: "GET",
+    host: "h",
+    path: "/",
+    status: 200,
+    ok: true,
+    durationMs: 1,
+  };
+  const run = async (flag: string | undefined, nodeEnv: string) => {
+    query.mockClear();
+    vi.stubEnv("FEATURE_EXTERNAL_API_LOG", flag);
+    vi.stubEnv("NODE_ENV", nodeEnv);
+    const info = vi.spyOn(console, "info").mockImplementation(() => {});
+    await recordExternalApiCall(call);
+    return { printed: info.mock.calls.length, stored: query.mock.calls.length };
+  };
+
+  afterEach(() => {
+    vi.unstubAllEnvs();
+    vi.restoreAllMocks();
+  });
+
+  it("false prints and stores nothing", async () => {
+    expect(await run("false", "development")).toEqual({
+      printed: 0,
+      stored: 0,
+    });
+  });
+
+  it("true prints and stores, even in production", async () => {
+    expect(await run("true", "production")).toEqual({ printed: 1, stored: 1 });
+  });
+
+  it("unset keeps the default: stored always, printed outside production", async () => {
+    expect(await run(undefined, "production")).toEqual({
+      printed: 0,
+      stored: 1,
+    });
+    expect(await run(undefined, "development")).toEqual({
+      printed: 1,
+      stored: 1,
+    });
   });
 });
