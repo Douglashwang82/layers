@@ -227,6 +227,24 @@ test.describe("signed in", () => {
     expect(calls.post).toHaveLength(0);
   });
 
+  test("ticking layers leaves every row where it was", async ({ page }) => {
+    await mockSuggestions(page, { get: () => ({ json: none }) });
+    await openMap(page);
+    await page.getByRole("button", { name: "Manage layers" }).click();
+    const titles = page.locator(".layer-rows .layer-title");
+    await expect(titles.filter({ hasText: titleA })).toHaveCount(1);
+    await expect(titles.filter({ hasText: titleB })).toHaveCount(1);
+    const order = await titles.allTextContents();
+    const box = page.locator(".layer-rows input[type=checkbox]").first();
+    await box.uncheck();
+    await expect(page).not.toHaveURL(new RegExp(`${slugA},${slugB}`));
+    await expect(box).not.toBeChecked();
+    await expect(titles).toHaveText(order);
+    await box.check();
+    await expect(box).toBeChecked();
+    await expect(titles).toHaveText(order);
+  });
+
   test("changing layers mid-generation never leaves Generating stuck, and returning does not show a stale result", async ({
     page,
   }) => {

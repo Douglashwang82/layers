@@ -9,6 +9,22 @@ export function layerTitle(
     ? layer.titleChinese
     : layer.title;
 }
+/**
+ * One order for layers wherever they are listed, whatever is ticked: the
+ * library's own order, then layers from outside it (shared links) by title.
+ */
+export function orderLayers<T extends { slug: string; title: string }>(
+  layers: T[],
+  library: { slug: string }[],
+) {
+  const rank = new Map(library.map((l, index) => [l.slug, index]));
+  const place = (slug: string) => rank.get(slug) ?? Infinity;
+  return [...layers].sort((a, b) => {
+    const [first, second] = [place(a.slug), place(b.slug)];
+    if (first !== second) return first < second ? -1 : 1;
+    return a.title.localeCompare(b.title) || a.slug.localeCompare(b.slug);
+  });
+}
 function day(iso: string, locale: Locale) {
   return new Intl.DateTimeFormat(locale, {
     month: "short",

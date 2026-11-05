@@ -8,7 +8,12 @@ import type { CollectionNode } from "@/features/layers/collections-types";
 import { type Copy, type Locale, format } from "@/lib/dictionary";
 import { maxAppliedCollections, maxAppliedLayers } from "@taiwanhub/shared";
 import { layerColor } from "@/components/map/layer-section";
-import { layerTitle, ownerLabel, scheduleLabel } from "@/lib/layer-labels";
+import {
+  layerTitle,
+  orderLayers,
+  ownerLabel,
+  scheduleLabel,
+} from "@/lib/layer-labels";
 import { panelTitleId } from "./map-sidebar";
 
 function folderName(folder: CollectionNode, locale: Locale) {
@@ -186,14 +191,13 @@ export function ActiveLayersPanel({
   const applied = layers.length;
   const used = applied + appliedFolders.length;
   const slotsFull = used >= maxAppliedLayers;
+  const shown = new Set(layers.map((l) => l.slug));
   const listed = new Set([...layers, ...hidden].map((l) => l.slug));
-  const rows = [
-    ...layers.map((l) => ({ layer: l, applied: true })),
-    ...hidden.map((l) => ({ layer: l, applied: false })),
-    ...library
-      .filter((l) => !listed.has(l.slug))
-      .map((l) => ({ layer: l, applied: false })),
-  ];
+  // Rows stay where they are when ticked; the checkbox carries the state.
+  const rows = orderLayers(
+    [...layers, ...hidden, ...library.filter((l) => !listed.has(l.slug))],
+    library,
+  ).map((l) => ({ layer: l, applied: shown.has(l.slug) }));
   const showFolders = folders.length > 0;
   return (
     <section className="active-layers" aria-labelledby={panelTitleId}>

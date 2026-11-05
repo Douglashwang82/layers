@@ -13,6 +13,7 @@ import { useRouter, useSearchParams } from "next/navigation";
 import { LayerWorkspaceContext } from "../layers/workspace-navigation";
 import { TripsEntry, useTripScreen } from "../trips/trip-screen";
 import type { TripScreenData } from "@/features/trips/screen";
+import { orderLayers } from "@/lib/layer-labels";
 import {
   readTripPanel,
   tripPanelKeys,
@@ -401,9 +402,9 @@ export function MapWorkspace({
       ? [...shownSlugs, slug]
       : shownSlugs.filter((s) => s !== slug);
     const entry = result.layers.find((l) => l.slug === slug);
+    // Kept while re-applied: the row needs its data until the new results land.
     if (!applied && entry)
       setHiddenLayers((h) => [...h.filter((x) => x.slug !== slug), entry]);
-    if (applied) setHiddenLayers((h) => h.filter((x) => x.slug !== slug));
     holdCamera.current = !frame;
     setOptimisticLayers(next);
     commit({ layers: next.length ? next : "none" });
@@ -1273,9 +1274,12 @@ export function MapWorkspace({
   const knownLayers = new Map(
     [...hiddenLayers, ...result.layers].map((l) => [l.slug, l]),
   );
-  const panelLayers = shownSlugs
-    .map((slug) => knownLayers.get(slug))
-    .filter((l): l is LayerAvailability => !!l);
+  const panelLayers = orderLayers(
+    shownSlugs
+      .map((slug) => knownLayers.get(slug))
+      .filter((l): l is LayerAvailability => !!l),
+    library ?? [],
+  );
   const layersPanel = (
     <ActiveLayersPanel
       layers={panelLayers}
@@ -1388,10 +1392,13 @@ export function MapWorkspace({
         collections={result.collections}
         shownFolders={shownFolders}
         shownSlugs={shownSlugs}
-        layers={[
-          ...panelLayers,
-          ...hiddenLayers.filter((h) => !shownSlugs.includes(h.slug)),
-        ]}
+        layers={orderLayers(
+          [
+            ...panelLayers,
+            ...hiddenLayers.filter((h) => !shownSlugs.includes(h.slug)),
+          ],
+          library ?? [],
+        )}
         slotsUsed={slotsUsed}
         t={t}
         locale={locale}
