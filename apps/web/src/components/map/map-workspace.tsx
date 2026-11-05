@@ -389,7 +389,9 @@ export function MapWorkspace({
     },
     [authenticated],
   );
-  const toggleLayer = (slug: string, applied: boolean) => {
+  // Ticking a layer or folder changes what is shown, never where the user is looking.
+  const holdCamera = useRef(false);
+  const toggleLayer = (slug: string, applied: boolean, frame = false) => {
     if (applied && shownSlugs.includes(slug)) return;
     if (applied && slotsUsed >= maxAppliedLayers) {
       setLoadError(format(t.layerLimit, { max: maxAppliedLayers }));
@@ -402,6 +404,7 @@ export function MapWorkspace({
     if (!applied && entry)
       setHiddenLayers((h) => [...h.filter((x) => x.slug !== slug), entry]);
     if (applied) setHiddenLayers((h) => h.filter((x) => x.slug !== slug));
+    holdCamera.current = !frame;
     setOptimisticLayers(next);
     commit({ layers: next.length ? next : "none" });
     track(applied ? "layer_applied" : "layer_hidden", { layer: slug });
@@ -421,6 +424,7 @@ export function MapWorkspace({
     const next = applied
       ? [...shownFolders, slug]
       : shownFolders.filter((s) => s !== slug);
+    holdCamera.current = true;
     setOptimisticFolders(next);
     commit({ collections: next });
   };
@@ -756,7 +760,8 @@ export function MapWorkspace({
   /*
    * Framing: every loaded place (catalog/custom pins and Google places as
    * they resolve) stays in view until the user moves the map themselves; a
-   * new set of layers starts framing again.
+   * new set of layers from a link, or a chosen starter, starts framing again.
+   * Ticks and Add to map do not: the camera stays put and Fit results is there.
    */
   const autoFit = useRef<string | null>(null);
   const onUserMove = () => {
@@ -1027,7 +1032,8 @@ export function MapWorkspace({
     (i) => i.latitude == null || i.longitude == null,
   );
   useEffect(() => {
-    autoFit.current = appliedKey;
+    autoFit.current = holdCamera.current ? null : appliedKey;
+    holdCamera.current = false;
   }, [appliedKey]);
   /*
    * Choosing another city moves the camera there. The workspace (and the
@@ -1312,7 +1318,7 @@ export function MapWorkspace({
       firstRun={firstRun}
       dailyPickSlug={dailyPickSlug}
       t={t}
-      onSeePick={(slug) => toggleLayer(slug, true)}
+      onSeePick={(slug) => toggleLayer(slug, true, true)}
     />
   );
   const dailyPick = result.dailyPick && (

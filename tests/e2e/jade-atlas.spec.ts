@@ -165,6 +165,43 @@ test("dark map follows the OS, honours a stored override and keeps the map usabl
   );
   await expect(page.locator(".mapboxgl-canvas")).toBeVisible();
 });
+test("ticking a layer leaves the camera where the user put it", async ({
+  page,
+}) => {
+  await mockProvider(page);
+  await page.goto(await seededPlacesMap());
+  test.skip(
+    await page.getByText("Map preview needs a Mapbox token.").isVisible(),
+    "Requires NEXT_PUBLIC_MAPBOX_TOKEN (a fake test token is sufficient).",
+  );
+  await expect(page.locator(".mapboxgl-canvas")).toBeVisible();
+  await openMapList(page);
+  const map = page.locator(".map-canvas");
+  // The opening frame of the shared link settles first.
+  await expect(map).toHaveAttribute("data-camera", /./);
+  await page.waitForTimeout(900);
+  const framed = await map.getAttribute("data-camera");
+  await page.locator(".mapboxgl-canvas").hover();
+  await expect(async () => {
+    await page.mouse.wheel(0, -600);
+    await expect(map).not.toHaveAttribute("data-camera", framed!, {
+      timeout: 1000,
+    });
+  }).toPass();
+  await page.waitForTimeout(600);
+  const moved = await map.getAttribute("data-camera");
+  const seeded = page.getByRole("checkbox", { name: /Seeded places/ });
+  await seeded.uncheck();
+  await expect(page).toHaveURL(/layers=none/);
+  // The URL leads the render; let the map drop the layer before re-ticking.
+  await page.waitForTimeout(900);
+  const reloaded = page.waitForResponse(/\/api\/v1\/map\?.*layers=e2e-seeded/);
+  await page.getByRole("checkbox", { name: /Seeded places/ }).check();
+  await reloaded;
+  // Framing waits 250 ms for a burst and eases for 400 ms; outlast both.
+  await page.waitForTimeout(900);
+  await expect(map).toHaveAttribute("data-camera", moved!);
+});
 test("choosing another city moves the map to it", async ({ page }) => {
   await mockProvider(page);
   await page.goto("/");
