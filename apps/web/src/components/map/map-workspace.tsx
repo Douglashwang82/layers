@@ -429,20 +429,6 @@ export function MapWorkspace({
     setOptimisticFolders(next);
     commit({ collections: next });
   };
-  const onlyLayer = (slug: string) => {
-    const others = result.layers.filter(
-      (l) => l.slug !== slug && l.status === "ok",
-    );
-    setHiddenLayers((h) => [
-      ...others,
-      ...h.filter(
-        (x) => x.slug !== slug && !others.some((o) => o.slug === x.slug),
-      ),
-    ]);
-    setOptimisticLayers([slug]);
-    setOptimisticFolders([]);
-    commit({ layers: [slug], collections: [] });
-  };
   // Whatever is applied, by toggle or by explicit link, becomes the returning user's default.
   const appliedKey = [...appliedSlugs, "|", ...appliedFolders].join(",");
   const layersKey = appliedSlugs.join(",");
@@ -1293,7 +1279,6 @@ export function MapWorkspace({
       locale={locale}
       refreshing={refreshing}
       onToggle={toggleLayer}
-      onOnly={onlyLayer}
     />
   );
   // First run: a signed-in member with no layers of their own gets a starter.

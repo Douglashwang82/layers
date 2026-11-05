@@ -2,7 +2,6 @@
 import { useId, useState } from "react";
 import { LayerLink as Link } from "../layers/workspace-navigation";
 import { ChevronRight, Folder as FolderIcon, Plus } from "lucide-react";
-import { FolderLink } from "../layers/folder-link";
 import type { LayerAvailability } from "@/features/map/query";
 import type { CollectionNode } from "@/features/layers/collections-types";
 import { type Copy, type Locale, format } from "@/lib/dictionary";
@@ -39,7 +38,6 @@ function FolderItem({
   locale,
   onToggleFolder,
   onToggle,
-  onOnly,
 }: {
   folder: CollectionNode;
   included: boolean;
@@ -51,7 +49,6 @@ function FolderItem({
   locale: Locale;
   onToggleFolder: (slug: string, applied: boolean) => void;
   onToggle: (slug: string, applied: boolean) => void;
-  onOnly: (slug: string) => void;
 }) {
   const filed = folderLayers(folder);
   const [open, setOpen] = useState(() =>
@@ -107,9 +104,6 @@ function FolderItem({
               ` · ${format(t.folderHiddenCount, { count: folder.hiddenCount })}`}
           </span>
         </span>
-        <FolderLink className="text-button" slug={folder.slug}>
-          {t.folderOpen}
-        </FolderLink>
       </div>
       {open && hasChildren && (
         <ul id={groupId} className="folder-group">
@@ -126,7 +120,6 @@ function FolderItem({
                 locale={locale}
                 onToggleFolder={onToggleFolder}
                 onToggle={onToggle}
-                onOnly={onOnly}
               />
             ) : (
               <li key={`l:${child.layer.id}`} className="folder-layer">
@@ -153,13 +146,6 @@ function FolderItem({
                       {layerTitle(child.layer, locale)}
                     </Link>
                   </span>
-                  <button
-                    type="button"
-                    className="text-button"
-                    onClick={() => onOnly(child.layer.slug)}
-                  >
-                    {t.showOnlyThis}
-                  </button>
                 </div>
               </li>
             ),
@@ -189,7 +175,6 @@ export function ActiveLayersPanel({
   locale,
   refreshing,
   onToggle,
-  onOnly,
 }: {
   layers: LayerAvailability[];
   /** Ticked layers, ahead of the results that describe them. */
@@ -206,7 +191,6 @@ export function ActiveLayersPanel({
   locale: Locale;
   refreshing: boolean;
   onToggle: (slug: string, applied: boolean) => void;
-  onOnly: (slug: string) => void;
 }) {
   const used = shownSlugs.length + appliedFolders.length;
   const slotsFull = used >= maxAppliedLayers;
@@ -253,7 +237,6 @@ export function ActiveLayersPanel({
             locale={locale}
             onToggleFolder={onToggleFolder}
             onToggle={onToggle}
-            onOnly={onOnly}
           />
         ))}
         {rows.map(({ layer, applied: isApplied }) => (
@@ -301,17 +284,6 @@ export function ActiveLayersPanel({
                 </span>
               )}
             </div>
-            {layer.status === "ok" && isApplied && used > 1 && (
-              <span className="layer-actions">
-                <button
-                  type="button"
-                  className="text-button"
-                  onClick={() => onOnly(layer.slug)}
-                >
-                  {t.showOnlyThis}
-                </button>
-              </span>
-            )}
           </li>
         ))}
       </ul>

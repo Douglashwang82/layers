@@ -285,7 +285,7 @@ Example: **Weekend with friends** · By you · Private · Sep 26–27 · 8 place
 
 ### Active-layer panel
 
-Show each applied layer with its checkbox, title, owner, schedule, load/error state and visible contribution count. “View layer” opens the layer preview without changing application state. “Show only this layer” is explicit and reversible through Back/Undo.
+Show each applied layer with its checkbox, title, owner, schedule, load/error state and visible contribution count. “View layer” opens the layer preview without changing application state.
 
 Start new visitors with one system layer, **Discover Houston**, applied. It includes approved local places and upcoming events, with content added only when available. Offer **Today in Houston** as the next obvious preset. Use a default date scope of Upcoming so new visitors do not accidentally hide most event data. Limit the first release to five simultaneously applied layers, with copy asking users to hide one before applying another. This is a proposed usability limit to validate, not a known system restriction.
 

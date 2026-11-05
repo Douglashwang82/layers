@@ -281,7 +281,7 @@ There are no separate submission pages. Places join a layer from the map: paste 
 1. Explore **Discover**, **Following**, **Mine**, and **Groups**; search by a layer's title/purpose.
 2. Open a layer to inspect its audience, schedule, contents, and owner.
 3. Choose **Apply to map** to add it to your current selection, or the layer-only/fit action to open it alone.
-4. On the map, toggle layers off/on or use **Show only this**. Remove one before exceeding five applied layers.
+4. On the map, toggle layers off/on. Remove one before exceeding five applied layers.
 5. Follow a useful layer to retain it in **Following**; unfollow from its detail page when no longer needed.
 
 **Result:** The map/list displays the union of allowed layer items. A layer for another city or one you cannot access is identified as unavailable for the current view. Following does not itself apply a layer or grant access to private contents.

@@ -2615,7 +2615,7 @@ body[data-map-theme="dark"]:has(.map-workspace) .provider-slot > * {
   padding: 0 0 0 20px;
 }
 .folder-row {
-  grid-template-columns: 28px auto minmax(0, 1fr) auto;
+  grid-template-columns: 28px auto minmax(0, 1fr);
   align-items: center;
   padding: 6px 0;
 }
