@@ -1,0 +1,110 @@
+// Run with Playwright MCP's browser_run_code_unsafe. See SKILL.md.
+async (page) => {
+  /* ---------- Fill in for the component ---------- */
+  const COMPONENT = 'layer-section';
+  const URL = 'http://localhost:3000/?layers=<slug>,<slug>&view=list';
+  const SOURCE = 'apps/web/src/components/map/layer-section.tsx';
+  const CSS = 'apps/web/src/app/map.css';
+  // Waited for before capturing.
+  const READY = '.layer-section';
+  // [file name, selector, what it is]
+  const PARTS = [['root', '.layer-section', 'The whole component']];
+  // Optional CSS for shorter shots, such as hiding long lists. Record it in notes.
+  const TRIM = '';
+  // [state name, page options, selector, note, async (p) => reach the state]
+  const STATES = [
+    ['default', {}, READY, 'Default', async () => {}],
+    ['dark', { dark: true }, READY, 'Dark theme', async () => {}],
+    ['zh-tw', { zh: true }, READY, 'Traditional Chinese', async () => {}],
+    ['mobile', { mobile: true }, READY, '390x844', async () => {}],
+  ];
+  /* ---------- Shared capture code ---------- */
+  const ORIGIN = new globalThis.URL(URL).origin;
+  const OUT = `E:/Projects/tw-na-layers/docs/design/${COMPONENT}-anatomy`;
+  const data = { generatedFrom: URL, viewport: '1440x1000 @2x', parts: {}, states: {}, skipped: [], notes: [] };
+
+  const open = async (opts = {}) => {
+    const c = await page.context().browser().newContext({
+      deviceScaleFactor: 2,
+      viewport: opts.mobile ? { width: 390, height: 844 } : { width: 1440, height: 1000 },
+      hasTouch: !!opts.mobile,
+      isMobile: !!opts.mobile,
+    });
+    if (opts.zh) await c.addCookies([{ name: 'locale', value: 'zh-TW', url: ORIGIN }]);
+    if (opts.dark) {
+      await c.addInitScript(() => {
+        try { localStorage.setItem('taiwanhub.map.theme', 'dark'); } catch {}
+      });
+    }
+    const p = await c.newPage();
+    await p.route(/(\/\/|\.)mapbox\.com\//, (r) => r.abort());
+    await p.goto(URL);
+    await p.locator(READY).first().waitFor({ timeout: 20000 });
+    await p.waitForTimeout(1500);
+    if (TRIM) await p.addStyleTag({ content: TRIM });
+    return { c, p };
+  };
+  // Clips with padding so a 10px dot still has context around it.
+  const shot = async (p, file, selector, pad = 6) => {
+    const l = p.locator(selector).first();
+    await l.scrollIntoViewIfNeeded();
+    const b = await l.boundingBox();
+    if (!b || !b.width || !b.height) return null;
+    const vp = p.viewportSize();
+    const x = Math.max(0, b.x - pad);
+    const y = Math.max(0, b.y - pad);
+    const clip = {
+      x,
+      y,
+      width: Math.min(vp.width - x, b.width + (b.x - x) + pad),
+      height: Math.min(vp.height - y, b.height + (b.y - y) + pad),
+    };
+    await p.screenshot({ path: `${OUT}/${file}`, clip });
+    return b;
+  };
+  const measure = (p, selector) =>
+    p.locator(selector).first().evaluate((el) => {
+      const s = getComputedStyle(el);
+      const r = el.getBoundingClientRect();
+      const style = {};
+      for (const k of ['display', 'color', 'backgroundColor', 'fontFamily', 'fontSize', 'fontWeight', 'lineHeight', 'padding', 'margin', 'gap', 'border', 'borderRadius', 'boxShadow', 'position', 'top', 'minHeight']) {
+        style[k] = s[k];
+      }
+      return {
+        tag: el.tagName.toLowerCase(),
+        classes: el.className || '',
+        width: Math.round(r.width * 10) / 10,
+        height: Math.round(r.height * 10) / 10,
+        style,
+        text: (el.textContent || '').trim().slice(0, 60),
+      };
+    });
+
+  {
+    const { c, p } = await open();
+    for (const [name, selector, role] of PARTS) {
+      const file = `parts/${COMPONENT}-${name}.png`;
+      if (!(await p.locator(selector).count()) || !(await shot(p, file, selector))) {
+        data.skipped.push(`part ${name}: ${selector} is not visible`);
+        continue;
+      }
+      data.parts[name] = { image: file, selector, source: SOURCE, css: CSS, role, ...(await measure(p, selector)) };
+    }
+    await c.close();
+  }
+  for (const [name, opts, selector, note, reach] of STATES) {
+    const { c, p } = await open(opts);
+    try {
+      await reach(p);
+      await p.waitForTimeout(400);
+      const file = `states/${COMPONENT}-${name}.png`;
+      if (await shot(p, file, selector)) data.states[name] = { image: file, selector, note };
+      else data.skipped.push(`state ${name}: ${selector} is not visible`);
+    } catch (e) {
+      data.skipped.push(`state ${name}: ${String(e).slice(0, 160)}`);
+    }
+    await c.close();
+  }
+  await page.evaluate((d) => { window.__anatomy = d; }, data);
+  return { parts: Object.keys(data.parts).length, states: Object.keys(data.states).length, skipped: data.skipped };
+}
