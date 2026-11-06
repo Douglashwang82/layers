@@ -125,10 +125,7 @@ test("daily pick: card, map selection, filtered state and history", async ({
   await expect(
     card.getByRole("link", { name: /Get directions/ }),
   ).toHaveAttribute("href", /google\.com\/maps/);
-  // Map/list agreement: the same place is the only result row.
-  await expect(page.locator(".result-row")).toHaveCount(1);
-  await expect(page.locator(".result-row")).toContainText(pickName);
-  // Keyboard: "Show on map" selects the same item as the pin and row.
+  // Keyboard: "Show on map" selects the same item as the pin.
   await card.getByRole("button", { name: "Show on map" }).focus();
   await page.keyboard.press("Enter");
   await expect(page).toHaveURL(/item=place%3A|item=place:/);
@@ -157,7 +154,7 @@ test("daily pick: Traditional Chinese on a mobile layout", async ({
     { name: "locale", value: "zh-TW", url: "http://localhost" },
   ]);
   await page.setViewportSize({ width: 390, height: 844 });
-  await page.goto(`/?city=${city.slug}&layers=${layer}&view=list`);
+  await page.goto(`/?city=${city.slug}&layers=${layer}`);
   const card = page.getByRole("region", { name: "每日精選" });
   await expect(card).toBeVisible();
   await expect(card.getByText("為什麼選它")).toBeVisible();
@@ -197,14 +194,14 @@ test("daily pick: saving from the card and the detail stay in agreement", async 
   await expect(
     detail.getByRole("button", { name: "Saved", exact: true }),
   ).toBeVisible();
-  // Detail → card: return to results before checking the card.
+  // Detail → card: return to Your layers before checking the card.
   await detail.getByRole("button", { name: "Saved", exact: true }).click();
   await expect(
     detail.getByRole("button", { name: "Save", exact: true }),
   ).toBeVisible();
   await page
     .locator("#map-panel")
-    .getByRole("button", { name: "Back to results" })
+    .getByRole("button", { name: "Back to layers" })
     .click();
   await expect(
     card.getByRole("button", { name: "Save", exact: true }),

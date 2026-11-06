@@ -13,7 +13,7 @@ This file guides coding agents and LLM-assisted contributors across the reposito
 
 ## Project map and references
 
-LocalLink (formerly TaiwanHub) is a Houston-first, English/Traditional Chinese discovery platform for local places, events, products and communities for everyone. The home experience combines a map, layers, and a usable list fallback. Legacy `taiwanhub` identifiers (workspace packages, storage keys, crypto purposes, database/infrastructure names) are intentionally unchanged; see [docs/plans/locallink-rebrand-implementation-plan.md](docs/plans/locallink-rebrand-implementation-plan.md). Use `brand` and the category predicates in `packages/shared/src` instead of hardcoding names or category lists.
+LocalLink (formerly TaiwanHub) is a Houston-first, English/Traditional Chinese discovery platform for local places, events, products and communities for everyone. The home experience combines a map and layers; its sidebar has no list of places (owner decision, 2026-11-06). Legacy `taiwanhub` identifiers (workspace packages, storage keys, crypto purposes, database/infrastructure names) are intentionally unchanged; see [docs/plans/locallink-rebrand-implementation-plan.md](docs/plans/locallink-rebrand-implementation-plan.md). Use `brand` and the category predicates in `packages/shared/src` instead of hardcoding names or category lists.
 
 | Location                                       | Responsibility                                                                      |
 | ---------------------------------------------- | ----------------------------------------------------------------------------------- |
@@ -83,7 +83,7 @@ Playwright uses one worker and `E2E_PORT` (default 3000). Ensure a reused server
 - Validate untrusted boundaries with Zod. Use parameterized SQL, including raw `pg` queries. Keep mutations, related audit/submission records, and transactional analytics consistent.
 - Preserve RSVP row locking and capacity checks, unique/idempotent saves and follows, layer revision checks, and moderation audit history. Public queries must not expose hidden, rejected, deleted, or unauthorized records. Retain soft deletion where the domain uses it.
 - Preserve demo labels and separation from real content. Do not represent seed data, model extraction, or product sightings as verified facts or current inventory.
-- Store event instants consistently and use the city's IANA time zone for date windows. Preserve explicit location status, map/list agreement, and fallback behavior when a map token or coordinates are unavailable.
+- Store event instants consistently and use the city's IANA time zone for date windows. Preserve explicit location status and the panel-only fallback when a map token or coordinates are unavailable.
 - Keep English and Traditional Chinese UI copy in the existing dictionary/i18n system. Preserve translation fallbacks, semantic HTML, labeled controls, keyboard access, mobile layouts, and feature-flag behavior.
 - Keep database access, provider keys, and privileged operations server-side. Never place secrets in `NEXT_PUBLIC_*`, client bundles, logs, fixtures, or commits. Do not send credentials, private user data, or database dumps to an LLM service. Follow the existing restrictions on personal data in analytics.
 

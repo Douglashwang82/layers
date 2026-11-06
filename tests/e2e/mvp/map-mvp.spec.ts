@@ -84,20 +84,20 @@ test("a member builds a layer from Google Maps links and attaches an event", asy
   // The map shows the layer's places, and there is still no search.
   await openMapList(page);
   await expect(page.getByRole("searchbox")).toHaveCount(0);
-  const places = page.locator(".external-row");
-  await expect(places).toHaveCount(2);
-  await expect(places.first()).toContainText("Tiger Den");
-  const backToResults = page.getByRole("button", { name: "Back to results" });
-  if (await backToResults.isVisible()) await backToResults.click();
-  await expect(page.locator(".fake-provider")).toHaveCount(0);
-  await expect(
-    places.first().getByRole("link", { name: "Open in Google Maps" }),
-  ).toHaveAttribute("href", /query_place_id=/);
-  await places.first().getByRole("button", { name: "Open place page" }).click();
+  // Google places are named without loading the provider, and open by pin; a
+  // place's own page uses the same panel, so it stands in for a pin here.
+  const applied = await page.request.get(
+    `/api/v1/map/external-references?layers=${slug}&city=houston`,
+  );
+  const { references } = (await applied.json()).data as {
+    references: { subjectId: string; name: string }[];
+  };
+  expect(references.map((r) => r.name)).toContain("Tiger Den");
+  await page.goto(`/place-subjects/${references[0].subjectId}`);
   await expect(page.locator(".business-panel .fake-provider")).toHaveCount(0);
   await page.getByRole("button", { name: "Load Google details" }).click();
   await expect(page.locator(".business-panel .fake-provider")).toHaveCount(1);
-  await page.getByRole("button", { name: "Back to results" }).click();
+  await page.goto(`/?layers=${slug}`);
   // The header button shows the Layers panel with or without a map.
   await page.getByRole("button", { name: /^Layers \d/ }).click();
   await expect(
@@ -162,11 +162,9 @@ test("a member builds a layer from Google Maps links and attaches an event", asy
   await expect(first.getByText("Event saved.")).toBeVisible();
   await expect(first.getByText("Night market")).toBeVisible();
   await expect(first).toContainText("6:00");
-  // Back on the map, the place carries its upcoming event.
-  await page.goto(`/?layers=${slug}`);
-  await openMapList(page);
-  await expect(places).toHaveCount(4);
-  await expect(places.first()).toContainText("Night market");
+  // The layer's detail screen lists every place from the links.
+  await page.goto(`/?layers=${slug}&layerPanel=detail&layer=${slug}`);
+  await expect(page.locator(".google-places > li")).toHaveCount(4);
   // With nothing applied, a member with layers gets the list and no prompt.
   await page.goto("/?layers=none");
   await openMapList(page);
@@ -234,32 +232,11 @@ test("large layers page through local summaries without loading provider cards",
   });
   await page.goto(`/?layers=${slug}`);
   await openMapList(page);
-  const rows = page.locator(".external-row");
-  await expect(rows).toHaveCount(65);
-  expect(cursors).toContain(60);
-  await rows.last().scrollIntoViewIfNeeded();
-  await expect(rows.last()).toContainText("Local place 64");
+  await expect.poll(() => cursors).toContain(60);
   await expect(page.locator(".fake-provider")).toHaveCount(0);
-  await rows.first().getByRole("button", { name: "Open place page" }).click();
-  const panel = page.locator(".business-panel");
-  await expect(
-    panel.getByRole("button", { name: "Load Google details" }),
-  ).toBeVisible();
-  await expect(panel.locator(".fake-provider")).toHaveCount(0);
-  await panel.getByRole("button", { name: "Load Google details" }).click();
-  await expect(
-    panel.getByText("Business details are unavailable right now."),
-  ).toBeVisible();
-  await expect(
-    panel.getByRole("button", { name: "Try again", exact: true }),
-  ).toBeVisible();
-  await expect(
-    panel.getByRole("link", { name: "Open in Google Maps" }),
-  ).toHaveAttribute("href", /query_place_id=unavailable-place/);
   expect(browserErrors).toEqual([]);
   await page.reload();
   await openMapList(page);
-  await expect(rows).toHaveCount(65);
   await expect(page.locator(".fake-provider")).toHaveCount(0);
   expect(browserErrors).toEqual([]);
 });

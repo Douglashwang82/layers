@@ -2,15 +2,14 @@
 export const panelStorageKey = "taiwanhub.map.sidebar-collapsed";
 
 /**
- * Server-safe starting state. Shared item links, the pure list view and a
- * missing map must show content immediately; a fresh map session starts quiet.
+ * Server-safe starting state. Shared item links and a missing map must show
+ * the panel immediately; a fresh map session starts quiet.
  */
 export function initialPanelOpen(input: {
   hasItem: boolean;
-  listView: boolean;
   fallback: boolean;
 }) {
-  return input.hasItem || input.listView || input.fallback;
+  return input.hasItem || input.fallback;
 }
 
 /** The remembered desktop preference, or null when there is none to honor. */
@@ -20,13 +19,9 @@ export function storedPanelOpen(value: string | null): boolean | null {
   return null;
 }
 
-/** Whether the floating panel is on screen; list view and fallback cannot be hidden. */
-export function panelVisible(input: {
-  open: boolean;
-  listView: boolean;
-  fallback: boolean;
-}) {
-  return input.open || input.listView || input.fallback;
+/** Whether the floating panel is on screen; with no map it cannot be hidden. */
+export function panelVisible(input: { open: boolean; fallback: boolean }) {
+  return input.open || input.fallback;
 }
 
 export type MapPadding = {
@@ -42,7 +37,6 @@ export type MapPadding = {
  */
 export function mapPadding(input: {
   mobile: boolean;
-  listView: boolean;
   visible: boolean;
   /** Distance from the left edge to the panel's right edge, when shown. */
   panelRight: number;
@@ -54,7 +48,6 @@ export function mapPadding(input: {
   viewportHeight: number;
 }): MapPadding {
   const none = { top: 0, right: 0, bottom: 0, left: 0 };
-  if (input.listView) return none;
   const top = Math.min(
     Math.max(0, Math.round(input.topInset + 12)),
     Math.max(0, input.viewportHeight - 96),
@@ -76,22 +69,13 @@ export function mapPadding(input: {
 
 /** The one screen the panel shows at a time. */
 export type PanelView =
-  "trip-screen" | "layer-screen" | "route" | "detail" | "layers" | "results";
-
-/** Whether the results list exists: no map to show it, or places without pins. */
-export function listAvailable(input: {
-  listView: boolean;
-  fallback: boolean;
-  unlocatedPlaces: number;
-}) {
-  return input.listView || input.fallback || input.unlocatedPlaces > 0;
-}
+  "trip-screen" | "layer-screen" | "route" | "detail" | "layers";
 
 /**
  * Which screen the panel shows, highest priority first. Trip and layer
  * screens are URL state and win (a trip over a layer screen if both are named);
  * the route planner opens over an open place and returns to it. Otherwise the
- * panel is the Layers list unless there is a results list to show.
+ * panel is the Layers list.
  */
 export function resolvePanelView(input: {
   /** A trip screen (list, new trip or one trip) is asked for and trips are enabled. */
@@ -99,15 +83,10 @@ export function resolvePanelView(input: {
   layerScreen: boolean;
   routeOpen: boolean;
   detailOpen: boolean;
-  listView: boolean;
-  fallback: boolean;
-  unlocatedPlaces: number;
-  /** The Layers screen was asked for over the list. */
-  layersRequested: boolean;
 }): PanelView {
   if (input.tripScreen) return "trip-screen";
   if (input.layerScreen) return "layer-screen";
   if (input.routeOpen) return "route";
   if (input.detailOpen) return "detail";
-  return listAvailable(input) && !input.layersRequested ? "results" : "layers";
+  return "layers";
 }

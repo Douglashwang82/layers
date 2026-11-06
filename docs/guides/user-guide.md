@@ -67,16 +67,16 @@ Map home, layer writes, products, organizations, submissions, and local posts ca
 
 **Result:** The interface refreshes in the chosen language/city. Missing Chinese entity translations fall back to English. An explicit city in a page link can take precedence over the remembered city. Only cities configured by the operator are available; the supplied reference data contains Houston.
 
-### U02 — Explore the map and use the list fallback
+### U02 — Explore the map
 
 **Who:** Anyone. **Where:** `/`.
 
 1. Start with the default Discover layer or apply another layer from `/layers`.
-2. Select a pin or result row; both lead to the same item's preview.
+2. Select a pin to open the item's preview, or open a layer to see the places in it.
 3. Open the full detail page for more information and actions.
-4. Switch to **List** when preferred or when the map cannot load. On mobile, use the visible panel/view controls and bottom navigation.
+4. Use **Layers** to tick what appears on the map. On mobile, use the visible panel controls and bottom navigation.
 
-**Result:** You can discover and open items even without a working map provider. Content without exact coordinates remains in results with a location label; it does not receive an invented pin. One item in multiple layers appears once, with its layer membership indicated.
+**Result:** Without a working map provider you can still open a layer and browse the places in it. Content without exact coordinates does not receive an invented pin, so it appears in its layer's detail screen and not on the map. One item in multiple layers appears once, with its layer membership indicated.
 
 ### U03 — Plan around a date or kind of content
 

@@ -1,6 +1,6 @@
 # LocalLink
 
-Local places, events, products and communities for everyone. A Houston-first, English/Traditional Chinese discovery platform built around a map, shareable layers and a list fallback. Houston is the launch city; this is not a claim of worldwide coverage, and the feed-extraction geocoder is the US Census geocoder, which resolves US street addresses only. Taiwanese restaurants, groceries, organizations and product sightings remain supported as one set of local content among many.
+Local places, events, products and communities for everyone. A Houston-first, English/Traditional Chinese discovery platform built around a map and shareable layers. Houston is the launch city; this is not a claim of worldwide coverage, and the feed-extraction geocoder is the US Census geocoder, which resolves US street addresses only. Taiwanese restaurants, groceries, organizations and product sightings remain supported as one set of local content among many.
 
 ## Naming and legacy identifiers
 
@@ -58,7 +58,7 @@ Seeds insert deterministic UUIDs and do not erase user data. Running again refre
 
 ## Features
 
-Map-first home with applied layers (system presets, personal and group collections, My saves projection), synchronized results/details and a full list fallback; layer library, creation, curation, follow and reviewed publication; groups with roles and email-bound invitations; local content with explicit location status; guest browsing; invite-only membership (member nominations, reviewer approval, admin batches/direct invites); English/繁體中文; Houston city selection; place and event filtering; bilingual unified search; place recommendation voting and moderated short notes; capacity-safe RSVP/cancellation; saves; organization follows; product sightings; place/event submissions; role-protected moderation with audit history; optional Mapbox; image upload abstraction; persisted analytics; public metadata and sitemap excluding demo listings.
+Map-first home with applied layers (system presets, personal and group collections, My saves projection), place details; layer library, creation, curation, follow and reviewed publication; groups with roles and email-bound invitations; local content with explicit location status; guest browsing; invite-only membership (member nominations, reviewer approval, admin batches/direct invites); English/繁體中文; Houston city selection; place and event filtering; bilingual unified search; place recommendation voting and moderated short notes; capacity-safe RSVP/cancellation; saves; organization follows; product sightings; place/event submissions; role-protected moderation with audit history; optional Mapbox; image upload abstraction; persisted analytics; public metadata and sitemap excluding demo listings.
 
 ## Configuration
 

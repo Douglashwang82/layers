@@ -18,11 +18,15 @@ legacy URL behavior.
 
 The map home now fills the viewport behind floating search, city, layer and menu
 controls. Its warm, low-saturation basemap uses dots and a selected ring/label.
-A fresh map session starts with results collapsed; the floating list opens on
-request or search. Results, layers and details share one panel, with a bottom
-sheet on phones. Existing desktop collapse preferences are retained. Missing
-tokens and provider failures force a usable list; explicit list view remains
-available. Map, Layers, Saved, Profile and language actions remain in the menu.
+A fresh map session starts with the panel collapsed; it opens on request. Layers
+and details share one panel, with a bottom sheet on phones. Existing desktop
+collapse preferences are retained. The sidebar has no list of places: the owner
+removed the Results screen and list view on 2026-11-06, so where this guide
+describes a results list, list view or list fallback, that text is historical.
+Missing tokens and provider failures keep the panel open on Your layers. A
+layer's own detail screen still lists its places; Google-link places open in
+the map panel only from their pin. Map, Layers, Saved, Profile
+and language actions remain in the menu.
 
 The [minimalist floating-map plan](../plans/minimalist-floating-map-plan.md)
 supersedes this guide's older fixed header/sidebar and bright map composition
@@ -479,6 +483,8 @@ Opening `/` without explicit state restores authorized layers for a returning us
 Reset map failure state when retrying. Dispose partially initialized map instances even if unmounted before load, and distinguish transient tile errors from a fatal initialization failure. The current error handler treats any map error as failure; the new experience needs a deliberate recovery path.
 
 ## 17. Accessibility and localization
+
+> **Withdrawn by owner decision, 2026-11-06:** the map home no longer has a list view or list fallback, so the paragraph below is not met there. Without the map, a layer's detail screen still lists its places, and `item=` links still open catalog places. Google-link places open in the map panel only from their pin, so without a map their panel can't be reached; the layer's detail screen shows their Google Maps link and reviews. Places with no pin are not listed on the map home.
 
 Every discovery and action flow must work from a semantic list without map interaction. Expose a persistent “List view” control and preserve its preference. Server-render initial useful results for slow devices and map failure.
 

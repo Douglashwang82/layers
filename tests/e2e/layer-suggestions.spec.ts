@@ -215,7 +215,6 @@ test.describe("signed in", () => {
     await expect(section(page).getByRole("listitem")).toHaveCount(1);
     expect(calls.get.at(-1)).toContain(slugB);
 
-    await page.getByRole("button", { name: "Manage layers" }).click();
     await page.getByRole("checkbox", { name: new RegExp(titleB) }).uncheck();
     await expect(page).toHaveURL(new RegExp(`layers=${slugA}(&|$)`));
     // The old result is gone and the new query is fetched.
@@ -230,7 +229,6 @@ test.describe("signed in", () => {
   test("ticking layers leaves every row where it was", async ({ page }) => {
     await mockSuggestions(page, { get: () => ({ json: none }) });
     await openMap(page);
-    await page.getByRole("button", { name: "Manage layers" }).click();
     const titles = page.locator(".layer-rows .layer-title");
     await expect(titles.filter({ hasText: titleA })).toHaveCount(1);
     await expect(titles.filter({ hasText: titleB })).toHaveCount(1);
@@ -254,7 +252,6 @@ test.describe("signed in", () => {
     await openMap(page);
     await generate(page).click();
     await expect(status(page)).toHaveText("Generating suggestions…");
-    await page.getByRole("button", { name: "Manage layers" }).click();
     await page.getByRole("checkbox", { name: new RegExp(titleB) }).uncheck();
     await expect(generate(page)).toBeEnabled();
     await expect(status(page)).not.toHaveText("Generating suggestions…");

@@ -26,8 +26,6 @@ import {
 } from "@/lib/layer-workspace";
 import {
   ExternalLink,
-  List,
-  Map as MapIcon,
   Layers as LayersIcon,
   Crosshair,
   Route,
@@ -65,7 +63,6 @@ import {
 } from "./map-canvas";
 import { getPlacesProvider } from "@/lib/places/provider";
 import { BusinessPanel } from "@/components/places/business-panel";
-import { ExternalRow } from "@/components/places/external-row";
 import { useExternalReferences } from "@/components/places/use-external-references";
 import {
   markerCssVars,
@@ -74,15 +71,13 @@ import {
 } from "@/lib/marker-presentation";
 import { useMapTheme } from "@/lib/map-theme";
 import { ActiveLayersPanel } from "./active-layers-panel";
-import { MapResults, TabelogLink } from "./map-results";
+import { TabelogLink } from "./map-results";
 import { tabelogLink } from "@/lib/tabelog";
 import { ItemPreview } from "./item-preview";
 import { MapSidebar, type PanelBack } from "./map-sidebar";
 import {
   AttachedEvents,
-  LayerChips,
   MapEmptyState,
-  ResultsSummary,
   SidebarFooter,
 } from "./map-sidebar-sections";
 import { PlaceAttachments } from "./place-attachments";
@@ -105,7 +100,6 @@ import { track } from "@/lib/track";
 import { mapSessionKey } from "@/lib/map-session";
 import {
   initialPanelOpen,
-  listAvailable,
   mapPadding,
   panelStorageKey,
   panelVisible,
@@ -260,12 +254,10 @@ export function MapWorkspace({
     initial.state.collections,
   ]);
   const queryKey = keyOf(state, true);
-  const listView = state.view === "list";
   // Declared early: effects below open the panel when a selection arrives.
   const [panelOpen, setPanelOpen] = useState(() =>
     initialPanelOpen({
       hasItem: !!state.item || !!layerPanel || !!tripPanel,
-      listView,
       fallback: !token,
     }),
   );
@@ -321,7 +313,8 @@ export function MapWorkspace({
   /* URL writes */
   const commit = useCallback(
     (patch: Partial<MapState>, mode: "push" | "replace" = "push") => {
-      const next = { ...state, ...patch };
+      // Old links can still say view=list; the map is the only view now.
+      const next = { ...state, ...patch, view: "map" as const };
       const qs = serializeMapQuery(
         {
           ...next,
@@ -437,9 +430,9 @@ export function MapWorkspace({
     persist(
       layersKey ? layersKey.split(",") : [],
       foldersKey ? foldersKey.split(",") : [],
-      state.view,
+      "map",
     );
-  }, [layersKey, foldersKey, state.view, persist]);
+  }, [layersKey, foldersKey, persist]);
   /* Selection */
   const selectedKey = state.item ?? null;
   const selected = result.items.find((i) => i.key === selectedKey) ?? null;
@@ -544,7 +537,6 @@ export function MapWorkspace({
     } else commit({ item: undefined }, "replace");
   };
   /* Pin hover: list rows highlight pins; pins show a tooltip after a dwell. */
-  const [listHoverKey, setListHoverKey] = useState<string | null>(null);
   const [tip, setTip] = useState<{
     key: string;
     /** Pointer x and the stage width, so the left edge can follow a late review column. */
@@ -759,15 +751,13 @@ export function MapWorkspace({
   // Without a token or after a provider failure the list is the product and cannot be hidden.
   const fallback = !token || canvasStatus === "failed";
   const visible =
-    !!layerPanel ||
-    !!tripPanel ||
-    panelVisible({ open: panelOpen, listView, fallback });
+    !!layerPanel || !!tripPanel || panelVisible({ open: panelOpen, fallback });
   const scrollRef = useRef<HTMLDivElement>(null);
   /** Focus lands on the scrolling area, so the keyboard scrolls the panel. */
   const focusPanel = () => scrollRef.current?.focus();
-  // Shared item links, list view and fallback win over the remembered preference.
+  // Shared item links and fallback win over the remembered preference.
   useEffect(() => {
-    const forced = !!state.item || listView || !token;
+    const forced = !!state.item || !token;
     if (mobile) {
       // Phones start with the entry button only.
       setPanelOpen(forced);
@@ -789,7 +779,7 @@ export function MapWorkspace({
     locale,
     canvas,
     canvasReady: canvasStatus === "ready",
-    mapShown: !!token && canvasStatus !== "failed" && !listView,
+    mapShown: !!token && canvasStatus !== "failed",
   });
   // An open trip owns the map: layer pins, Google places and the route line
   // step aside (their state is kept) and return when the trip is left.
@@ -831,30 +821,13 @@ export function MapWorkspace({
     );
   };
   const [sheet, setSheet] = useState<Sheet>("half");
-  // An empty map opens on the member's layers: loading one is the first step.
-  const [tab, setTab] = useState<"layers" | "results">(() =>
-    authenticated &&
-    !hasApplied &&
-    // A member with no layers of their own opens on the first-run starter.
-    (library ?? []).some((l) => l.ownerKind !== "system")
-      ? "layers"
-      : "results",
-  );
-  const listInputs = {
-    listView,
-    fallback,
-    unlocatedPlaces: external.unlocated,
-  };
-  const hasList = listAvailable(listInputs);
   const detailInPanel =
     !layerPanel && (!!selected || !!business) && !detailHidden;
   const view = resolvePanelView({
-    ...listInputs,
     tripScreen: !!tripScreen,
     layerScreen: !!layerPanel,
     routeOpen,
     detailOpen: detailInPanel,
-    layersRequested: tab === "layers",
   });
   const routeInPanel = view === "route";
   // Details open at the top and return to where the list was; other screens start at the top.
@@ -866,23 +839,9 @@ export function MapWorkspace({
     const from = scrolledView.current;
     scrolledView.current = view;
     if (!node || (from === view && view !== "detail")) return;
-    const backToList =
-      from === "detail" && (view === "results" || view === "layers");
-    node.scrollTop = backToList ? savedScroll.current : 0;
+    node.scrollTop =
+      from === "detail" && view === "layers" ? savedScroll.current : 0;
   }, [view, openPlaceKey]);
-  /**
-   * Expose list-only places once per query instead of silently hiding them
-   * when their cached coordinates are missing or expired.
-   */
-  const revealedFor = useRef<string | null>(null);
-  useEffect(() => {
-    if (layerPanel || !external.unlocated || revealedFor.current === queryKey)
-      return;
-    revealedFor.current = queryKey;
-    setTab("results");
-    setPanelOpen(true);
-  }, [layerPanel, external.unlocated, queryKey]);
-  const [limit, setLimit] = useState(20);
   const [panelHeight, setPanelHeight] = useState(0);
   const [panelRight, setPanelRight] = useState(0);
   const [topInset, setTopInset] = useState(0);
@@ -921,7 +880,6 @@ export function MapWorkspace({
     () =>
       mapPadding({
         mobile,
-        listView,
         visible,
         panelRight,
         panelHeight,
@@ -930,19 +888,11 @@ export function MapWorkspace({
         bottomInset: visible ? 76 : 128,
         viewportHeight,
       }),
-    [
-      mobile,
-      listView,
-      visible,
-      panelRight,
-      panelHeight,
-      topInset,
-      viewportHeight,
-    ],
+    [mobile, visible, panelRight, panelHeight, topInset, viewportHeight],
   );
   useEffect(() => {
     canvas.current?.resize();
-  }, [state.view, sheet, visible, mobile]);
+  }, [sheet, visible, mobile]);
   // A selected pin hidden behind the panel or an edge is brought into view,
   // not zoomed, unless it was picked on the map: the camera then stays put.
   const selectedLat = selected?.latitude ?? null;
@@ -973,7 +923,6 @@ export function MapWorkspace({
         return;
       router.push(bareHref(), { scroll: false });
     }
-    setTab("layers");
     setDetailHidden(true);
     setRouteOpen(false);
     setPanelOpen(true);
@@ -986,14 +935,6 @@ export function MapWorkspace({
     setTip(null);
     window.requestAnimationFrame(focusPanel);
   };
-  const setView = (view: MapState["view"]) => {
-    commit({ view }, "replace");
-    try {
-      localStorage.setItem("taiwanhub:map-view", view);
-    } catch {
-      /* ignore */
-    }
-  };
   /* New day notice for rolling layers */
   const [newDay, setNewDay] = useState(false);
   useEffect(() => {
@@ -1004,19 +945,13 @@ export function MapWorkspace({
     const timer = window.setInterval(check, 60000);
     return () => window.clearInterval(timer);
   }, [result.generatedAt, city.timezone]);
-  useEffect(() => {
-    setLimit(20);
-  }, [result.total, result.generatedAt]);
-  // Counts include Google places as they get a location (as placeCount).
+  // Counts include Google places as they get a location.
   const announcedCount = result.total + externalPoints.length;
   useEffect(() => {
     setAnnounce(format(t.resultsInArea, { count: announcedCount }));
   }, [announcedCount, result.generatedAt, t.resultsInArea]);
   const mapped = result.items.filter(
     (i) => i.latitude != null && i.longitude != null,
-  );
-  const unmapped = result.items.filter(
-    (i) => i.latitude == null || i.longitude == null,
   );
   useEffect(() => {
     autoFit.current = holdCamera.current ? null : appliedKey;
@@ -1235,8 +1170,6 @@ export function MapWorkspace({
   const layerCount =
     result.layers.filter((l) => l.status === "ok").length +
     (result.collections ?? []).filter((c) => c.status === "ok").length;
-  // MVP layers are mostly Google places, counted once they have a location.
-  const placeCount = announcedCount;
   const preview = selected && (
     <ItemPreview
       item={selected}
@@ -1371,85 +1304,6 @@ export function MapWorkspace({
         onEventsChanged={() => setForce((n) => n + 1)}
       />
     ) : null;
-  const resultsPanel = (
-    <>
-      <LayerChips
-        folders={folders}
-        collections={result.collections}
-        shownFolders={shownFolders}
-        shownSlugs={shownSlugs}
-        layers={orderLayers(
-          [
-            ...panelLayers,
-            ...hiddenLayers.filter((h) => !shownSlugs.includes(h.slug)),
-          ],
-          library ?? [],
-        )}
-        slotsUsed={slotsUsed}
-        t={t}
-        locale={locale}
-        onToggleFolder={toggleFolder}
-        onToggleLayer={toggleLayer}
-        onManage={() => setTab("layers")}
-      />
-      {dailyPick}
-      {suggestions}
-      {emptyState || (
-        <>
-          <ResultsSummary
-            result={result}
-            refreshing={refreshing}
-            placeCount={placeCount}
-            cityName={city.name}
-            previousArea={!!pendingArea && !!state.area}
-            pendingPlaces={external.pending}
-            shownPlaces={external.rows.length}
-            placesFailed={external.error}
-            onRetryPlaces={external.retry}
-            action={routeThroughButton}
-            t={t}
-          />
-          <MapResults
-            items={mapped}
-            unmapped={unmapped}
-            places={external.rows}
-            renderPlace={(row, prefix) => (
-              <ExternalRow
-                key={prefix + row.subjectId}
-                row={row}
-                selected={row.subjectId === business?.subjectId}
-                events={result.events[row.canonicalKey]}
-                t={t}
-                locale={locale}
-                timeZone={city.timezone}
-                onSelect={(place) =>
-                  selectBusiness({
-                    key: place.canonicalKey,
-                    placeId: place.providerPlaceId,
-                    name: place.name,
-                    subjectId: place.subjectId,
-                    location: place.location,
-                    temporary: false,
-                  })
-                }
-              />
-            )}
-            t={t}
-            locale={locale}
-            selectedKey={selectedKey}
-            onSelect={select}
-            limit={limit}
-            onMore={() => setLimit((n) => n + 20)}
-            onHover={setListHoverKey}
-            events={result.events}
-            timeZone={city.timezone}
-            layers={panelLayers}
-          />
-        </>
-      )}
-    </>
-  );
-  const backToList = hasList ? t.backToResults : t.backToLayers;
   /** Each screen's header and body; the shell around them never changes. */
   const screen: {
     title?: string;
@@ -1493,7 +1347,7 @@ export function MapWorkspace({
       case "detail":
         return {
           back: {
-            label: backToList,
+            label: t.backToLayers,
             onClick: business ? closeBusiness : closeDetail,
           },
           body: (
@@ -1514,21 +1368,27 @@ export function MapWorkspace({
         return {
           title: t.yourLayers,
           count: slotsUsed,
-          back: hasList
-            ? { label: t.backToResults, onClick: () => setTab("results") }
-            : undefined,
           body: (
             <div className="panel-body">
-              {!hasList && emptyState}
+              {emptyState}
+              {dailyPick}
               {suggestions}
+              {routeThroughButton}
+              {external.error && (
+                <p className="message error-message" role="alert">
+                  {t.error}{" "}
+                  <button
+                    type="button"
+                    className="text-button"
+                    onClick={external.retry}
+                  >
+                    {t.retry}
+                  </button>
+                </p>
+              )}
               {layersPanel}
             </div>
           ),
-        };
-      case "results":
-        return {
-          title: t.resultsTab,
-          body: <div className="panel-body">{resultsPanel}</div>,
         };
     }
   })();
@@ -1538,8 +1398,6 @@ export function MapWorkspace({
         applied: shownSlugs,
         appliedFolders: shownFolders.length,
         showFolder: (slug) => {
-          // Leaving the layer panel lands on the results, not the layer list.
-          setTab("results");
           router.push(
             `/?${new URLSearchParams({ city: city.slug, collections: slug })}`,
             { scroll: false },
@@ -1617,7 +1475,7 @@ export function MapWorkspace({
     >
       <div
         ref={root}
-        className={`map-workspace ${listView ? "view-list" : "view-map"} sheet-${sheet} ${visible ? "has-panel" : "panel-closed"} ${fallback ? "map-fallback" : ""} ${detailInPanel ? "has-detail" : ""}`}
+        className={`map-workspace view-map sheet-${sheet} ${visible ? "has-panel" : "panel-closed"} ${fallback ? "map-fallback" : ""} ${detailInPanel ? "has-detail" : ""}`}
         data-canvas={canvasStatus}
         data-map-theme={theme}
         data-panel={visible ? "open" : "closed"}
@@ -1655,7 +1513,7 @@ export function MapWorkspace({
               </>,
               actionsTarget,
             )}
-          <div className="map-stage-body" hidden={listView} ref={stageBody}>
+          <div className="map-stage-body" ref={stageBody}>
             {token && canvasStatus !== "failed" ? (
               <MapCanvas
                 ref={canvas}
@@ -1679,7 +1537,6 @@ export function MapWorkspace({
                 theme={theme}
                 t={t}
                 padding={padding}
-                highlightKey={listHoverKey}
                 onItemHover={onItemHover}
                 onSelect={(key) => {
                   if (!key) return;
@@ -1693,7 +1550,6 @@ export function MapWorkspace({
             ) : (
               <div className="map-unavailable" role="note">
                 <p>{token ? t.mapUnavailableBody : t.mapNeedsToken}</p>
-                <p className="fine-print">{t.mapUnavailable}</p>
                 {token && (
                   <button
                     type="button"
@@ -1706,13 +1562,6 @@ export function MapWorkspace({
                     {t.retry}
                   </button>
                 )}
-                <button
-                  type="button"
-                  className="button small"
-                  onClick={() => setView("list")}
-                >
-                  <List size={16} aria-hidden="true" /> {t.listView}
-                </button>
               </div>
             )}
             {canvasStatus === "loading" && token && (
@@ -1839,7 +1688,7 @@ export function MapWorkspace({
             </div>
           </div>
           <div className="map-dock">
-            {!listView && !fallback && (
+            {!fallback && (
               <button
                 ref={launcher}
                 type="button"
@@ -1848,15 +1697,11 @@ export function MapWorkspace({
                 aria-controls="map-panel"
                 onClick={() => togglePanel(!panelOpen)}
               >
-                <List size={18} aria-hidden="true" />
-                <span>
-                  {panelOpen
-                    ? t.hideList
-                    : format(t.showList, { count: placeCount })}
-                </span>
+                <LayersIcon size={18} aria-hidden="true" />
+                <span>{panelOpen ? t.hideLayers : t.showLayers}</span>
               </button>
             )}
-            {!listView && canvasStatus === "ready" && (
+            {canvasStatus === "ready" && (
               <button
                 type="button"
                 className="map-float-button map-fit"
@@ -1871,13 +1716,13 @@ export function MapWorkspace({
                 <span>{t.fitResults}</span>
               </button>
             )}
-            {!listView && canvasStatus === "ready" && !tripDrawn && routeBar}
+            {canvasStatus === "ready" && !tripDrawn && routeBar}
             {!routeInPanel && (
               <span className="sr-only" role="status">
                 {routeNotice}
               </span>
             )}
-            {state.area && !listView && (
+            {state.area && (
               <button
                 type="button"
                 className="map-float-button"
@@ -1885,25 +1730,6 @@ export function MapWorkspace({
               >
                 <X size={16} aria-hidden="true" />
                 <span>{t.clearArea}</span>
-              </button>
-            )}
-            {!listView ? (
-              <button
-                type="button"
-                className="map-float-button"
-                onClick={() => setView("list")}
-              >
-                <List size={16} aria-hidden="true" />
-                <span>{t.listView}</span>
-              </button>
-            ) : (
-              <button
-                type="button"
-                className="map-float-button"
-                onClick={() => setView("map")}
-              >
-                <MapIcon size={16} aria-hidden="true" />
-                <span>{t.mapView}</span>
               </button>
             )}
             {hasDemo && !visible && (
@@ -1925,7 +1751,7 @@ export function MapWorkspace({
             const target = event.target as HTMLElement;
             if (target.closest("input, textarea, select, details[open]"))
               return;
-            if (listView || fallback) return;
+            if (fallback) return;
             event.preventDefault();
             togglePanel(false);
           }}
@@ -1936,9 +1762,7 @@ export function MapWorkspace({
             back={screen.back}
             sheet={sheet}
             onSheet={setSheet}
-            onClose={
-              listView || fallback ? undefined : () => togglePanel(false)
-            }
+            onClose={fallback ? undefined : () => togglePanel(false)}
             announce={tripScreen ? tripScreen.announce : announce}
             notice={
               loadError && (
@@ -1957,7 +1781,7 @@ export function MapWorkspace({
             footer={<SidebarFooter hasDemo={hasDemo} t={t} />}
             scrollRef={scrollRef}
             onScroll={(event) => {
-              if (view === "results" || view === "layers")
+              if (view === "layers")
                 savedScroll.current = event.currentTarget.scrollTop;
             }}
             t={t}

@@ -1,9 +1,25 @@
-import { test, expect } from "@playwright/test";
-import { createAndSignIn, openMapList } from "../fixtures";
+import { test, expect, type Page } from "@playwright/test";
+import { createAndSignIn, mockMapProvider, openMapList } from "../fixtures";
 /*
  * Events and tips are attached to a place from the map itself; the former
  * /submit pages are gone.
  */
+/** With one place on the map it is framed in the middle of the free canvas. */
+async function clickOnlyPin(page: Page) {
+  const canvas = page.locator(".mapboxgl-canvas");
+  await expect(canvas).toBeVisible();
+  await expect(page.locator(".map-canvas")).toHaveAttribute("data-camera", /./);
+  await page.waitForTimeout(900);
+  const box = (await canvas.boundingBox())!;
+  const top = (await page.locator(".map-header").boundingBox())!;
+  await canvas.click({
+    position: {
+      x: (box.width - 80) / 2,
+      y: (top.y + top.height + 12 + box.height - 80) / 2,
+    },
+  });
+}
+
 test("a member attaches an event and a tip to a place in the map view", async ({
   page,
 }) => {
@@ -22,11 +38,22 @@ test("a member attaches an event and a tip to a place in the map view", async ({
   expect(created.ok()).toBeTruthy();
   const slug = (await created.json()).data.layer.slug as string;
 
+  // A Google place opens from its pin, so this flow needs a (mocked) map.
+  await mockMapProvider(page);
+  // The fake provider gives no coordinates, so give the place the pin a real one has.
+  await page.route("**/api/v1/map/external-references?**", async (route) => {
+    const response = await route.fetch();
+    const body = await response.json();
+    for (const ref of body.data.references)
+      ref.location = { lat: 29.76, lng: -95.37 };
+    await route.fulfill({ response, json: body });
+  });
   await page.goto(`/?layers=${slug}`);
-  await openMapList(page);
-  const places = page.locator(".external-row");
-  await expect(places).toHaveCount(1);
-  await places.first().getByRole("button", { name: "Open place page" }).click();
+  test.skip(
+    await page.getByText("Map preview needs a Mapbox token.").isVisible(),
+    "Requires NEXT_PUBLIC_MAPBOX_TOKEN (a fake test token is sufficient).",
+  );
+  await clickOnlyPin(page);
 
   const attach = page.locator(".place-attachment");
   await expect(attach).toHaveCount(1);

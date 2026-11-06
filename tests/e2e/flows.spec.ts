@@ -68,7 +68,7 @@ test("guest discovery, Chinese search, and responsive navigation", async ({
     fullPage: true,
   });
   await page.getByRole("button", { name: "Language" }).click();
-  await expect(page.locator(".result-count")).toContainText("此區域");
+  await expect(page.locator("#map-panel h2")).toContainText("圖層");
 });
 test("save, change recommendation, RSVP and report a product sighting", async ({
   page,

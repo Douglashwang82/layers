@@ -1,5 +1,5 @@
 import { test, expect, type Page } from "@playwright/test";
-import { createAndSignIn } from "./fixtures";
+import { createAndSignIn, openMapList } from "./fixtures";
 /*
  * Nested layer folders: the main flow, a folder successfully added to the map.
  * Layers are made through the API (the layer UI is covered by
@@ -97,21 +97,9 @@ test("a folder of layers is added to the map, toggled and restored", async ({
   expect([...folder!.layerSlugs].sort()).toEqual(
     [layerA.slug, layerB.slug].sort(),
   );
-  const panel = page.locator("#map-panel");
   const checkbox = page.getByRole("checkbox", {
     name: `Show ${folderTitle} on map`,
   });
-  const rowA = panel.getByText(`Folder place A ${stamp}`).first();
-  const rowB = panel.getByText(`Folder place B ${stamp}`).first();
-  const chip = page.getByRole("button", {
-    name: `Hide ${folderTitle} from map`,
-  });
-  await expect(chip).toHaveAttribute("aria-pressed", "true");
-  await expect(rowA).toBeVisible();
-  await expect(rowB).toBeVisible();
-  await page
-    .getByRole("button", { name: "Manage layers", exact: true })
-    .click();
   await expect(checkbox).toBeChecked();
   await expect(page.getByText("1 of 5 on map")).toBeVisible();
   // Toggle off, then on again.
@@ -132,34 +120,18 @@ test("a folder of layers is added to the map, toggled and restored", async ({
   await expect(filed).toBeChecked();
   await expect(page).toHaveURL(new RegExp(`layers=${layerA.slug}`));
   await page.reload();
-  await page
-    .getByRole("button", { name: "Manage layers", exact: true })
-    .click();
   await expect(filed).toBeChecked();
   await filed.uncheck();
   await expect(page).not.toHaveURL(new RegExp(`layers=${layerA.slug}`));
-  await page.getByRole("button", { name: "Back to results" }).click();
-  await expect(rowA).toHaveCount(0);
-  await expect(rowB).toHaveCount(0);
-  await expect(chip).toHaveCount(0);
-  await page
-    .getByRole("button", { name: "Manage layers", exact: true })
-    .click();
   const again = mapResponse(page, slug);
   await checkbox.check();
   await expect(page).toHaveURL(new RegExp(`collections=${slug}`));
   expect((await again).data!.collections[0].status).toBe("ok");
   // The folder's layers come with it, so they cannot be unticked one by one.
-  await page.getByRole("button", { name: `Expand ${folderTitle}` }).click();
   await expect(filed).toBeChecked();
   await expect(filed).toBeDisabled();
-  await page.getByRole("button", { name: "Back to results" }).click();
-  await expect(chip).toHaveAttribute("aria-pressed", "true");
-  await expect(rowA).toBeVisible();
-  await expect(rowB).toBeVisible();
   // The preference restores the folder when the URL has no map state.
   await page.goto("/");
-  await expect(chip).toHaveAttribute("aria-pressed", "true");
-  await expect(rowA).toBeVisible();
-  await expect(rowB).toBeVisible();
+  await openMapList(page);
+  await expect(checkbox).toBeChecked();
 });
