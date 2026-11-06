@@ -2,9 +2,11 @@ import { createHash } from "node:crypto";
 import { pool } from "@taiwanhub/database";
 import {
   AppError,
+  googleMarkerKind,
   layerInput,
   requireActor,
   type Actor,
+  type GoogleMarkerKind,
 } from "@taiwanhub/shared";
 import { importRequest } from "@taiwanhub/shared/map-import";
 import { flags } from "@/lib/config";
@@ -38,24 +40,27 @@ export type ImportResult = {
   /** Markers linked to a Google place (absent on receipts from before matching). */
   matched?: number;
 };
+type MarkerMatch = { placeId: string; kind: GoogleMarkerKind | null };
 /** Markers a member may match against Google per day; bounds the lookups behind imports. */
 export const matchBudget = { markers: 2000, hours: 24 };
 /**
  * Google place IDs for the selected markers, keyed by marker id. Matching is
  * best effort: without a configured key, over the daily budget, or on any
  * provider failure, markers import as plain custom places, as before. Each
- * match's Google types are cached so its pin takes the place's kind.
+ * match also gets our marker kind from its Google types, which is stored on
+ * the place; a failed details lookup leaves the kind unset.
  */
 async function importMatches(
   actor: Actor,
   points: { id: string; name: string; latitude: number; longitude: number }[],
 ) {
-  if (!points.length) return new Map<string, string>();
+  const none = new Map<string, MarkerMatch>();
+  if (!points.length) return none;
   let deps;
   try {
     deps = resolverDeps();
   } catch {
-    return new Map<string, string>();
+    return none;
   }
   const spent = await pool.query<{ count: number }>(
     `INSERT INTO rate_limit(key,count,expires_at) VALUES($1,$2::int,now()+make_interval(hours=>$3::int))
@@ -65,11 +70,18 @@ async function importMatches(
      RETURNING count`,
     [`map-import-match:${actor.id}`, points.length, matchBudget.hours],
   );
-  if (spent.rows[0].count > matchBudget.markers)
-    return new Map<string, string>();
+  if (spent.rows[0].count > matchBudget.markers) return none;
   const matches = await matchPoints(points, deps);
-  await cachePlaceDetails([...matches.values()], deps);
-  return matches;
+  const types = await cachePlaceDetails([...matches.values()], deps);
+  const result = new Map<string, MarkerMatch>();
+  for (const [pointId, placeId] of matches) {
+    const known = types.get(placeId);
+    result.set(pointId, {
+      placeId,
+      kind: known ? googleMarkerKind(known) : null,
+    });
+  }
+  return result;
 }
 /** Advisory preview; the transaction repeats all authorization and dedupe checks. */
 export async function reviewMapImport(actor: Actor | null, body: unknown) {
@@ -153,7 +165,7 @@ export async function commitMapImport(
   );
   const chosen = new Set(input.selected);
   const matches = replay.rows[0]
-    ? new Map<string, string>()
+    ? new Map<string, MarkerMatch>()
     : await importMatches(
         a,
         input.document.layers
@@ -277,16 +289,18 @@ export async function commitMapImport(
           `SELECT id FROM custom_place WHERE (owner_user_id=$1 OR owner_group_id=$2) AND status='active' AND lower(name)=lower($3) AND latitude=$4 AND longitude=$5 ORDER BY created_at LIMIT 1`,
           [userId, groupId, p.name, p.latitude, p.longitude],
         );
-        const googlePlaceId = matches.get(p.id) ?? null;
+        const googlePlaceId = matches.get(p.id)?.placeId ?? null;
+        const googleKind = matches.get(p.id)?.kind ?? null;
         if (googlePlaceId) result.matched!++;
         let placeId = match.rows[0]?.id;
         if (placeId) {
           result.reused++;
-          // Importing again links an earlier, unmatched copy of this marker.
+          // Importing again links an earlier, unmatched copy of this marker
+          // and classifies a linked one that has no kind yet.
           if (googlePlaceId)
             await tx.query(
-              "UPDATE custom_place SET google_place_id=$2, updated_at=now() WHERE id=$1 AND google_place_id IS NULL",
-              [placeId, googlePlaceId],
+              "UPDATE custom_place SET google_place_id=$2, google_kind=COALESCE($3,google_kind), updated_at=now() WHERE id=$1 AND (google_place_id IS NULL OR (google_place_id=$2 AND google_kind IS NULL))",
+              [placeId, googlePlaceId, googleKind],
             );
         } else {
           if (++placeCount > maxCustomPlacesPerScope)
@@ -296,7 +310,7 @@ export async function commitMapImport(
               "This import would exceed the 1,000 custom-place limit. Nothing was saved.",
             );
           const row = await tx.query<{ id: string }>(
-            `INSERT INTO custom_place(owner_user_id,owner_group_id,city_id,name,address,location_status,latitude,longitude,location,note,created_by,google_place_id) VALUES($1,$2,$3,$4,$5,'approximate',$6::float8,$7::float8,ST_SetSRID(ST_MakePoint($7::float8,$6::float8),4326),$8,$9,$10) RETURNING id`,
+            `INSERT INTO custom_place(owner_user_id,owner_group_id,city_id,name,address,location_status,latitude,longitude,location,note,created_by,google_place_id,google_kind) VALUES($1,$2,$3,$4,$5,'approximate',$6::float8,$7::float8,ST_SetSRID(ST_MakePoint($7::float8,$6::float8),4326),$8,$9,$10,$11) RETURNING id`,
             [
               userId,
               groupId,
@@ -308,6 +322,7 @@ export async function commitMapImport(
               p.description,
               a.id,
               googlePlaceId,
+              googleKind,
             ],
           );
           placeId = row.rows[0].id;

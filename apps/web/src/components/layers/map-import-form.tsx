@@ -2,6 +2,7 @@
 import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import {
+  defaultImportMode,
   maxImportBytes,
   type ImportDocument,
 } from "@taiwanhub/shared/map-import";
@@ -84,6 +85,7 @@ export function MapImportForm({
         body,
       );
       setDocument(doc);
+      if (!initialLayer) setMode(defaultImportMode(doc));
       setTitle(doc.title);
       setSelected(doc.layers.flatMap((l) => l.points.map((p) => p.id)));
     } catch (e) {
@@ -350,6 +352,9 @@ export function MapImportForm({
                 </select>
               </label>
             </>
+          )}
+          {mode === "collection" && (
+            <p className="fine-print">{t.collectionHelp}</p>
           )}
           <p className="fine-print">{t.cityHelp}</p>
           <p>{t.review}</p>

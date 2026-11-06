@@ -18,9 +18,15 @@ const providerStyle = {
   ],
 };
 
-/** A seeded Houston place in the seeded layer, opened by URL: with a map on
- * screen the panel shows the member's layers, not result rows. */
+/** A seeded Houston place in the seeded layer, opened by URL. */
 const seededItem = "&item=place%3A00000000-0000-4000-8000-000000005000";
+/** Waits for the page to settle on a map or the notice, so a skip can't race it. */
+async function needsToken(page: Page) {
+  const notice = page.getByText("Map preview needs a Mapbox token.");
+  await expect(notice.or(page.locator(".mapboxgl-canvas"))).toBeVisible();
+  return notice.isVisible();
+}
+
 async function mockProvider(page: Page) {
   await page.route(/(\/\/|\.)mapbox\.com\//, async (route) => {
     const url = route.request().url();
@@ -40,7 +46,7 @@ test("the floating list remembers its preference, closes with Escape and yields 
   await mockProvider(page);
   await page.goto(await seededPlacesMap());
   test.skip(
-    await page.getByText("Map preview needs a Mapbox token.").isVisible(),
+    await needsToken(page),
     "Requires NEXT_PUBLIC_MAPBOX_TOKEN (a fake test token is sufficient).",
   );
   const panel = page.locator("#map-panel");
@@ -54,7 +60,9 @@ test("the floating list remembers its preference, closes with Escape and yields 
   await panel.focus();
   await page.keyboard.press("Escape");
   await expect(panel).toBeHidden();
-  await expect(page.getByRole("button", { name: /^Show list/ })).toBeFocused();
+  await expect(
+    page.getByRole("button", { name: /^Show layers/ }),
+  ).toBeFocused();
   await page.reload();
   await expect(panel).toBeHidden();
   // A shared item link opens the panel with details whatever the stored preference is.
@@ -91,7 +99,7 @@ test("flat map fills the viewport with a quiet atlas, a collapsed list and a usa
   await page.goto(await seededPlacesMap());
   // CI normally has no token; run this provider-fixture test with an explicit fake token.
   test.skip(
-    await page.getByText("Map preview needs a Mapbox token.").isVisible(),
+    await needsToken(page),
     "Requires NEXT_PUBLIC_MAPBOX_TOKEN (a fake test token is sufficient).",
   );
   await expect(page.locator(".map-skeleton")).toHaveCount(0);
@@ -141,7 +149,7 @@ test("dark map follows the OS, honours a stored override and keeps the map usabl
   await mockProvider(page);
   await page.goto(await seededPlacesMap());
   test.skip(
-    await page.getByText("Map preview needs a Mapbox token.").isVisible(),
+    await needsToken(page),
     "Requires NEXT_PUBLIC_MAPBOX_TOKEN (a fake test token is sufficient).",
   );
   await expect(page.locator(".map-skeleton")).toHaveCount(0);
@@ -165,11 +173,48 @@ test("dark map follows the OS, honours a stored override and keeps the map usabl
   );
   await expect(page.locator(".mapboxgl-canvas")).toBeVisible();
 });
+test("ticking a layer leaves the camera where the user put it", async ({
+  page,
+}) => {
+  await mockProvider(page);
+  await page.goto(await seededPlacesMap());
+  test.skip(
+    await needsToken(page),
+    "Requires NEXT_PUBLIC_MAPBOX_TOKEN (a fake test token is sufficient).",
+  );
+  await expect(page.locator(".mapboxgl-canvas")).toBeVisible();
+  await openMapList(page);
+  const map = page.locator(".map-canvas");
+  // The opening frame of the shared link settles first.
+  await expect(map).toHaveAttribute("data-camera", /./);
+  await page.waitForTimeout(900);
+  const framed = await map.getAttribute("data-camera");
+  await page.locator(".mapboxgl-canvas").hover();
+  await expect(async () => {
+    await page.mouse.wheel(0, -600);
+    await expect(map).not.toHaveAttribute("data-camera", framed!, {
+      timeout: 1000,
+    });
+  }).toPass();
+  await page.waitForTimeout(600);
+  const moved = await map.getAttribute("data-camera");
+  const seeded = page.getByRole("checkbox", { name: /Seeded places/ });
+  await seeded.uncheck();
+  await expect(page).toHaveURL(/layers=none/);
+  // The URL leads the render; let the map drop the layer before re-ticking.
+  await page.waitForTimeout(900);
+  const reloaded = page.waitForResponse(/\/api\/v1\/map\?.*layers=e2e-seeded/);
+  await page.getByRole("checkbox", { name: /Seeded places/ }).check();
+  await reloaded;
+  // Framing waits 250 ms for a burst and eases for 400 ms; outlast both.
+  await page.waitForTimeout(900);
+  await expect(map).toHaveAttribute("data-camera", moved!);
+});
 test("choosing another city moves the map to it", async ({ page }) => {
   await mockProvider(page);
   await page.goto("/");
   test.skip(
-    await page.getByText("Map preview needs a Mapbox token.").isVisible(),
+    await needsToken(page),
     "Requires NEXT_PUBLIC_MAPBOX_TOKEN (a fake test token is sufficient).",
   );
   await expect(page.locator(".mapboxgl-canvas")).toBeVisible();

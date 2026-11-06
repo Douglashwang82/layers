@@ -9,6 +9,7 @@ import {
   myMapsUrl,
   publicIPv4,
 } from "../../apps/web/src/features/map-import/download";
+import { defaultImportMode } from "../../packages/shared/src/map-import";
 import {
   importRequest,
   maxImportBytes,
@@ -140,5 +141,25 @@ describe("shared map input", () => {
         layerId: crypto.randomUUID(),
       }).success,
     ).toBe(false);
+  });
+});
+describe("default import destination", () => {
+  const point = (id: string) =>
+    `<Placemark><name>${id}</name><Point><coordinates>139.7,35.7</coordinates></Point></Placemark>`;
+  const map = (...folders: string[]) =>
+    parseKml(
+      `<kml><Document><name>Trip</name>${folders
+        .map((f, i) => `<Folder><name>Category ${i}</name>${f}</Folder>`)
+        .join("")}</Document></kml>`,
+    );
+  it("uses a folder when the map has several categories", () => {
+    expect(defaultImportMode(map(point("a"), point("b")))).toBe("collection");
+  });
+  it("uses one layer for a single category", () => {
+    expect(defaultImportMode(map(point("a") + point("b")))).toBe("new");
+  });
+  it("ignores a category whose markers were all skipped", () => {
+    const invalid = "<Placemark><name>Line</name></Placemark>";
+    expect(defaultImportMode(map(point("a"), invalid))).toBe("new");
   });
 });

@@ -58,6 +58,10 @@ token the whole trip is the list in the panel. Changes save as they are made and
 panel announces saving, saved and failed (with Try again); a stale revision reloads
 the latest trip.
 
+## Suggestions
+
+With `FEATURE_LAYER_SUGGESTIONS` on, signed-in members with at least one selected layer or folder get a Suggestions section in the layers and results screens. It shows the cached result for the current selection when the panel opens, and a button generates up to three tips by LLM on a miss. Changing the selection clears the old result. It discloses that layer, place and event names are sent to Anthropic. See [the ADR](../adr/layer-suggestions-llm.md) for the data allowlist and controls, and `GET/POST /api/v1/map/suggestions` in the API reference. The server needs `ANTHROPIC_API_KEY` and `LAYER_SUGGESTIONS_LLM_MODEL`. Without them the section, disclosure and button still show (the cached read returns none); pressing the button gets a 503 and the section shows the "unavailable" message. When none of the selected layers can have suggestions (only system layers, saves or archived layers) the API answers `{status:"none",reason:"no_layers"}` and the section hides.
+
 ## Verification
 
 - `pnpm exec vitest run tests/unit/layer-workspace.test.ts tests/unit/layers.test.ts tests/unit/map-panel.test.ts tests/unit/trip-panel.test.ts`

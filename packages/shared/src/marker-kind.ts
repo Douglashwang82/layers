@@ -23,13 +23,13 @@ export type MarkerKind = (typeof markerKinds)[number];
 export function markerKind(item: {
   type: "place" | "event" | "content";
   category?: string | null;
-  /** Cached Google types of a marker with no category of its own. */
-  googleTypes?: readonly string[] | null;
+  /** Stored kind of an imported marker with no category of its own. */
+  googleKind?: MarkerKind | null;
 }): MarkerKind {
   if (item.type === "event") return "event";
   if (item.type === "content") return "info";
   const category = item.category ?? "";
-  if (!category && item.googleTypes) return googleMarkerKind(item.googleTypes);
+  if (!category && item.googleKind) return item.googleKind;
   if (isFoodCategory(category)) return "food";
   if (isRetailCategory(category)) return "retail";
   if (category === "Park") return "park";

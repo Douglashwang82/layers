@@ -1,6 +1,6 @@
 import { pool } from "@taiwanhub/database";
 import type { PoolClient } from "pg";
-import type { Actor } from "@taiwanhub/shared";
+import type { Actor, GoogleMarkerKind } from "@taiwanhub/shared";
 import {
   getLayer,
   getMemberships,
@@ -29,6 +29,7 @@ export type CustomPlaceRow = {
   note: string;
   catalog_place_id: string | null;
   google_place_id: string | null;
+  google_kind: GoogleMarkerKind | null;
   status: "active" | "hidden" | "deleted";
   created_by: string | null;
   created_at: Date;
@@ -57,9 +58,10 @@ export type CustomPlace = {
   catalogPlaceId: string | null;
   /** Google place matched at import; the pin and note stay this place's own. */
   googlePlaceId: string | null;
+  googleKind: GoogleMarkerKind | null;
 };
 const columns =
-  "id,owner_user_id,owner_group_id,city_id,name,name_chinese,address,location_status,latitude,longitude,category_id,website,note,catalog_place_id,google_place_id,status,created_by,created_at,updated_at,(SELECT p.status FROM place p WHERE p.id=custom_place.catalog_place_id) AS suggestion_status";
+  "id,owner_user_id,owner_group_id,city_id,name,name_chinese,address,location_status,latitude,longitude,category_id,website,note,catalog_place_id,google_place_id,google_kind,status,created_by,created_at,updated_at,(SELECT p.status FROM place p WHERE p.id=custom_place.catalog_place_id) AS suggestion_status";
 function suggestionOf(status: string | null | undefined): SuggestionState {
   if (!status) return "none";
   if (status === "pending" || status === "approved") return status;
@@ -84,6 +86,7 @@ export function toCustomPlace(row: CustomPlaceRow): CustomPlace {
     suggestion: suggestionOf(row.suggestion_status),
     catalogPlaceId: row.catalog_place_id,
     googlePlaceId: row.google_place_id,
+    googleKind: row.google_kind,
   };
 }
 export async function findCustomPlace(

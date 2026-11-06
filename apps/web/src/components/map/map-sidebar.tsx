@@ -96,8 +96,8 @@ export function MapSidebar({
             <button
               type="button"
               className="icon-button"
-              aria-label={t.hideList}
-              title={t.hideList}
+              aria-label={t.hideLayers}
+              title={t.hideLayers}
               onClick={onClose}
             >
               <X size={18} aria-hidden="true" />

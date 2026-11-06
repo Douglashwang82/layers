@@ -30,6 +30,17 @@ export const importDocument = z
     "Import at most 1,000 markers at a time.",
   );
 export type ImportDocument = z.infer<typeof importDocument>;
+/**
+ * A map split into categories (My Maps layers) imports as a folder with one
+ * layer per category; anything else fits in one layer. Folders whose markers
+ * were all skipped don't count.
+ */
+export function defaultImportMode(
+  document: ImportDocument,
+): "new" | "collection" {
+  const categories = document.layers.filter((l) => l.points.length).length;
+  return categories > 1 ? "collection" : "new";
+}
 export const importRequest = z
   .object({
     permission: z.literal(true),

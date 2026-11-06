@@ -5,11 +5,7 @@ import type { MapItem } from "@/features/map/query";
  * icons, directions) but has no catalog page, votes or saves, and opens on the
  * map with the layer that holds it.
  */
-export function customMapItem(
-  place: CustomPlace,
-  layerSlug: string,
-  googleTypes?: string[],
-): MapItem {
+export function customMapItem(place: CustomPlace, layerSlug: string): MapItem {
   return {
     key: place.key,
     type: "place",
@@ -44,6 +40,6 @@ export function customMapItem(
     rank: 0,
     customScope: place.ownerKind,
     ...(place.googlePlaceId ? { googlePlaceId: place.googlePlaceId } : {}),
-    ...(googleTypes ? { googleTypes } : {}),
+    ...(place.googleKind ? { googleKind: place.googleKind } : {}),
   };
 }

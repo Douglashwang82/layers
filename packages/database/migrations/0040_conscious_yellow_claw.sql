@@ -1,0 +1,2 @@
+ALTER TABLE "custom_place" ADD COLUMN "google_kind" text;--> statement-breakpoint
+ALTER TABLE "custom_place" ADD CONSTRAINT "custom_place_google_kind_check" CHECK ("custom_place"."google_kind" IN ('food', 'retail', 'park', 'culture', 'info'));

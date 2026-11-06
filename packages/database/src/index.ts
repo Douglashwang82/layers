@@ -103,3 +103,4 @@ export {
   workRestaurantJob,
 } from "./restaurant-jobs";
 export * from "./layer-item-reviews";
+export * from "./layer-suggestion-model";

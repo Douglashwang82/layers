@@ -935,6 +935,14 @@ export const customPlace = pgTable(
      * coordinates and note stay the member's. Null when nothing matched.
      */
     googlePlaceId: text("google_place_id"),
+    /**
+     * Our own marker kind, worked out from Google's types at import. It is
+     * LocalLink's classification, not Google content: the raw types stay in the
+     * 30-day cache on place_provider_reference. Null when never classified.
+     */
+    googleKind: text("google_kind", {
+      enum: ["food", "retail", "park", "culture", "info"],
+    }),
     status: text("status", { enum: ["active", "hidden", "deleted"] })
       .default("active")
       .notNull(),
@@ -961,6 +969,10 @@ export const customPlace = pgTable(
     check(
       "custom_place_google_place_id_check",
       sql`${t.googlePlaceId} ~ '^[A-Za-z0-9_-]+$' AND length(${t.googlePlaceId}) <= 512`,
+    ),
+    check(
+      "custom_place_google_kind_check",
+      sql`${t.googleKind} IN ('food', 'retail', 'park', 'culture', 'info')`,
     ),
   ],
 );
@@ -2418,5 +2430,31 @@ export const tripStop = pgTable(
       "trip_stop_reason_check",
       sql`${t.unscheduledReason} IS NULL OR ${t.unscheduledReason} IN ('overflow', 'no_location', 'day_removed', 'user')`,
     ),
+  ],
+);
+// Disposable per-user cache of model-derived text; cascading with the user is deliberate.
+export const layerSuggestionRun = pgTable(
+  "layer_suggestion_run",
+  {
+    userId: uuid("user_id")
+      .notNull()
+      .references(() => user.id, { onDelete: "cascade" }),
+    snapshotHash: text("snapshot_hash").notNull(),
+    locale: text("locale").notNull(),
+    suggestions: jsonb("suggestions").notNull(),
+    model: text("model").notNull(),
+    promptVersion: text("prompt_version").notNull(),
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .defaultNow()
+      .notNull(),
+    expiresAt: timestamp("expires_at", { withTimezone: true }).notNull(),
+  },
+  (t) => [
+    primaryKey({ columns: [t.userId, t.snapshotHash] }),
+    check(
+      "layer_suggestion_run_hash_check",
+      sql`char_length(${t.snapshotHash}) = 64`,
+    ),
+    index("layer_suggestion_run_expires_idx").on(t.expiresAt),
   ],
 );

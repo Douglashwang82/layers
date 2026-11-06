@@ -10,9 +10,7 @@ import {
   ExternalLink,
 } from "lucide-react";
 import type { LayerEvent } from "@taiwanhub/shared";
-import type { LayerAvailability, MapItem } from "@/features/map/query";
-import { LayerSection, groupByLayer } from "@/components/map/layer-section";
-import { layerTitle } from "@/lib/layer-labels";
+import type { MapItem } from "@/features/map/query";
 import { eventRange, eventTitle } from "@/lib/event-time";
 import {
   type Copy,
@@ -248,107 +246,5 @@ export function ResultRow({
       />
       {extra}
     </li>
-  );
-}
-/** One row of the list: a catalog item or a Google place. */
-type ListEntry<Place> = { layers: string[] } & (
-  { item: MapItem; place?: never } | { item?: never; place: Place }
-);
-export function MapResults<Place extends { layers: string[] }>({
-  items,
-  unmapped,
-  places = [],
-  renderPlace,
-  t,
-  locale,
-  selectedKey,
-  onSelect,
-  limit,
-  onMore,
-  onHover,
-  events = {},
-  timeZone,
-  layers,
-}: {
-  items: MapItem[];
-  unmapped: MapItem[];
-  /** Google places, listed with the catalog rows of the layers holding them. */
-  places?: Place[];
-  renderPlace?: (place: Place, keyPrefix: string) => ReactNode;
-  t: Copy;
-  locale: Locale;
-  selectedKey: string | null;
-  onSelect: (key: string) => void;
-  limit: number;
-  onMore: () => void;
-  onHover?: (key: string | null) => void;
-  events?: Record<string, LayerEvent[]>;
-  timeZone?: string;
-  /** Applied layers; when given, the list is grouped under one section each. */
-  layers?: LayerAvailability[];
-}) {
-  const visible = items.slice(0, limit);
-  const entries: ListEntry<Place>[] = [
-    ...visible.map((item) => ({ item, layers: item.layers })),
-    ...places.map((place) => ({ place, layers: place.layers })),
-  ];
-  const row = (entry: ListEntry<Place>, prefix = "") =>
-    entry.item ? (
-      <ResultRow
-        key={prefix + entry.item.key}
-        {...{ t, locale, onSelect, onHover, timeZone }}
-        item={entry.item}
-        events={events[entry.item.key]}
-        selected={entry.item.key === selectedKey}
-      />
-    ) : (
-      renderPlace?.(entry.place, prefix)
-    );
-  const { groups, rest } = groupByLayer(entries, layers);
-  return (
-    <>
-      {groups.map(({ layer, rows }) => (
-        <LayerSection
-          key={layer.slug}
-          layer={layer}
-          locale={locale}
-          count={rows.length}
-        >
-          <ul className="result-list" aria-label={layerTitle(layer, locale)}>
-            {rows.map((entry) => row(entry, `${layer.slug}:`))}
-          </ul>
-        </LayerSection>
-      ))}
-      {rest.length > 0 && (
-        <ul className="result-list" aria-label={t.resultsTab}>
-          {rest.map((entry) => row(entry))}
-        </ul>
-      )}
-      {items.length > limit && (
-        <button
-          type="button"
-          className="button secondary small show-more"
-          onClick={onMore}
-        >
-          {t.showMore} ({items.length - limit})
-        </button>
-      )}
-      {unmapped.length > 0 && (
-        <section className="unmapped" aria-labelledby="unmapped-heading">
-          <h3 id="unmapped-heading">{t.alsoInLayers}</h3>
-          <p className="fine-print">{t.notLimited}</p>
-          <ul className="result-list">
-            {unmapped.map((item) => (
-              <ResultRow
-                key={item.key}
-                {...{ item, t, locale, onSelect, timeZone }}
-                events={events[item.key]}
-                selected={item.key === selectedKey}
-              />
-            ))}
-          </ul>
-        </section>
-      )}
-    </>
   );
 }

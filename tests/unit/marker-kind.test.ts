@@ -38,18 +38,16 @@ describe("marker kinds", () => {
   });
 });
 describe("imported marker kinds", () => {
-  it("reads a category-less marker's kind from its Google types", () => {
+  it("uses a category-less marker's stored kind", () => {
     const place = { type: "place" as const, category: "" };
-    expect(markerKind({ ...place, googleTypes: ["restaurant", "food"] })).toBe(
-      "food",
-    );
-    expect(markerKind({ ...place, googleTypes: ["park"] })).toBe("park");
-    expect(markerKind({ ...place, googleTypes: [] })).toBe("info");
+    expect(markerKind({ ...place, googleKind: "food" })).toBe("food");
+    expect(markerKind({ ...place, googleKind: "park" })).toBe("park");
+    expect(markerKind({ ...place, googleKind: null })).toBe("info");
     expect(markerKind(place)).toBe("info");
   });
-  it("keeps a place's own category over Google types", () => {
+  it("keeps a place's own category over the stored kind", () => {
     expect(
-      markerKind({ type: "place", category: "Shop", googleTypes: ["park"] }),
+      markerKind({ type: "place", category: "Shop", googleKind: "park" }),
     ).toBe("retail");
   });
 });

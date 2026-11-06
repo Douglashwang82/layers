@@ -320,7 +320,7 @@ summary.map-float-button::-webkit-details-marker {
   background: var(--th-canvas);
 }
 /* With no map, the notice sits beside the always-visible panel, below the search. */
-.map-fallback:not(.view-list) .map-unavailable {
+.map-fallback .map-unavailable {
   padding-left: calc(var(--th-map-edge) * 2 + var(--th-map-panel-width));
   padding-top: var(--th-map-top, 160px);
 }
@@ -512,46 +512,8 @@ summary.map-float-button::-webkit-details-marker {
 .map-panel .discovery-modes {
   margin: var(--th-space-2) var(--th-space-4) 0;
 }
-.view-list .map-panel {
-  left: 50%;
-  right: auto;
-  bottom: 0;
-  width: min(760px, calc(100% - var(--th-map-edge) * 2));
-  transform: translateX(-50%);
-  border-bottom: 0;
-  border-radius: var(--th-float-radius) var(--th-float-radius) 0 0;
-  animation: none;
-}
 .panel-body {
   padding: var(--th-space-3) var(--th-space-4) var(--th-space-6);
-}
-.results-summary {
-  padding: 4px 0 var(--th-space-3);
-}
-.results-summary-row {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  justify-content: space-between;
-  gap: var(--th-space-2);
-}
-.results-summary .result-count {
-  font-size: 15px;
-  font-weight: 600;
-}
-.results-summary small {
-  font-weight: 400;
-  color: var(--th-muted);
-}
-.results-summary .fine-print {
-  margin-top: 4px;
-}
-.result-list {
-  list-style: none;
-  margin: 0;
-  padding: 0;
-  display: grid;
-  gap: 4px;
 }
 .result-row a {
   display: grid;
@@ -644,22 +606,6 @@ summary.map-float-button::-webkit-details-marker {
 }
 .map-panel .result-row.selected a {
   box-shadow: inset 0 0 0 2px var(--th-brand-text);
-}
-.show-more {
-  margin: var(--th-space-3) auto 0;
-  display: flex;
-}
-.unmapped {
-  margin-top: var(--th-space-6);
-  padding-top: var(--th-space-4);
-  border-top: 1px solid var(--th-divider);
-}
-.unmapped h3 {
-  font-size: 18px;
-  line-height: 25px;
-}
-.unmapped .fine-print {
-  margin: 4px 0 var(--th-space-3);
 }
 /* Active layers */
 .layer-rows {
@@ -1126,8 +1072,7 @@ summary.map-float-button::-webkit-details-marker {
   body:has(.map-workspace) .bottom-nav a {
     min-height: 48px;
   }
-  .map-panel,
-  .view-list .map-panel {
+  .map-panel {
     left: var(--th-map-edge);
     right: var(--th-map-edge);
     top: auto;
@@ -1152,23 +1097,15 @@ summary.map-float-button::-webkit-details-marker {
       100dvh - var(--th-map-top, 160px) - 120px - env(safe-area-inset-bottom)
     );
   }
-  .view-list .map-panel {
-    top: var(--th-map-top, 160px);
-    bottom: calc(var(--th-map-bottom) + 52px);
-    height: auto;
-  }
   .panel-controls .sheet-toggle {
     display: inline-grid;
     place-items: center;
-  }
-  .view-list .panel-controls .sheet-toggle {
-    display: none;
   }
   .map-dock {
     bottom: var(--th-map-bottom);
   }
   /* An open sheet carries its own close control; the dock returns when it closes. */
-  .map-workspace.has-panel:not(.view-list) .map-dock {
+  .map-workspace.has-panel .map-dock {
     display: none;
   }
   /* Provider controls and attribution ride above the sheet at its measured height. */
@@ -1181,7 +1118,7 @@ summary.map-float-button::-webkit-details-marker {
   .view-map.sheet-expanded.has-panel .map-stage-body .mapboxgl-ctrl-group {
     display: none;
   }
-  .map-fallback:not(.view-list) .map-unavailable {
+  .map-fallback .map-unavailable {
     place-content: start center;
     padding-left: var(--th-space-6);
   }
@@ -1196,11 +1133,10 @@ summary.map-float-button::-webkit-details-marker {
   .map-workspace.has-panel {
     --th-map-bottom: 8px;
   }
-  body:has(.map-workspace.has-panel:not(.view-list)) .bottom-nav {
+  body:has(.map-workspace.has-panel) .bottom-nav {
     display: none;
   }
-  .map-panel,
-  .view-list .map-panel {
+  .map-panel {
     top: calc(var(--th-map-top, 80px) + 32px);
     bottom: 8px;
     height: auto;
@@ -1579,6 +1515,87 @@ summary.map-float-button::-webkit-details-marker {
   display: inline-flex;
   align-items: center;
   gap: 4px;
+}
+/* Layer suggestions: AI tips for the selected layers, in the layers and results screens. */
+.layer-suggestions {
+  display: grid;
+  gap: 8px;
+  padding: 12px 14px;
+  margin-bottom: 12px;
+  border: 1px solid var(--th-divider);
+  border-radius: var(--th-radius-card);
+  background: var(--th-surface);
+}
+.layer-suggestions p,
+.layer-suggestions h3,
+.layer-suggestions h4 {
+  margin: 0;
+}
+.layer-suggestions-toggle {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  min-height: 44px;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: inherit;
+  font: inherit;
+  font-size: 16px;
+  font-weight: 600;
+  text-align: start;
+  cursor: pointer;
+}
+.layer-suggestions-toggle span {
+  flex: 1;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+.layer-suggestions-toggle:focus-visible {
+  outline: 2px solid var(--th-focus);
+  outline-offset: 2px;
+}
+#layer-suggestions-body {
+  display: grid;
+  gap: 8px;
+}
+#layer-suggestions-body[hidden] {
+  display: none;
+}
+.layer-suggestions-disclosure {
+  font-size: 13px;
+  overflow-wrap: anywhere;
+}
+.layer-suggestions-action {
+  justify-self: start;
+  min-height: 44px;
+  max-width: 100%;
+}
+.layer-suggestions-status:empty {
+  display: none;
+}
+.layer-suggestions-status.error {
+  color: var(--th-error);
+}
+.layer-suggestions-list {
+  display: grid;
+  gap: 12px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.layer-suggestions-list li {
+  display: grid;
+  gap: 6px;
+  padding-top: 12px;
+  border-top: 1px solid var(--th-divider);
+  overflow-wrap: anywhere;
+}
+.layer-suggestions-list .button {
+  justify-self: start;
+  min-height: 44px;
+  max-width: 100%;
 }
 .daily-pick-page {
   display: grid;
@@ -2351,74 +2368,11 @@ body[data-map-theme="dark"]:has(.map-workspace) .provider-slot > * {
 }
 
 /* Layer-grouped list: color-coded collapsible sections and quick layer chips. */
-.layer-chips-bar {
-  display: flex;
-  align-items: center;
-  gap: var(--th-space-2);
-  padding-bottom: var(--th-space-3);
-}
-.layer-chips {
-  flex: 1;
-  display: flex;
-  gap: var(--th-space-2);
-  min-width: 0;
-  overflow-x: auto;
-  scrollbar-width: none;
-}
-.layer-chips:empty {
-  display: none;
-}
-.layer-chip {
-  flex: none;
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  min-height: 36px;
-  padding: 0 12px;
-  border-radius: 999px;
-  border: 1px solid var(--th-control-border);
-  background: var(--th-surface);
-  color: var(--th-muted);
-  font-size: 14px;
-}
-.layer-chip[aria-pressed="true"] {
-  color: var(--th-brand-text);
-  border-color: var(--th-brand-text);
-  font-weight: 600;
-}
-.layer-chip.manage {
-  margin-left: auto;
-  border-color: transparent;
-  background: var(--th-surface-soft);
-  color: var(--th-text);
-  cursor: pointer;
-}
 .layer-swatch {
   width: 10px;
   height: 10px;
   border-radius: 50%;
   flex: none;
-}
-.layer-section {
-  margin-bottom: var(--th-space-3);
-}
-.layer-section > summary {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  min-height: 44px;
-  cursor: pointer;
-  font-size: 15px;
-  font-weight: 600;
-  position: sticky;
-  top: 0;
-  background: var(--th-surface);
-  z-index: 1;
-}
-.layer-section-title {
-  flex: 1;
-  min-width: 0;
-  overflow-wrap: anywhere;
 }
 /* Custom sticker markers: the per-layer control and its editor dialog. */
 .layer-item-marker {
@@ -2521,22 +2475,20 @@ body[data-map-theme="dark"]:has(.map-workspace) .provider-slot > * {
 .marker-editor-actions {
   justify-content: flex-end;
 }
-.folder-heading {
-  margin: 8px 0 4px;
-  font-size: 14px;
-  color: var(--th-muted);
+.folder-item {
+  border-bottom: 1px solid var(--th-divider);
 }
-.folder-tree,
+.folder-item:last-child,
+.folder-group .folder-item {
+  border-bottom: 0;
+}
 .folder-group {
   list-style: none;
   margin: 0;
-  padding: 0;
-}
-.folder-group {
-  padding-left: 20px;
+  padding: 0 0 0 20px;
 }
 .folder-row {
-  grid-template-columns: 28px auto minmax(0, 1fr) auto;
+  grid-template-columns: 28px auto minmax(0, 1fr);
   align-items: center;
   padding: 6px 0;
 }
@@ -2546,8 +2498,5 @@ body[data-map-theme="dark"]:has(.map-workspace) .provider-slot > * {
   padding: 0;
 }
 .folder-layer {
-  display: flex;
-  justify-content: space-between;
-  gap: 8px;
   padding: 6px 0 6px 28px;
 }

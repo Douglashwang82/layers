@@ -67,6 +67,31 @@ export async function signIn(page: Page, email: string) {
  * The map home starts with the list collapsed. Opens it (retrying until the page
  * has hydrated); it is already open for fallback, list view and shared items.
  */
+/** The real Mapbox renderer with no live tiles, for flows that click a pin. */
+export async function mockMapProvider(page: Page) {
+  const style = {
+    version: 8,
+    glyphs: "https://api.mapbox.com/fonts/v1/fixture/{fontstack}/{range}.pbf",
+    sources: {},
+    layers: [
+      {
+        id: "background",
+        type: "background",
+        paint: { "background-color": "#eee" },
+      },
+    ],
+  };
+  await page.route(/(\/\/|\.)mapbox\.com\//, async (route) => {
+    const url = route.request().url();
+    if (url.includes("/styles/")) await route.fulfill({ json: style });
+    else if (url.includes("/fonts/"))
+      await route.fulfill({
+        contentType: "application/x-protobuf",
+        body: Buffer.alloc(0),
+      });
+    else await route.fulfill({ status: 200, body: "{}" });
+  });
+}
 export async function openMapList(page: Page) {
   const panel = page.locator("#map-panel");
   await expect(async () => {
@@ -95,6 +120,15 @@ export async function createAndSignIn(
  * layer is created once per run and reused.
  */
 let seededLayerSlug: string | null = null;
+/** The URL part that opens a seeded place, by name: pins can't be clicked in CI. */
+export async function seededItem(name: string) {
+  const { rows } = await pool.query<{ id: string }>(
+    "SELECT id FROM place WHERE name=$1 LIMIT 1",
+    [name],
+  );
+  expect(rows).toHaveLength(1);
+  return `&item=place%3A${rows[0].id}`;
+}
 export async function seededPlacesMap(extra = "") {
   if (!seededLayerSlug) {
     const owner = crypto.randomUUID();

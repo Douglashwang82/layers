@@ -1,21 +1,22 @@
 import { expect, test } from "@playwright/test";
-import { seededPlacesMap } from "./fixtures";
+import { seededItem, seededPlacesMap } from "./fixtures";
 
-test("provider failure leaves list selection usable without a floating orphan companion", async ({
+test("provider failure leaves a selected place usable without a floating orphan companion", async ({
   page,
 }) => {
   await page.route(/(\/\/|\.)mapbox\.com\//, (route) => route.abort());
-  await page.goto(await seededPlacesMap());
-  await page.getByRole("link", { name: /Morning Soy Kitchen/ }).click();
+  await page.goto(
+    await seededPlacesMap(await seededItem("Morning Soy Kitchen")),
+  );
   await expect(
     page.getByRole("heading", { name: "Morning Soy Kitchen", exact: true }),
   ).toBeVisible();
   await expect(page.locator(".map-pet-host")).toHaveCount(0);
   await page
-    .getByRole("button", { name: "Back to results", exact: true })
+    .getByRole("button", { name: "Back to layers", exact: true })
     .click();
   await expect(
-    page.getByRole("link", { name: /Morning Soy Kitchen/ }),
+    page.getByRole("heading", { name: "Your layers", level: 2 }),
   ).toBeVisible();
 });
 
