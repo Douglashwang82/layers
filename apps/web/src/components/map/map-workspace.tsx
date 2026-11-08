@@ -25,6 +25,11 @@ import {
   withoutLayerPanel,
 } from "@/lib/layer-workspace";
 import {
+  accountPanelKey,
+  readAccountPanel,
+  withoutAccountPanel,
+} from "@/lib/account-panel";
+import {
   ExternalLink,
   Layers as LayersIcon,
   Crosshair,
@@ -181,6 +186,7 @@ export function MapWorkspace({
   library = null,
   folders = [],
   layerScreen,
+  accountScreen = null,
   tripsEnabled = false,
   layerSuggestionsEnabled = false,
   tripData = null,
@@ -200,6 +206,8 @@ export function MapWorkspace({
   /** The signed-in member's top-level folders with their trees. */
   folders?: CollectionNode[];
   layerScreen?: ReactNode;
+  /** The server-rendered account sidebar body; null unless `?account` is in the URL. */
+  accountScreen?: ReactNode;
   /** FEATURE_TRIPS: without it trip params are ignored and no trip UI shows. */
   tripsEnabled?: boolean;
   /** FEATURE_LAYER_SUGGESTIONS: without it the suggestions section never renders or fetches. */
@@ -222,6 +230,7 @@ export function MapWorkspace({
     const query = bareSearch();
     return "/" + (query ? "?" + query : "");
   };
+  const accountOpen = readAccountPanel(new URLSearchParams(searchParams));
   const layerScreenKey = layerPanelKeys
     .map((key) => searchParams.get(key) ?? "")
     .join("|");
@@ -326,7 +335,11 @@ export function MapWorkspace({
         { includeCity: hasExplicitCity },
       );
       const params = new URLSearchParams(qs);
-      for (const key of [...layerPanelKeys, ...tripPanelKeys]) {
+      for (const key of [
+        ...layerPanelKeys,
+        ...tripPanelKeys,
+        accountPanelKey,
+      ]) {
         const value = searchParams.get(key);
         if (value !== null) params.set(key, value);
       }
@@ -860,6 +873,63 @@ export function MapWorkspace({
     observer.observe(node);
     return () => observer.disconnect();
   }, []);
+  // The account sidebar floats on the right; the camera clears its left edge.
+  const accountRef = useRef<HTMLElement>(null);
+  const [accountInset, setAccountInset] = useState(0);
+  useEffect(() => {
+    const node = accountRef.current;
+    if (!accountOpen || !node) {
+      setAccountInset(0);
+      return;
+    }
+    const measure = () => {
+      const stage = root.current?.getBoundingClientRect();
+      const box = node.getBoundingClientRect();
+      setAccountInset(
+        Math.max(0, Math.round((stage?.right ?? window.innerWidth) - box.left)),
+      );
+    };
+    measure();
+    const observer = new ResizeObserver(measure);
+    observer.observe(node);
+    window.addEventListener("resize", measure);
+    return () => {
+      observer.disconnect();
+      window.removeEventListener("resize", measure);
+    };
+  }, [accountOpen]);
+  // Opening the sidebar moves focus to its heading; closing returns it to the menu.
+  const accountHeading = useRef<HTMLHeadingElement>(null);
+  const wasAccountOpen = useRef(accountOpen);
+  useEffect(() => {
+    if (accountOpen && !wasAccountOpen.current) accountHeading.current?.focus();
+    // Only when focus went down with the sidebar: a navigation that opened
+    // another screen has already placed focus there.
+    if (
+      !accountOpen &&
+      wasAccountOpen.current &&
+      (!document.activeElement || document.activeElement === document.body)
+    )
+      document.querySelector<HTMLElement>(".map-profile-menu summary")?.focus();
+    wasAccountOpen.current = accountOpen;
+  }, [accountOpen]);
+  const closeAccount = () =>
+    router.push(withoutAccountPanel(searchParams.toString()), {
+      scroll: false,
+    });
+  // On phones the account sheet covers the panel: a layer or trip screen
+  // opened while it is up (bottom nav, a sidebar row) closes the sheet.
+  const leftScreenKey = `${layerScreenKey}|${tripPanel ? JSON.stringify(tripPanel) : ""}`;
+  const shownLeftScreen = useRef(leftScreenKey);
+  useEffect(() => {
+    const changed = shownLeftScreen.current !== leftScreenKey;
+    shownLeftScreen.current = leftScreenKey;
+    if (!changed || !mobile || !accountOpen || (!layerPanel && !tripPanel))
+      return;
+    router.replace(withoutAccountPanel(window.location.search), {
+      scroll: false,
+    });
+  }, [leftScreenKey, mobile, accountOpen, layerPanel, tripPanel, router]);
   // The search cluster floats above the map; the panel and camera clear its measured bottom.
   useEffect(() => {
     const cluster = document.querySelector<HTMLElement>(".map-top-left");
@@ -882,13 +952,22 @@ export function MapWorkspace({
         mobile,
         visible,
         panelRight,
+        rightPanelInset: accountInset,
         panelHeight,
         topInset,
         // Floating navigation and the list entry sit at the bottom of a phone.
         bottomInset: visible ? 76 : 128,
         viewportHeight,
       }),
-    [mobile, visible, panelRight, panelHeight, topInset, viewportHeight],
+    [
+      mobile,
+      visible,
+      panelRight,
+      accountInset,
+      panelHeight,
+      topInset,
+      viewportHeight,
+    ],
   );
   useEffect(() => {
     canvas.current?.resize();
@@ -1475,7 +1554,7 @@ export function MapWorkspace({
     >
       <div
         ref={root}
-        className={`map-workspace view-map sheet-${sheet} ${visible ? "has-panel" : "panel-closed"} ${fallback ? "map-fallback" : ""} ${detailInPanel ? "has-detail" : ""}`}
+        className={`map-workspace view-map sheet-${sheet} ${visible ? "has-panel" : "panel-closed"} ${fallback ? "map-fallback" : ""} ${detailInPanel ? "has-detail" : ""} ${accountOpen ? "has-account" : ""}`}
         data-canvas={canvasStatus}
         data-map-theme={theme}
         data-panel={visible ? "open" : "closed"}
@@ -1485,6 +1564,8 @@ export function MapWorkspace({
             "--th-map-top": `${topInset + 12}px`,
             // Provider attribution clears a phone sheet at its real height.
             "--th-sheet-height": `${Math.round(visible ? panelHeight : 0)}px`,
+            // Desktop map controls step left of the open account sidebar.
+            "--th-account-inset": `${accountInset}px`,
             ...markerCssVars(theme),
           } as CSSProperties
         }
@@ -1741,6 +1822,8 @@ export function MapWorkspace({
           id="map-panel"
           className="map-panel"
           ref={panelRef}
+          // On phones the account sheet covers the panel; keep it out of reach.
+          inert={mobile && accountOpen}
           role="region"
           aria-label={t.mapNav}
           tabIndex={-1}
@@ -1789,6 +1872,43 @@ export function MapWorkspace({
             {screen.body}
           </MapSidebar>
         </div>
+        {accountOpen && (
+          <aside
+            id="map-account-panel"
+            className="map-account-panel"
+            ref={accountRef}
+            aria-labelledby="map-account-title"
+            onKeyDown={(event) => {
+              // Escape closes the sidebar unless a field or open menu owns the key.
+              if (event.key !== "Escape" || event.defaultPrevented) return;
+              const target = event.target as HTMLElement;
+              if (target.closest("input, textarea, select, details[open]"))
+                return;
+              event.preventDefault();
+              closeAccount();
+            }}
+          >
+            <header className="panel-header">
+              <span className="panel-title">
+                <h2 id="map-account-title" ref={accountHeading} tabIndex={-1}>
+                  {t.account}
+                </h2>
+              </span>
+              <span className="panel-controls">
+                <button
+                  type="button"
+                  className="icon-button"
+                  aria-label={t.accountClose}
+                  title={t.accountClose}
+                  onClick={closeAccount}
+                >
+                  <X size={18} aria-hidden="true" />
+                </button>
+              </span>
+            </header>
+            <div className="panel-scroll">{accountScreen}</div>
+          </aside>
+        )}
       </div>
     </LayerWorkspaceContext.Provider>
   );

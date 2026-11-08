@@ -7,6 +7,8 @@ import { redirect } from "next/navigation";
 import { LayerWorkspaceScreen } from "@/components/layers/workspace-screen";
 import { layerPanelKeys } from "@/lib/layer-workspace";
 import { readTripPanel, tripPanelKeys } from "@/lib/trip-panel";
+import { accountPanelKey } from "@/lib/account-panel";
+import { AccountScreen } from "@/components/account/account-screen";
 import { loadTripScreen } from "@/features/trips/screen";
 import { getMapItemDetail } from "@/features/map/detail";
 import { listMapLibrary, resolveLayers } from "@/features/layers/repository";
@@ -83,7 +85,7 @@ export default async function HomePage({
   const canonical = await mvpCanonicalUrl(params, state, city, actor);
   if (canonical) {
     const url = new URL(canonical, "https://local.invalid");
-    for (const key of [...layerPanelKeys, ...tripPanelKeys])
+    for (const key of [...layerPanelKeys, ...tripPanelKeys, accountPanelKey])
       if (params[key] !== undefined) url.searchParams.set(key, params[key]!);
     redirect(url.pathname + url.search);
   }
@@ -111,6 +113,9 @@ export default async function HomePage({
   return (
     <MapWorkspace
       layerScreen={<LayerWorkspaceScreen params={params} />}
+      accountScreen={
+        params[accountPanelKey] !== undefined ? <AccountScreen /> : null
+      }
       initial={result}
       initialDetail={detail}
       city={city}

@@ -2,6 +2,11 @@
 import { brand, localizedCityName } from "@taiwanhub/shared";
 import Link from "next/link";
 import { layerWorkspaceHref } from "@/lib/layer-workspace";
+import {
+  accountPanelHref,
+  readAccountPanel,
+  withoutAccountPanel,
+} from "@/lib/account-panel";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
 import {
@@ -51,8 +56,17 @@ export function Navigation({
   const router = useRouter();
   const searchParams = useSearchParams();
   const mapPage = mapHome && pathname === "/";
+  const accountOpen =
+    mapPage && readAccountPanel(new URLSearchParams(searchParams));
+  // On the map, Profile toggles the right-hand account sidebar over the map state.
   const navHref = (href: string) =>
-    mapPage ? layerWorkspaceHref(href, searchParams.toString()) : href;
+    !mapPage
+      ? href
+      : href === "/profile"
+        ? accountOpen
+          ? withoutAccountPanel(searchParams.toString())
+          : accountPanelHref(searchParams.toString())
+        : layerWorkspaceHref(href, searchParams.toString());
   const [switching, setSwitching] = useState(false);
   /*
    * This layout-level component is not re-rendered by a query-only
@@ -85,7 +99,15 @@ export function Navigation({
     ["/profile", t.profile, UserRound],
   ] as const;
   const current = (href: string) =>
-    isActiveRoute(pathname, href) ? ("page" as const) : undefined;
+    (
+      mapPage && href === "/profile"
+        ? accountOpen
+        : href === "/" && mapPage
+          ? !accountOpen
+          : isActiveRoute(pathname, href)
+    )
+      ? ("page" as const)
+      : undefined;
   const nextLanguage = locale === "en" ? "繁體中文" : "English";
   const authLanguageButton = (
     <button
@@ -226,6 +248,9 @@ export function Navigation({
                       href={navHref(href)}
                       aria-current={current(href)}
                       scroll={!mapPage}
+                      onClick={() => {
+                        if (menu.current) menu.current.open = false;
+                      }}
                     >
                       <Icon size={18} aria-hidden="true" />
                       {label}

@@ -40,6 +40,8 @@ export function mapPadding(input: {
   visible: boolean;
   /** Distance from the left edge to the panel's right edge, when shown. */
   panelRight: number;
+  /** Distance from the right edge to the account sidebar's left edge, when shown (desktop). */
+  rightPanelInset?: number;
   panelHeight: number;
   /** Bottom of the top search cluster. */
   topInset: number;
@@ -57,7 +59,9 @@ export function mapPadding(input: {
       ...none,
       top,
       bottom: Math.min(80, Math.max(0, input.viewportHeight - top - 64)),
-      right: 80,
+      right: input.rightPanelInset
+        ? Math.max(80, Math.round(input.rightPanelInset + 12))
+        : 80,
       left: input.visible ? Math.max(0, Math.round(input.panelRight + 12)) : 0,
     };
   const wanted =

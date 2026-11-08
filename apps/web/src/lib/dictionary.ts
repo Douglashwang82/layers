@@ -211,6 +211,9 @@ export const en = {
   orgProfile: "About this community",
   productAbout: "Worth finding",
   account: "Your account",
+  accountClose: "Close account panel",
+  accountSignInPrompt:
+    "Sign in to edit your profile, settings and saved layers.",
   authError: "Unable to sign in. Check your details and try again.",
   uploadFailed: "Image upload failed.",
   searchLabel: "Search LocalLink",
@@ -1245,6 +1248,8 @@ export const zh: Copy = {
   orgProfile: "關於這個社群",
   productAbout: "值得一找的好物",
   account: "你的帳號",
+  accountClose: "關閉帳號面板",
+  accountSignInPrompt: "登入後即可編輯個人檔案、設定與收藏的圖層。",
   authError: "無法登入，請確認資料後重試。",
   uploadFailed: "圖片上傳失敗。",
   searchLabel: "搜尋 LocalLink",

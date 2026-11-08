@@ -28,6 +28,16 @@ layer's own detail screen still lists its places; Google-link places open in
 the map panel only from their pin. Map, Layers, Saved, Profile
 and language actions remain in the menu.
 
+**Account sidebar (2026-11-08).** On the map, Profile (menu and phone navigation)
+toggles a floating account sidebar on the right instead of leaving the map. It
+is URL state, `?account=1`, independent of the layer and trip screens: it stays
+open beside the left panel, and the camera padding clears both. On phones it is
+a sheet between the header and the navigation. It holds the settings form
+inline; contributions, chat connections, layers, membership, admin and sign-out
+remain link rows. Signed-out visitors see a sign-in prompt that returns to the
+open sidebar. With the map home on, `/profile` redirects to `/?account=1`;
+`/profile/contributions` and `/profile/connections` remain standalone pages.
+
 The [minimalist floating-map plan](../plans/minimalist-floating-map-plan.md)
 supersedes this guide's older fixed header/sidebar and bright map composition
 below. Those sections remain historical design context, not current layout rules.

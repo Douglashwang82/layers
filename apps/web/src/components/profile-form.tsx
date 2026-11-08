@@ -1,5 +1,6 @@
 "use client";
 import { useState } from "react";
+import { useRouter } from "next/navigation";
 import { localizedCityName } from "@taiwanhub/shared";
 import { api, StatusMessage } from "./actions";
 import { Field } from "./ui/field";
@@ -23,6 +24,7 @@ export function ProfileForm({
     text: string;
   } | null>(null);
   const [saving, setSaving] = useState(false);
+  const router = useRouter();
   return (
     <form
       className="form-stack"
@@ -35,6 +37,8 @@ export function ProfileForm({
           await api("profile", "PATCH", data);
           document.cookie = `locale=${data.preferredLanguage};path=/;SameSite=Lax;max-age=31536000`;
           setFeedback({ tone: "success", text: t.profileSaved });
+          // Cached renders (Back/Forward) must not hold the old values as defaults.
+          router.refresh();
         } catch (e) {
           setFeedback({ tone: "error", text: (e as Error).message });
         } finally {

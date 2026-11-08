@@ -55,6 +55,17 @@ describe("map padding for floating chrome", () => {
     expect(mapPadding(base).left).toBe(396);
   });
 
+  it("clears the open account sidebar on the right with a gap", () => {
+    expect(mapPadding({ ...base, rightPanelInset: 372 }).right).toBe(384);
+    expect(mapPadding({ ...base, rightPanelInset: 0 }).right).toBe(80);
+  });
+
+  it("ignores the account sidebar on mobile, where it covers the map", () => {
+    expect(
+      mapPadding({ ...base, mobile: true, rightPanelInset: 372 }).right,
+    ).toBe(0);
+  });
+
   it("reserves the entry and navigation when the mobile sheet is closed", () => {
     expect(mapPadding({ ...base, mobile: true, visible: false })).toMatchObject(
       { top: 132, bottom: 80, left: 0 },

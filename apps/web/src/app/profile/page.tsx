@@ -1,10 +1,11 @@
 import Link from "next/link";
 import { redirect } from "next/navigation";
-import { pool } from "@taiwanhub/database";
 import { currentActor } from "@/lib/session";
 import { getCopy, getLocale } from "@/lib/i18n";
 import { mapImportEn, mapImportZh } from "@/lib/map-import-copy";
 import { getCities } from "@/features/catalog/repository";
+import { getProfileSettings } from "@/features/profile/repository";
+import { accountPanelHref } from "@/lib/account-panel";
 import { ProfileForm } from "@/components/profile-form";
 import { SignOut } from "@/components/auth-form";
 import { isModerator } from "@taiwanhub/shared";
@@ -12,24 +13,19 @@ import { flags } from "@/lib/config";
 import { messagingEn, messagingZh } from "@/lib/messaging-copy";
 import { chatCaptureEnabled } from "@/features/messaging/service";
 export default async function Profile() {
+  // On the map home, the account sidebar is the profile; it handles signed-out visitors itself.
+  if (flags.mapHome) redirect(accountPanelHref());
   const actor = await currentActor();
   if (!actor) redirect("/sign-in?next=/profile");
   const locale = await getLocale();
   const importCopy = locale === "zh-TW" ? mapImportZh : mapImportEn;
   const chatCopy = locale === "zh-TW" ? messagingZh : messagingEn;
-  const [t, cities, result] = await Promise.all([
+  const [t, cities, user] = await Promise.all([
     getCopy(),
     getCities(),
-    pool.query<{
-      name: string;
-      bio: string | null;
-      preferredLanguage: string;
-      homeCityId: string | null;
-    }>(
-      'SELECT name,bio,preferred_language AS "preferredLanguage",home_city_id AS "homeCityId" FROM "user" WHERE id=$1',
-      [actor.id],
-    ),
+    getProfileSettings(actor.id),
   ]);
+  if (!user) redirect("/sign-in?next=/profile");
   return (
     <div className="container page-bottom">
       <div className="page-header">
@@ -39,7 +35,7 @@ export default async function Profile() {
       <div className="settings-layout">
         <section className="form-panel" aria-labelledby="settings-heading">
           <h2 id="settings-heading">{t.settings}</h2>
-          <ProfileForm {...{ t, cities }} user={result.rows[0]} />
+          <ProfileForm {...{ t, cities }} user={user} />
         </section>
         <nav className="settings-rows" aria-label={t.profile}>
           {flags.layerWrites && flags.layerCustomPlaces && (

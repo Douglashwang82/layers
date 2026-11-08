@@ -417,6 +417,49 @@ summary.map-float-button::-webkit-details-marker {
 .map-panel[hidden] {
   display: none;
 }
+/* Account sidebar: the profile, floating on the right beside the panel. */
+.map-account-panel {
+  position: absolute;
+  z-index: 11;
+  right: var(--th-map-edge);
+  top: var(--th-map-top, 160px);
+  bottom: calc(var(--th-map-edge) + 56px);
+  width: min(360px, calc(100vw - 2 * var(--th-map-edge)));
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  overflow: hidden;
+  background: var(--th-surface);
+  border: 1px solid var(--th-divider);
+  border-radius: var(--th-float-radius);
+  box-shadow: var(--th-float-shadow);
+  animation: panel-in var(--th-normal) var(--th-ease);
+}
+.map-account-panel h2:focus {
+  outline: none;
+}
+.account-screen {
+  display: grid;
+  gap: var(--th-space-4);
+  padding: var(--th-space-4);
+}
+.account-screen > p {
+  margin: 0;
+}
+.account-screen > .button {
+  justify-self: start;
+}
+.account-screen h3 {
+  margin: 0 0 var(--th-space-3);
+}
+/* One column: the sidebar is too narrow for the paired selects. */
+.account-screen .form-row {
+  grid-template-columns: 1fr;
+}
+/* Desktop zoom and locate controls step left of the open sidebar. */
+.has-account .map-stage-body .mapboxgl-ctrl-bottom-right {
+  right: calc(var(--th-account-inset, 0px) + 4px);
+}
 @keyframes panel-in {
   from {
     opacity: 0;
@@ -1100,6 +1143,16 @@ summary.map-float-button::-webkit-details-marker {
   .panel-controls .sheet-toggle {
     display: inline-grid;
     place-items: center;
+  }
+  /* On phones the account sidebar is a full-height sheet over the map. */
+  .map-account-panel {
+    left: var(--th-map-edge);
+    right: var(--th-map-edge);
+    bottom: var(--th-map-bottom);
+    width: auto;
+  }
+  .has-account .map-stage-body .mapboxgl-ctrl-bottom-right {
+    right: 2px;
   }
   .map-dock {
     bottom: var(--th-map-bottom);
