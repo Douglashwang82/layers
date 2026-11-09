@@ -38,7 +38,7 @@ test.beforeAll(async () => {
     [slugA, titleA],
     [slugB, titleB],
   ]) {
-    // Own (non-system) layers, so the member is past the first-run starter state.
+    // Own (non-system) layers, so the member is past the first-run state.
     await pool.query(
       `INSERT INTO layer(slug,title,city_id,owner_kind,owner_user_id,audience,lifecycle,review_status)
        SELECT $1,$2,id,'user',$3,'public','active','approved' FROM city WHERE slug='houston'`,

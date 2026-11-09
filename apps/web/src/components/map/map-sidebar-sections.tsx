@@ -5,41 +5,8 @@ import { LayerLink as Link } from "../layers/workspace-navigation";
 import type { Copy, Locale } from "@/lib/dictionary";
 import { eventRange, eventTitle } from "@/lib/event-time";
 
-/** The sign-in prompt or first-run starter for a map with nothing on it. */
-export function MapEmptyState({
-  firstRun,
-  dailyPickSlug,
-  t,
-  onSeePick,
-}: {
-  /** A signed-in member with no layers of their own gets a starter. */
-  firstRun: boolean;
-  dailyPickSlug: string | null;
-  t: Copy;
-  onSeePick: (slug: string) => void;
-}) {
-  if (firstRun)
-    return (
-      <div className="empty first-run-starter">
-        <h3>{t.starterTitle}</h3>
-        <p>{t.starterBody}</p>
-        <div className="actions">
-          {dailyPickSlug && (
-            <button
-              type="button"
-              className="button secondary small"
-              onClick={() => onSeePick(dailyPickSlug)}
-            >
-              {t.starterSeePick}
-            </button>
-          )}
-          <Link className="button small" href="/layers/new">
-            {t.starterStartLayer}
-          </Link>
-        </div>
-        <p className="fine-print">{t.starterJoinGroup}</p>
-      </div>
-    );
+/** The sign-in prompt for a signed-out visitor's empty map. */
+export function MapEmptyState({ t }: { t: Copy }) {
   return (
     <div className="empty">
       <h3>{t.mvpEmptyTitle}</h3>

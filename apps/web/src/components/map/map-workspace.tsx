@@ -1293,9 +1293,7 @@ export function MapWorkspace({
       onToggle={toggleLayer}
     />
   );
-  // First run: a signed-in member with no layers of their own gets a starter.
-  const dailyPickSlug =
-    (library ?? []).find((l) => l.ownerKind === "system")?.slug ?? null;
+  // First run: a signed-in member with no layers of their own.
   const firstRun =
     authenticated &&
     library != null &&
@@ -1314,15 +1312,8 @@ export function MapWorkspace({
       locale={locale}
     />
   );
-  // A member with layers already has the Layers list to act from.
-  const emptyState = !hasApplied && (!authenticated || firstRun) && (
-    <MapEmptyState
-      firstRun={firstRun}
-      dailyPickSlug={dailyPickSlug}
-      t={t}
-      onSeePick={(slug) => toggleLayer(slug, true, true)}
-    />
-  );
+  // A signed-in member has the Layers list to act from.
+  const emptyState = !hasApplied && !authenticated && <MapEmptyState t={t} />;
   const dailyPick = result.dailyPick && (
     <DailyPickCard
       key={`${result.dailyPick.pick?.id ?? "none"}:${result.dailyPick.saved}`}
