@@ -19,3 +19,6 @@ supabase/.temp
 
 # Human-only working notes (see AGENTS.md); not for agent edits.
 docs/dev-notes.md
+
+# Per-developer Docker Compose overrides (e.g. local port remaps); never commit.
+docker-compose.override.yml
